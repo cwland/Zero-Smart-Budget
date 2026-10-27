@@ -28,7 +28,7 @@ services:
       - "${API_PORT:-4000}:4000"
     volumes:
       - ./backend/src:/app/src
-      - ./backend/prisma:/app/prisma
+      - ./backend/drizzle:/app/drizzle
 
   web:
     build: ./frontend
