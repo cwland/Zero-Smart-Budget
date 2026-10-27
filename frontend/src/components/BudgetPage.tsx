@@ -113,7 +113,7 @@ export default function BudgetPage() {
                 kind="expense"
                 title={g.name}
                 startWithDraft={g.id === newGroupId}
-                rows={g.items.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents }))}
+                rows={g.items.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund }))}
                 column={column}
                 onColumnChange={setColumn}
                 onRename={(name) => change(() => api("PATCH", `/api/groups/${g.id}`, { name }))}

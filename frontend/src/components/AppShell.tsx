@@ -1,5 +1,15 @@
+import { useEffect, useState } from "react";
 import BudgetPage from "./BudgetPage";
-import { BudgetIcon, Logo, LogoutIcon } from "./Icons";
+import FundsPage from "./FundsPage";
+import { BudgetIcon, Logo, LogoutIcon, PiggyIcon } from "./Icons";
+
+type Page = "budget" | "funds";
+const pageFromHash = (): Page => (window.location.hash === "#/funds" ? "funds" : "budget");
+
+const PAGES: { id: Page; label: string; icon: JSX.Element }[] = [
+  { id: "budget", label: "Budget", icon: <BudgetIcon /> },
+  { id: "funds", label: "Funds", icon: <PiggyIcon /> },
+];
 
 interface Props {
   username: string;
@@ -8,15 +18,31 @@ interface Props {
 
 export default function AppShell({ username, onLogout }: Props) {
   const initials = username.slice(0, 2).toUpperCase();
+  const [page, setPage] = useState<Page>(pageFromHash);
+
+  useEffect(() => {
+    const onHash = () => setPage(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   return (
     <div className="flex min-h-screen bg-page">
       {/* Left icon nav */}
       <nav className="sticky top-0 hidden h-screen w-14 shrink-0 flex-col items-center bg-white py-4 sm:flex">
         <Logo className="size-8" />
         <div className="mt-8 flex flex-col gap-2">
-          <a href="#" aria-label="Budget" title="Budget" className="flex size-10 items-center justify-center rounded-lg bg-pressed text-primary">
-            <BudgetIcon />
-          </a>
+          {PAGES.map((p) => (
+            <a
+              key={p.id}
+              href={`#/${p.id}`}
+              aria-label={p.label}
+              title={p.label}
+              aria-current={page === p.id ? "page" : undefined}
+              className={`flex size-10 items-center justify-center rounded-lg ${page === p.id ? "bg-pressed text-primary" : "text-subtle hover:bg-page"}`}
+            >
+              {p.icon}
+            </a>
+          ))}
         </div>
         <div className="mt-auto flex flex-col items-center gap-3">
           <button onClick={onLogout} aria-label="Sign out" title="Sign out" className="flex size-10 items-center justify-center rounded-lg text-subtle hover:bg-page">
@@ -29,15 +55,23 @@ export default function AppShell({ username, onLogout }: Props) {
       </nav>
 
       <main className="min-w-0 flex-1 pb-16 sm:pb-0">
-        <BudgetPage />
+        {page === "funds" ? <FundsPage /> : <BudgetPage />}
       </main>
 
       {/* Bottom bar on phones */}
       <nav className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-center justify-around border-t border-line bg-white sm:hidden">
-        <a href="#" aria-label="Budget" className="flex flex-col items-center text-xs text-primary">
-          <BudgetIcon />
-          Budget
-        </a>
+        {PAGES.map((p) => (
+          <a
+            key={p.id}
+            href={`#/${p.id}`}
+            aria-label={p.label}
+            aria-current={page === p.id ? "page" : undefined}
+            className={`flex flex-col items-center text-xs ${page === p.id ? "text-primary" : "text-subtle"}`}
+          >
+            {p.icon}
+            {p.label}
+          </a>
+        ))}
         <button onClick={onLogout} aria-label="Sign out" className="flex flex-col items-center text-xs text-subtle">
           <LogoutIcon />
           Sign out

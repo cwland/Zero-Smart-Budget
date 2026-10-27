@@ -38,3 +38,11 @@ export const Logo = ({ className = "size-8" }: P) => (
     <path d="M16 7.5v17" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
   </svg>
 );
+
+export const PiggyIcon = ({ className = "size-5" }: P) => (
+  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 11a7 6 0 0112.6-3.5H20v3l-1.2.8A6 6 0 0117 15.5V19h-3v-2h-3v2H8v-3.2A6 6 0 015 11z" />
+    <path d="M9 7.5h3" />
+    <circle cx="15.5" cy="10" r=".6" fill="currentColor" />
+  </svg>
+);

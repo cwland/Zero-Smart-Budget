@@ -1,13 +1,14 @@
 import { useRef, useState } from "react";
 import { formatCents } from "../money";
 import { InlineText, MoneyInput } from "./inputs";
-import { Trash } from "./Icons";
+import { PiggyIcon, Trash } from "./Icons";
 
 export interface RowData {
   id: number;
   name: string;
   plannedCents: number;
   actualCents: number; // spent (expenses) or received (income)
+  fund?: { name: string; balanceCents: number; targetCents: number | null } | null;
 }
 
 export type SecondColumn = "actual" | "remaining";
@@ -50,13 +51,24 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
       }}
     >
       <div className="flex items-center gap-2 py-3">
-        <InlineText
-          value={row.name}
-          ariaLabel="Item name"
-          onSave={(name) => onSave({ name })}
-          onEnter={() => amountRef.current?.focus()}
-          className="flex-1 text-base sm:text-lg"
-        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <InlineText
+            value={row.name}
+            ariaLabel="Item name"
+            onSave={(name) => onSave({ name })}
+            onEnter={() => amountRef.current?.focus()}
+            className="w-full text-base sm:text-lg"
+          />
+          {row.fund && (
+            <span title={`Sinking fund: ${row.fund.name}`} className="tabular flex items-center gap-1 px-1 text-sm text-success">
+              <PiggyIcon className="size-4 shrink-0" />
+              <span className="truncate">
+                {formatCents(row.fund.balanceCents)}
+                {row.fund.targetCents ? ` of ${formatCents(row.fund.targetCents)}` : " saved"}
+              </span>
+            </span>
+          )}
+        </div>
         <div className="w-24 shrink-0 sm:w-[7.5rem]">
           <MoneyInput
             ref={amountRef}

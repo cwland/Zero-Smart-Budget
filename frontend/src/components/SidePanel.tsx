@@ -150,6 +150,7 @@ export default function SidePanel({ budget, transactions, view, onView, onChange
         onAdd={() => openForm(view, undefined, { type: view.item.type === "income" ? "income" : "expense", target })}
         onOpen={(t) => openForm(view, t)}
         onClose={() => onView({ kind: "summary" })}
+        onChanged={onChanged}
       />
     );
   } else {

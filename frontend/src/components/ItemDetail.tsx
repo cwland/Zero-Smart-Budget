@@ -1,6 +1,7 @@
 import type { Budget, Transaction } from "../api";
 import { formatCents } from "../money";
 import { ChevronLeft } from "./Icons";
+import FundLink from "./FundLink";
 import { ProgressBar } from "./ItemRow";
 import { TransactionRow } from "./TransactionList";
 
@@ -13,9 +14,10 @@ interface Props {
   onAdd: () => void;
   onOpen: (t: Transaction) => void;
   onClose: () => void;
+  onChanged: () => Promise<void>;
 }
 
-export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, onClose }: Props) {
+export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, onClose, onChanged }: Props) {
   let name = "";
   let groupName = "";
   let planned = 0;
@@ -76,12 +78,7 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
         <ProgressBar actual={actual} planned={planned} />
       </div>
 
-      {fund && (
-        <div className="mt-4 rounded-lg bg-brand-subtle px-3 py-2 text-sm">
-          Sinking fund <strong>{fund.name}</strong>: {formatCents(fund.balanceCents)}
-          {fund.targetCents ? ` of ${formatCents(fund.targetCents)}` : ""}
-        </div>
-      )}
+      {item.type === "line" && <FundLink lineItemId={item.id} fund={fund} onChanged={onChanged} />}
 
       <button onClick={onAdd} className="mt-5 w-full rounded border border-primary py-2.5 font-semibold text-primary hover:bg-pressed">
         Add Transaction

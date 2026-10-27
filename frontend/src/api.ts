@@ -127,3 +127,14 @@ export interface TransactionInput {
   note?: string | null;
   splits: { lineItemId?: number; incomeItemId?: number; amountCents: number }[];
 }
+
+export interface SinkingFund {
+  id: number;
+  name: string;
+  targetCents: number | null;
+  startingBalanceCents: number;
+  archived: boolean;
+  contributedCents: number;
+  spentCents: number;
+  balanceCents: number;
+}
