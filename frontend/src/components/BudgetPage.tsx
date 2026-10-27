@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, type Budget, type MonthResponse } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, type Budget, type MonthResponse, type Transaction } from "../api";
 import { currentYearMonth, type YearMonth } from "../dates";
 import AddGroup from "./AddGroup";
 import CreateMonth from "./CreateMonth";
@@ -7,7 +7,7 @@ import GroupCard from "./GroupCard";
 import type { SecondColumn } from "./ItemRow";
 import MonthHeader from "./MonthHeader";
 import SummaryBanner from "./SummaryBanner";
-import SummaryRail from "./SummaryRail";
+import SidePanel, { type PanelView } from "./SidePanel";
 
 export default function BudgetPage() {
   const [ym, setYm] = useState<YearMonth>(currentYearMonth);
@@ -16,20 +16,36 @@ export default function BudgetPage() {
   const [column, setColumn] = useState<SecondColumn>("actual");
   const [error, setError] = useState("");
   const [newGroupId, setNewGroupId] = useState<number | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [view, setView] = useState<PanelView>({ kind: "summary" });
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    const [month, list] = await Promise.all([
+    const [month, list, txs] = await Promise.all([
       api<MonthResponse>("GET", `/api/months/${ym.year}/${ym.month}`),
       api<YearMonth[]>("GET", "/api/months"),
+      api<Transaction[]>("GET", `/api/transactions?year=${ym.year}&month=${ym.month}`),
     ]);
     setData(month);
     setMonths(list);
+    setTransactions(txs);
   }, [ym]);
 
   useEffect(() => {
     setData(null);
+    setView({ kind: "summary" });
     load().catch((e) => setError(e.message));
   }, [load]);
+
+  // On narrow screens the panel sits below the budget, so bring it into view when it changes
+  const showView = (v: PanelView) => {
+    setView(v);
+    if (v.kind !== "summary" && window.innerWidth < 1100) {
+      requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  };
+  const selectedLine = view.kind === "item" && view.item.type === "line" ? view.item.id : null;
+  const selectedIncome = view.kind === "item" && view.item.type === "income" ? view.item.id : null;
 
   // Run a change, show any error, then refresh the budget
   const change = useCallback(
@@ -87,6 +103,8 @@ export default function BudgetPage() {
               onAddItem={(name, plannedCents) => change(() => api("POST", `/api/months/${budget.id}/income`, { name, plannedCents }))}
               onUpdateItem={(id, changes) => change(() => api("PATCH", `/api/income/${id}`, changes))}
               onDeleteItem={(id) => change(() => api("DELETE", `/api/income/${id}`))}
+              selectedId={selectedIncome}
+              onSelect={(id) => showView({ kind: "item", item: { type: "income", id } })}
             />
 
             {budget.groups.map((g) => (
@@ -103,6 +121,8 @@ export default function BudgetPage() {
                 onAddItem={(name, plannedCents) => change(() => api("POST", `/api/groups/${g.id}/items`, { name, plannedCents }))}
                 onUpdateItem={(id, changes) => change(() => api("PATCH", `/api/items/${id}`, changes))}
                 onDeleteItem={(id) => change(() => api("DELETE", `/api/items/${id}`))}
+                selectedId={selectedLine}
+                onSelect={(id) => showView({ kind: "item", item: { type: "line", id } })}
               />
             ))}
 
@@ -120,8 +140,11 @@ export default function BudgetPage() {
 
       {/* Summary rail */}
       {budget && (
-        <div className="w-full min-[1100px]:sticky min-[1100px]:top-4 min-[1100px]:mt-4 min-[1100px]:w-[400px] min-[1100px]:self-start">
-          <SummaryRail budget={budget} />
+        <div
+          ref={panelRef}
+          className="w-full scroll-mt-4 min-[1100px]:sticky min-[1100px]:top-4 min-[1100px]:mt-4 min-[1100px]:max-h-[calc(100vh-2rem)] min-[1100px]:w-[400px] min-[1100px]:self-start min-[1100px]:overflow-y-auto min-[1100px]:rounded-2xl"
+        >
+          <SidePanel budget={budget} transactions={transactions} view={view} onView={showView} onChanged={load} />
         </div>
       )}
     </div>

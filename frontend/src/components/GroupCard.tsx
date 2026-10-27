@@ -16,6 +16,8 @@ interface Props {
   onUpdateItem: (id: number, changes: { name?: string; plannedCents?: number }) => void;
   onDeleteItem: (id: number) => void;
   startWithDraft?: boolean;
+  selectedId?: number | null;
+  onSelect?: (id: number) => void;
 }
 
 export default function GroupCard(props: Props) {
@@ -94,6 +96,8 @@ export default function GroupCard(props: Props) {
               onSave={(changes) => props.onUpdateItem(row.id, changes)}
               onDelete={() => props.onDeleteItem(row.id)}
               onAmountEnter={() => setDrafting(true)}
+              selected={props.selectedId === row.id}
+              onSelect={() => props.onSelect?.(row.id)}
             />
           ))}
           {drafting && <DraftRow onCreate={props.onAddItem} onClose={() => setDrafting(false)} />}

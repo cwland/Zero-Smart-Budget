@@ -18,6 +18,8 @@ interface Props {
   onSave: (changes: { name?: string; plannedCents?: number }) => void;
   onDelete: () => void;
   onAmountEnter: () => void;
+  selected?: boolean;
+  onSelect?: () => void;
 }
 
 export function ProgressBar({ actual, planned }: { actual: number; planned: number }) {
@@ -34,13 +36,19 @@ export function secondValue(row: { plannedCents: number; actualCents: number }, 
   return column === "actual" ? row.actualCents : row.plannedCents - row.actualCents;
 }
 
-export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter }: Props) {
+export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect }: Props) {
   const amountRef = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState(false);
   const second = secondValue(row, column);
 
   return (
-    <div className="group/row relative bg-white px-4 sm:px-6">
+    <div
+      className={`group/row relative cursor-pointer px-4 sm:px-6 ${selected ? "bg-active" : "bg-white hover:bg-page"}`}
+      onClick={(e) => {
+        // Clicks on the name/amount boxes edit; clicks anywhere else on the row open its details
+        if (!(e.target as HTMLElement).closest("input,button,select")) onSelect?.();
+      }}
+    >
       <div className="flex items-center gap-2 py-3">
         <InlineText
           value={row.name}
@@ -59,9 +67,13 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter }
             className="text-base sm:text-lg"
           />
         </div>
-        <div className={`tabular w-[5.5rem] shrink-0 sm:w-[6.5rem] text-right ${second < 0 ? "text-error" : "text-ink"}`}>
+        <button
+          onClick={onSelect}
+          aria-label={`Details for ${row.name}`}
+          className={`tabular w-[5.5rem] shrink-0 rounded px-1 py-1 text-right hover:underline sm:w-[6.5rem] ${second < 0 ? "text-error" : "text-ink"}`}
+        >
           {formatCents(second)}
-        </div>
+        </button>
         <button
           onClick={() => (confirming ? onDelete() : setConfirming(true))}
           onBlur={() => setConfirming(false)}

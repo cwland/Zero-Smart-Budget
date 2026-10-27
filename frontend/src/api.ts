@@ -101,3 +101,29 @@ export interface MissingMonth {
 }
 
 export type MonthResponse = Budget | MissingMonth;
+
+export interface TransactionSplit {
+  id: number;
+  lineItemId: number | null;
+  incomeItemId: number | null;
+  amountCents: number;
+}
+
+export interface Transaction {
+  id: number;
+  date: string; // YYYY-MM-DD
+  merchant: string;
+  amountCents: number;
+  type: "expense" | "income";
+  note: string | null;
+  splits: TransactionSplit[];
+}
+
+export interface TransactionInput {
+  date: string;
+  merchant: string;
+  amountCents: number;
+  type: "expense" | "income";
+  note?: string | null;
+  splits: { lineItemId?: number; incomeItemId?: number; amountCents: number }[];
+}
