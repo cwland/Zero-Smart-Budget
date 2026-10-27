@@ -1,21 +1,54 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { api, getToken, setToken } from "./api";
+import AuthScreen from "./components/AuthScreen";
+import AppShell from "./components/AppShell";
+
+type AuthState = { status: "loading" } | { status: "setup" } | { status: "login" } | { status: "in"; username: string };
 
 export default function App() {
-  const [status, setStatus] = useState("checking…");
+  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
 
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then((d) => setStatus(d.status))
-      .catch(() => setStatus("API not reachable"));
+  const check = useCallback(async () => {
+    try {
+      const { setupRequired } = await api<{ setupRequired: boolean }>("GET", "/api/auth/status");
+      if (setupRequired) return setAuth({ status: "setup" });
+      if (!getToken()) return setAuth({ status: "login" });
+      const me = await api<{ user?: { username: string } }>("GET", "/api/auth/me");
+      setAuth(me.user ? { status: "in", username: me.user.username } : { status: "login" });
+    } catch {
+      setToken(null);
+      setAuth({ status: "login" });
+    }
   }, []);
 
+  useEffect(() => {
+    check();
+    const onLogout = () => setAuth({ status: "login" });
+    window.addEventListener("corysdollar:logout", onLogout);
+    return () => window.removeEventListener("corysdollar:logout", onLogout);
+  }, [check]);
+
+  if (auth.status === "loading") return <div className="min-h-screen bg-page" />;
+
+  if (auth.status === "setup" || auth.status === "login") {
+    return (
+      <AuthScreen
+        mode={auth.status}
+        onDone={(token, username) => {
+          setToken(token);
+          setAuth({ status: "in", username });
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-slate-800">Cory's Dollar</h1>
-        <p className="mt-2 text-slate-500">API status: {status}</p>
-      </div>
-    </div>
+    <AppShell
+      username={auth.username}
+      onLogout={() => {
+        setToken(null);
+        setAuth({ status: "login" });
+      }}
+    />
   );
 }

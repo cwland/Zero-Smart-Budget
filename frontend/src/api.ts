@@ -1,0 +1,103 @@
+// Small fetch wrapper. The login token lives in localStorage on this device.
+
+const TOKEN_KEY = "corysdollar.token";
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable: stays logged in only for this page load */
+  }
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["content-type"] = "application/json";
+
+  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+
+  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+    setToken(null);
+    window.dispatchEvent(new Event("corysdollar:logout"));
+  }
+  if (res.status === 204) return undefined as T;
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+  return data as T;
+}
+
+// ---------- shapes returned by the API ----------
+
+export interface IncomeLine {
+  id: number;
+  name: string;
+  sortOrder: number;
+  plannedCents: number;
+  receivedCents: number;
+}
+
+export interface BudgetLine {
+  id: number;
+  name: string;
+  sortOrder: number;
+  plannedCents: number;
+  spentCents: number;
+  remainingCents: number;
+  sinkingFund: { id: number; name: string; targetCents: number | null; balanceCents: number } | null;
+}
+
+export interface BudgetGroup {
+  id: number;
+  name: string;
+  sortOrder: number;
+  plannedCents: number;
+  spentCents: number;
+  remainingCents: number;
+  items: BudgetLine[];
+}
+
+export interface BudgetTotals {
+  incomePlannedCents: number;
+  incomeReceivedCents: number;
+  plannedCents: number;
+  spentCents: number;
+  remainingCents: number;
+  leftToBudgetCents: number;
+}
+
+export interface Budget {
+  exists: true;
+  id: number;
+  year: number;
+  month: number;
+  income: IncomeLine[];
+  groups: BudgetGroup[];
+  totals: BudgetTotals;
+}
+
+export interface MissingMonth {
+  exists: false;
+  year: number;
+  month: number;
+  canCopyFrom: { year: number; month: number } | null;
+}
+
+export type MonthResponse = Budget | MissingMonth;

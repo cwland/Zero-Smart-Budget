@@ -65,6 +65,15 @@ describe("months", () => {
     expect(oct.groups[0].items[0].plannedCents).toBe(150000);
   });
 
+  it("template mode adds starter income and groups", async () => {
+    const res = await t.api("POST", "/api/months/2026/10", { mode: "template" });
+    expect(res.status).toBe(201);
+    expect(res.body.income.map((i: { name: string }) => i.name)).toEqual(["Paycheck 1", "Paycheck 2"]);
+    expect(res.body.groups[0].name).toBe("Giving");
+    expect(res.body.groups.find((g: { name: string }) => g.name === "Food").items.map((i: { name: string }) => i.name)).toEqual(["Groceries", "Restaurants"]);
+    expect(res.body.totals.leftToBudgetCents).toBe(0);
+  });
+
   it("copy fails when there's nothing earlier", async () => {
     expect((await t.api("POST", "/api/months/2026/10", { mode: "copy" })).status).toBe(400);
   });

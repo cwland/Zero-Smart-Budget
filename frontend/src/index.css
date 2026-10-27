@@ -1,1 +1,50 @@
 @import "tailwindcss";
+@import "@fontsource/figtree/300.css";
+@import "@fontsource/figtree/400.css";
+@import "@fontsource/figtree/500.css";
+@import "@fontsource/figtree/600.css";
+@import "@fontsource/figtree/700.css";
+
+/* Color tokens from docs/design-notes.md */
+@theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+
+  --color-page: #f5f7f8;
+  --color-container: #ffffff;
+  --color-line: #e8eced;
+  --color-strong: #d5d9db;
+  --color-brand: #35bd59;
+  --color-brand-subtle: #eaf8ee;
+  --color-success: #24a344;
+  --color-success-subtle: #d9fae1;
+  --color-error: #cc392f;
+  --color-error-subtle: #fdded8;
+  --color-warning: #faab19;
+  --color-pressed: #ebf4fa;
+  --color-active: #d8f1fc;
+  --color-primary: #003561;
+  --color-primary-pressed: #002342;
+  --color-action: #0073b9;
+  --color-link: #0091d9;
+  --color-ink: #1f2426;
+  --color-subtle: #495257;
+  --color-muted: #69757a;
+  --color-inactive: #8e999e;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

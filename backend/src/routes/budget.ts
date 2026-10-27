@@ -4,6 +4,7 @@ import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { budgetMonths, categoryGroups, incomeItems, lineItems, sinkingFunds } from "../db/schema.js";
 import { loadBudget, nextSortOrder } from "../lib/budget.js";
+import { STARTER_GROUPS, STARTER_INCOME } from "../lib/template.js";
 import { monthIndex } from "../lib/calc.js";
 import { badRequest, HttpError, notFound } from "../lib/errors.js";
 import { cents, idList, idParam, name, yearMonthParams } from "../lib/validation.js";
@@ -89,10 +90,10 @@ export default async function budgetRoutes(app: FastifyInstance) {
     return { exists: true, ...(await loadBudget(db, row.id)) };
   });
 
-  // Create a month: blank, or copy the setup of the most recent earlier month
+  // Create a month: blank, suggested starter categories ("template"), or a copy of the most recent earlier month
   app.post("/api/months/:year/:month", async (req, reply) => {
     const { year, month } = yearMonthParams.parse(req.params);
-    const { mode } = z.object({ mode: z.enum(["blank", "copy"]).default("blank") }).parse(req.body ?? {});
+    const { mode } = z.object({ mode: z.enum(["blank", "template", "copy"]).default("blank") }).parse(req.body ?? {});
     if (await findMonth(db, year, month)) throw new HttpError(409, "That month already exists");
 
     const source = mode === "copy" ? await findPreviousMonth(db, year, month) : undefined;
@@ -100,6 +101,14 @@ export default async function budgetRoutes(app: FastifyInstance) {
 
     const newId = await db.transaction(async (tx) => {
       const [created] = await tx.insert(budgetMonths).values({ year, month }).returning();
+      if (mode === "template") {
+        await tx.insert(incomeItems).values(STARTER_INCOME.map((name, sortOrder) => ({ monthId: created.id, name, sortOrder })));
+        for (const [sortOrder, g] of STARTER_GROUPS.entries()) {
+          const [group] = await tx.insert(categoryGroups).values({ monthId: created.id, name: g.name, sortOrder }).returning();
+          await tx.insert(lineItems).values(g.items.map((name, i) => ({ groupId: group.id, name, sortOrder: i })));
+        }
+        return created.id;
+      }
       if (!source) return created.id;
 
       const income = await tx.select().from(incomeItems).where(eq(incomeItems.monthId, source.id));
