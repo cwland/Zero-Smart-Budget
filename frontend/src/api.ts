@@ -138,3 +138,29 @@ export interface SinkingFund {
   spentCents: number;
   balanceCents: number;
 }
+
+// Download a file from the API (needs the login header, so a plain link won't do)
+export async function downloadFile(path: string) {
+  const token = getToken();
+  const res = await fetch(path, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, data.error ?? `Download failed (${res.status})`);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "download";
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return name;
+}
+
+export interface BackupInfo {
+  name: string;
+  size: number;
+  createdAt: string;
+}

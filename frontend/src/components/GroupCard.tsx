@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { formatCents } from "../money";
 import ItemRow, { DraftRow, secondValue, type RowData, type SecondColumn } from "./ItemRow";
 import { InlineText } from "./inputs";
-import { ChevronDown, ChevronUp, Trash } from "./Icons";
+import { ChevronDown, ChevronUp, GripIcon, Trash } from "./Icons";
 
 interface Props {
   kind: "income" | "expense";
@@ -18,6 +20,10 @@ interface Props {
   startWithDraft?: boolean;
   selectedId?: number | null;
   onSelect?: (id: number) => void;
+  // Drag ids: the card itself (expense groups only) and the prefix for its rows ("item" / "income")
+  sortableId?: string;
+  rowPrefix: string;
+  compact?: boolean; // header only (while a group is being dragged)
 }
 
 export default function GroupCard(props: Props) {
@@ -29,14 +35,32 @@ export default function GroupCard(props: Props) {
   const actualLabel = kind === "income" ? "Received" : "Spent";
   const plannedTotal = rows.reduce((t, r) => t + r.plannedCents, 0);
   const secondTotal = rows.reduce((t, r) => t + secondValue(r, column), 0);
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.sortableId ?? "income-card",
+    disabled: !props.sortableId,
+  });
 
   return (
     <section
+      ref={setNodeRef}
+      data-drag-id={props.sortableId}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
       aria-label={title}
-      className="group/card mb-6 overflow-hidden rounded-2xl bg-white"
+      className={`group/card relative mb-6 overflow-hidden rounded-2xl bg-white ${isDragging ? "z-30 shadow-[0_12px_32px_rgba(31,36,38,0.18)]" : ""}`}
     >
       {/* Header */}
-      <header className="flex items-center gap-2 px-4 pb-2 pt-6 sm:px-6">
+      <header className={`relative flex items-center gap-2 px-4 pt-6 sm:px-6 ${props.compact ? "pb-6" : "pb-2"}`}>
+        {props.sortableId && (
+          <button
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            aria-label={`Reorder group ${title}`}
+            className="absolute left-0 top-6 flex h-8 w-4 cursor-grab touch-none items-center justify-center text-muted opacity-40 hover:text-ink focus:opacity-100 active:cursor-grabbing sm:left-1 sm:w-5 sm:opacity-0 sm:group-hover/card:opacity-100"
+          >
+            <GripIcon />
+          </button>
+        )}
         <div className="flex min-w-0 flex-1 items-center gap-1">
           {props.onRename ? (
             <InlineText
@@ -86,11 +110,13 @@ export default function GroupCard(props: Props) {
         </label>
       </header>
 
-      {!collapsed && (
+      {!collapsed && !props.compact && (
         <>
+          <SortableContext items={rows.map((r) => `${props.rowPrefix}-${r.id}`)} strategy={verticalListSortingStrategy}>
           {rows.map((row) => (
             <ItemRow
               key={row.id}
+              sortableId={`${props.rowPrefix}-${row.id}`}
               row={row}
               column={column}
               onSave={(changes) => props.onUpdateItem(row.id, changes)}
@@ -100,6 +126,7 @@ export default function GroupCard(props: Props) {
               onSelect={() => props.onSelect?.(row.id)}
             />
           ))}
+          </SortableContext>
           {drafting && <DraftRow onCreate={props.onAddItem} onClose={() => setDrafting(false)} />}
 
           {/* Footer */}

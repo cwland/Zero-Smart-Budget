@@ -21,6 +21,7 @@ services:
     env_file: .env
     environment:
       PORT: ${API_PORT:-4000}
+      BACKUP_DIR: /app/backups
     depends_on:
       db:
         condition: service_healthy
@@ -29,6 +30,7 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/drizzle:/app/drizzle
+      - ./backups:/app/backups
 
   web:
     build: ./frontend

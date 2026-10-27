@@ -1,4 +1,7 @@
 import "dotenv/config";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { sql } from "drizzle-orm";
 import { createDb } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
@@ -16,7 +19,8 @@ export async function setupTestApp() {
   await db.execute(sql`drop schema if exists drizzle cascade`);
   await db.execute(sql`create schema public`);
   await runMigrations(db);
-  const app = buildApp({ db, jwtSecret: "test-secret-that-is-long-enough" });
+  const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "cd-backups-"));
+  const app = buildApp({ db, jwtSecret: "test-secret-that-is-long-enough", backupDir, backupKeep: 3 });
   await app.ready();
 
   let token = "";
@@ -35,6 +39,7 @@ export async function setupTestApp() {
     app,
     db,
     api,
+    backupDir,
     async reset() {
       await db.execute(sql`truncate users, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);
       resetLoginLockouts();
@@ -48,6 +53,7 @@ export async function setupTestApp() {
       token = t;
     },
     async close() {
+      fs.rmSync(backupDir, { recursive: true, force: true });
       await app.close();
       await pool.end();
     },

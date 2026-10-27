@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MeasuringStrategy,
+  PointerSensor,
+  closestCenter,
+  closestCorners,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { api, type Budget, type MonthResponse, type Transaction } from "../api";
 import { currentYearMonth, type YearMonth } from "../dates";
+import { formatCents } from "../money";
+import { applyDrop, groupOfItem, moveItemAcrossGroups, parseDragId } from "./dragLogic";
 import AddGroup from "./AddGroup";
 import CreateMonth from "./CreateMonth";
 import GroupCard from "./GroupCard";
@@ -63,6 +82,91 @@ export default function BudgetPage() {
 
   const budget = data?.exists ? (data as Budget) : null;
 
+  // ---------- drag to reorder ----------
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const [dragStart, setDragStart] = useState<{ snapshot: Budget; activeId: string } | null>(null);
+
+  // Only let groups land on groups, income on income, and items on items (or a group, to drop at its end)
+  const collision: CollisionDetection = (args) => {
+    const kind = parseDragId(args.active.id)?.kind;
+    const allowed = args.droppableContainers.filter((c) => {
+      const k = parseDragId(c.id)?.kind;
+      return kind === "item" ? k === "item" || k === "group" : k === kind;
+    });
+    if (kind === "item") {
+      const hits = pointerWithin({ ...args, droppableContainers: allowed });
+      const itemHit = hits.find((h) => parseDragId(h.id)?.kind === "item");
+      if (itemHit) return [itemHit];
+      if (hits.length) return [hits[0]];
+      return closestCenter({ ...args, droppableContainers: allowed.filter((c) => parseDragId(c.id)?.kind === "item") });
+    }
+    // Group cards have very different heights, so compare corners rather than centers
+    return kind === "group" ? closestCorners({ ...args, droppableContainers: allowed }) : closestCenter({ ...args, droppableContainers: allowed });
+  };
+
+  const draggingGroup = parseDragId(dragStart?.activeId)?.kind === "group";
+
+  const onDragStart = ({ active }: DragStartEvent) => {
+    if (!budget) return;
+    setDragStart({ snapshot: budget, activeId: String(active.id) });
+    // Groups collapse to their headers while one is dragged; keep the dragged one in view
+    if (parseDragId(active.id)?.kind === "group") {
+      requestAnimationFrame(() =>
+        document.querySelector(`[data-drag-id="${String(active.id)}"]`)?.scrollIntoView({ block: "center" })
+      );
+    }
+  };
+
+  const onDragOver = ({ active, over }: DragOverEvent) => {
+    const a = parseDragId(active.id);
+    if (!budget || !over || a?.kind !== "item") return;
+    const moved = moveItemAcrossGroups(budget, a.id, over.id);
+    if (moved) setData({ ...moved, exists: true });
+  };
+
+  const onDragEnd = async ({ active, over }: DragEndEvent) => {
+    const start = dragStart;
+    setDragStart(null);
+    if (!budget || !start) return;
+    const a = parseDragId(active.id)!;
+    const next = (over && applyDrop(budget, active.id, over.id)) || budget;
+    if (next !== budget) setData({ ...next, exists: true });
+
+    await change(async () => {
+      if (a.kind === "group") {
+        if (next === budget) return;
+        await api("PUT", `/api/months/${next.id}/groups/order`, { ids: next.groups.map((g) => g.id) });
+      } else if (a.kind === "income") {
+        if (next === budget) return;
+        await api("PUT", `/api/months/${next.id}/income/order`, { ids: next.income.map((i) => i.id) });
+      } else {
+        const fromGroup = groupOfItem(start.snapshot, a.id)!;
+        const toGroup = groupOfItem(next, a.id)!;
+        const before = fromGroup.items.map((i) => i.id).join();
+        const after = toGroup.items.map((i) => i.id).join();
+        if (fromGroup.id === toGroup.id && before === after) return;
+        if (fromGroup.id !== toGroup.id) await api("PATCH", `/api/items/${a.id}`, { groupId: toGroup.id });
+        await api("PUT", `/api/groups/${toGroup.id}/items/order`, { ids: toGroup.items.map((i) => i.id) });
+      }
+    });
+  };
+
+  const onDragCancel = () => {
+    if (dragStart) setData({ ...dragStart.snapshot, exists: true });
+    setDragStart(null);
+  };
+
+  // A floating copy of the row being dragged (it can move between group cards)
+  const activeItem = (() => {
+    const a = parseDragId(dragStart?.activeId);
+    if (!budget || !a || a.kind === "group") return null;
+    if (a.kind === "income") return budget.income.find((i) => i.id === a.id) ?? null;
+    return groupOfItem(budget, a.id)?.items.find((i) => i.id === a.id) ?? null;
+  })();
+
   return (
     <div className="mx-auto flex max-w-[1140px] flex-col gap-6 px-3 pb-16 sm:px-6 min-[1100px]:flex-row">
       {/* Budget column */}
@@ -93,9 +197,19 @@ export default function BudgetPage() {
         )}
 
         {budget && (
-          <>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collision}
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDragEnd={onDragEnd}
+            onDragCancel={onDragCancel}
+            accessibility={{ screenReaderInstructions: { draggable: "Press space to pick up, arrow keys to move, space to drop, escape to cancel." } }}
+          >
             <GroupCard
               kind="income"
+              rowPrefix="income"
               title="Income"
               rows={budget.income.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.receivedCents }))}
               column={column}
@@ -107,10 +221,14 @@ export default function BudgetPage() {
               onSelect={(id) => showView({ kind: "item", item: { type: "income", id } })}
             />
 
+            <SortableContext items={budget.groups.map((g) => `group-${g.id}`)} strategy={verticalListSortingStrategy}>
             {budget.groups.map((g) => (
               <GroupCard
                 key={g.id}
                 kind="expense"
+                sortableId={`group-${g.id}`}
+                compact={draggingGroup}
+                rowPrefix="item"
                 title={g.name}
                 startWithDraft={g.id === newGroupId}
                 rows={g.items.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund }))}
@@ -125,6 +243,16 @@ export default function BudgetPage() {
                 onSelect={(id) => showView({ kind: "item", item: { type: "line", id } })}
               />
             ))}
+            </SortableContext>
+
+            <DragOverlay>
+              {activeItem && (
+                <div className="flex items-center gap-2 rounded-lg bg-white px-6 py-4 text-lg shadow-[0_12px_32px_rgba(31,36,38,0.2)]">
+                  <span className="flex-1 truncate">{activeItem.name}</span>
+                  <span className="tabular text-action">{formatCents(activeItem.plannedCents)}</span>
+                </div>
+              )}
+            </DragOverlay>
 
             <AddGroup
               onAdd={(name) =>
@@ -134,7 +262,7 @@ export default function BudgetPage() {
                 })
               }
             />
-          </>
+          </DndContext>
         )}
       </div>
 

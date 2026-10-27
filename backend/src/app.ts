@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
@@ -16,6 +18,8 @@ declare module "fastify" {
   interface FastifyInstance {
     db: Db;
     jwtSecret: string;
+    backupDir: string;
+    backupKeep: number;
   }
   interface FastifyRequest {
     auth?: { method: "token"; userId: number } | { method: "apiKey"; keyId: number };
@@ -26,7 +30,12 @@ export interface AppOptions {
   db: Db;
   jwtSecret: string;
   logger?: boolean;
+  backupDir?: string;
+  backupKeep?: number;
 }
+
+// Backups go in <repo>/backups unless BACKUP_DIR says otherwise
+export const defaultBackupDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../backups");
 
 // Routes anyone can call without logging in
 const PUBLIC_ROUTES = new Set([
@@ -36,7 +45,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/login",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30 }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -44,6 +53,8 @@ export function buildApp({ db, jwtSecret, logger = false }: AppOptions): Fastify
   const app = Fastify({ logger });
   app.decorate("db", db);
   app.decorate("jwtSecret", jwtSecret);
+  app.decorate("backupDir", backupDir);
+  app.decorate("backupKeep", backupKeep);
 
   // Every /api route needs a login token or an API key, except the public ones
   app.addHook("onRequest", async (req) => {

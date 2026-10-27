@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { formatCents } from "../money";
 import { InlineText, MoneyInput } from "./inputs";
-import { PiggyIcon, Trash } from "./Icons";
+import { GripIcon, PiggyIcon, Trash } from "./Icons";
 
 export interface RowData {
   id: number;
@@ -21,6 +23,7 @@ interface Props {
   onAmountEnter: () => void;
   selected?: boolean;
   onSelect?: () => void;
+  sortableId: string;
 }
 
 export function ProgressBar({ actual, planned }: { actual: number; planned: number }) {
@@ -37,19 +40,31 @@ export function secondValue(row: { plannedCents: number; actualCents: number }, 
   return column === "actual" ? row.actualCents : row.plannedCents - row.actualCents;
 }
 
-export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect }: Props) {
+export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId }: Props) {
   const amountRef = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState(false);
   const second = secondValue(row, column);
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId });
 
   return (
     <div
-      className={`group/row relative cursor-pointer px-4 sm:px-6 ${selected ? "bg-active" : "bg-white hover:bg-page"}`}
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={`group/row relative cursor-pointer px-4 sm:px-6 ${selected ? "bg-active" : "bg-white hover:bg-page"} ${isDragging ? "z-10 opacity-40" : ""}`}
       onClick={(e) => {
         // Clicks on the name/amount boxes edit; clicks anywhere else on the row open its details
         if (!(e.target as HTMLElement).closest("input,button,select")) onSelect?.();
       }}
     >
+      <button
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`Reorder ${row.name}`}
+        className="absolute left-0 top-1/2 flex h-10 w-4 -translate-y-1/2 cursor-grab touch-none items-center justify-center text-muted opacity-40 hover:text-ink focus:opacity-100 active:cursor-grabbing sm:left-1 sm:w-5 sm:opacity-0 sm:group-hover/row:opacity-100"
+      >
+        <GripIcon />
+      </button>
       <div className="flex items-center gap-2 py-3">
         <div className="flex min-w-0 flex-1 flex-col">
           <InlineText

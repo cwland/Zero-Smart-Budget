@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
 import BudgetPage from "./BudgetPage";
 import FundsPage from "./FundsPage";
-import { BudgetIcon, Logo, LogoutIcon, PiggyIcon } from "./Icons";
+import SettingsPage from "./SettingsPage";
+import { BudgetIcon, GearIcon, Logo, LogoutIcon, PiggyIcon } from "./Icons";
 
-type Page = "budget" | "funds";
-const pageFromHash = (): Page => (window.location.hash === "#/funds" ? "funds" : "budget");
+type Page = "budget" | "funds" | "settings";
+const pageFromHash = (): Page => {
+  const h = window.location.hash.replace("#/", "");
+  return h === "funds" || h === "settings" ? h : "budget";
+};
 
 const PAGES: { id: Page; label: string; icon: JSX.Element }[] = [
   { id: "budget", label: "Budget", icon: <BudgetIcon /> },
   { id: "funds", label: "Funds", icon: <PiggyIcon /> },
+  { id: "settings", label: "Settings", icon: <GearIcon /> },
 ];
 
 interface Props {
@@ -55,7 +60,7 @@ export default function AppShell({ username, onLogout }: Props) {
       </nav>
 
       <main className="min-w-0 flex-1 pb-16 sm:pb-0">
-        {page === "funds" ? <FundsPage /> : <BudgetPage />}
+        {page === "funds" ? <FundsPage /> : page === "settings" ? <SettingsPage /> : <BudgetPage />}
       </main>
 
       {/* Bottom bar on phones */}
