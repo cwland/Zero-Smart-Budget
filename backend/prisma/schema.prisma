@@ -1,4 +1,6 @@
-// Database schema. Models are added in step 2.
+// Cory's Dollar database schema
+// All money values are stored as integer cents ($10.50 = 1050).
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,4 +8,114 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+// One budget per calendar month
+model BudgetMonth {
+  id          Int             @id @default(autoincrement())
+  year        Int
+  month       Int // 1-12
+  createdAt   DateTime        @default(now())
+  incomeItems IncomeItem[]
+  groups      CategoryGroup[]
+
+  @@unique([year, month])
+}
+
+// Planned income sources for a month (Paycheck 1, Side job, ...)
+model IncomeItem {
+  id           Int                @id @default(autoincrement())
+  monthId      Int
+  month        BudgetMonth        @relation(fields: [monthId], references: [id], onDelete: Cascade)
+  name         String
+  plannedCents Int                @default(0)
+  sortOrder    Int                @default(0)
+  splits       TransactionSplit[]
+
+  @@index([monthId])
+}
+
+// Category groups for a month (Housing, Food, ...)
+model CategoryGroup {
+  id        Int         @id @default(autoincrement())
+  monthId   Int
+  month     BudgetMonth @relation(fields: [monthId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int         @default(0)
+  lineItems LineItem[]
+
+  @@index([monthId])
+}
+
+// Budget line items inside a group (Rent, Groceries, ...)
+model LineItem {
+  id            Int                @id @default(autoincrement())
+  groupId       Int
+  group         CategoryGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name          String
+  plannedCents  Int                @default(0)
+  sortOrder     Int                @default(0)
+  // Set when this line item contributes to a sinking fund
+  sinkingFundId Int?
+  sinkingFund   SinkingFund?       @relation(fields: [sinkingFundId], references: [id], onDelete: SetNull)
+  splits        TransactionSplit[]
+
+  @@index([groupId])
+  @@index([sinkingFundId])
+}
+
+// Sinking funds persist across months.
+// Balance = startingBalance + sum(planned on linked line items) - sum(spent on linked line items)
+model SinkingFund {
+  id                   Int        @id @default(autoincrement())
+  name                 String
+  targetCents          Int?
+  startingBalanceCents Int        @default(0)
+  archived             Boolean    @default(false)
+  createdAt            DateTime   @default(now())
+  lineItems            LineItem[]
+}
+
+enum TransactionType {
+  EXPENSE
+  INCOME
+}
+
+model Transaction {
+  id          Int                @id @default(autoincrement())
+  date        DateTime           @db.Date
+  merchant    String
+  amountCents Int // always positive; type says which direction
+  type        TransactionType    @default(EXPENSE)
+  note        String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  splits      TransactionSplit[]
+
+  @@index([date])
+}
+
+// Links a transaction to line items (expenses) or income items (income).
+// One split = normal transaction; several = split transaction.
+// If the linked item is deleted, the split becomes unassigned.
+model TransactionSplit {
+  id            Int         @id @default(autoincrement())
+  transactionId Int
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  lineItemId    Int?
+  lineItem      LineItem?   @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
+  incomeItemId  Int?
+  incomeItem    IncomeItem? @relation(fields: [incomeItemId], references: [id], onDelete: SetNull)
+  amountCents   Int
+
+  @@index([transactionId])
+  @@index([lineItemId])
+  @@index([incomeItemId])
 }
