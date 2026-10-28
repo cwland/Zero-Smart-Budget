@@ -115,6 +115,9 @@ describe("transactions", () => {
     expect((await t.api("DELETE", `/api/transactions/${created.id}`)).status).toBe(204);
     b = await budget();
     expect(item(b, ids.household).spentCents).toBe(0);
+    // Moved to Deleted, not erased
+    expect((await t.api("GET", `/api/transactions/${created.id}`)).body.deletedAt).toBeTruthy();
+    expect((await t.api("DELETE", `/api/transactions/${created.id}?permanent=true`)).status).toBe(204);
     expect((await t.api("GET", `/api/transactions/${created.id}`)).status).toBe(404);
   });
 
@@ -182,3 +185,54 @@ describe("transaction list: search, item names, oldest", () => {
     expect((await t.api("GET", "/api/transactions/oldest")).body).toEqual({ date: null });
   });
 });
+
+describe("deleted transactions", () => {
+  const list = async (q = "") => (await t.api("GET", `/api/transactions${q}`)).body;
+
+  it("delete moves it to Deleted: out of lists, budgets, suggestions, autocomplete and CSV", async () => {
+    const tx = (await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Zebra Store", amountCents: 5000, splits: [{ lineItemId: ids.groceries, amountCents: 5000 }] })).body;
+    expect((await t.api("DELETE", `/api/transactions/${tx.id}`)).status).toBe(204);
+    expect(await list("?year=2026&month=10")).toEqual([]);
+    expect(item(await budget(), ids.groceries).spentCents).toBe(0);
+    const deleted = await list("?deleted=true");
+    expect(deleted.map((r: any) => [r.merchant, r.splits.length])).toEqual([["Zebra Store", 0]]);
+    expect(deleted[0].deletedSplits).toEqual([{ lineItemId: ids.groceries, incomeItemId: null, amountCents: 5000 }]);
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=Zebra%20Store&date=2026-10-20")).body.suggestion).toBeNull();
+    expect((await t.api("GET", "/api/merchants?q=zebra")).body).toEqual([]);
+    const csv = await t.app.inject({ method: "GET", url: "/api/export/transactions.csv", headers: { authorization: `Bearer ${t.getToken()}` } });
+    expect(csv.body).not.toContain("Zebra");
+    // Can't edit while deleted; deleting again changes nothing
+    expect((await t.api("PUT", `/api/transactions/${tx.id}`, { date: "2026-10-05", merchant: "x", amountCents: 1 })).status).toBe(400);
+    expect((await t.api("DELETE", `/api/transactions/${tx.id}`)).status).toBe(204);
+    // Search only finds it in Deleted
+    expect(await list("?q=zebra")).toEqual([]);
+    expect((await list("?q=zebra&deleted=true")).length).toBe(1);
+  });
+
+  it("restore brings back its budget item, or unassigned if that item is gone", async () => {
+    const a = (await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Keep", amountCents: 5000, splits: [{ lineItemId: ids.groceries, amountCents: 3000 }, { lineItemId: ids.household, amountCents: 2000 }] })).body;
+    const b = (await t.api("POST", "/api/transactions", { date: "2026-10-06", merchant: "Lose", amountCents: 1000, splits: [{ lineItemId: ids.rent, amountCents: 1000 }] })).body;
+    await t.api("DELETE", `/api/transactions/${a.id}`);
+    await t.api("DELETE", `/api/transactions/${b.id}`);
+    await t.api("DELETE", `/api/items/${ids.rent}`);
+    const ra = (await t.api("POST", `/api/transactions/${a.id}/restore`)).body;
+    expect(ra.deletedAt).toBeNull();
+    expect(ra.splits.map((s: any) => [s.lineItemId, s.amountCents])).toEqual([[ids.groceries, 3000], [ids.household, 2000]]);
+    expect(item(await budget(), ids.groceries).spentCents).toBe(3000);
+    const rb = (await t.api("POST", `/api/transactions/${b.id}/restore`)).body;
+    expect(rb.splits).toEqual([]);
+    expect((await list("?deleted=true"))).toEqual([]);
+    expect((await t.api("POST", "/api/transactions/99999/restore")).status).toBe(404);
+  });
+
+  it("a deleted bank transaction isn't imported again, and backups keep deleted ones", async () => {
+    const tx = (await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Old", amountCents: 100 })).body;
+    await t.api("DELETE", `/api/transactions/${tx.id}`);
+    const backup = (await t.api("GET", "/api/export")).body;
+    expect((await t.api("POST", "/api/import?confirm=replace", backup)).status).toBe(200);
+    const after = await list("?deleted=true");
+    expect(after).toHaveLength(1);
+    expect(after[0].deletedAt).toBeTruthy();
+  });
+});
+

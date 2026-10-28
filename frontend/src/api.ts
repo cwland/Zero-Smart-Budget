@@ -122,6 +122,8 @@ export interface Transaction {
   splits: TransactionSplit[];
   // For unassigned transactions: the item this merchant went to last time (if any)
   suggestion?: Suggestion | null;
+  // In the Deleted tab (can be restored)
+  deletedAt?: string | null;
   // Imported from a bank through Plaid
   pending?: boolean;
   account?: { name: string; mask: string | null } | null;

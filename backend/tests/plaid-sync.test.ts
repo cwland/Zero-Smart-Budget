@@ -225,4 +225,16 @@ describe("importing bank transactions", () => {
     await t.api("POST", "/api/months/2026/7", { mode: "template" });
     expect((await sync()).waiting).toEqual([{ year: 2026, month: 8, count: 1 }]);
   });
+
+  it("a transaction you deleted stays deleted when the bank sends it again", async () => {
+    pages = [{ added: [tx("del", 5, "2026-10-02")] }];
+    await sync();
+    const [row] = await list();
+    await t.api("DELETE", `/api/transactions/${row.id}`);
+    await t.api("PATCH", `/api/plaid/items/${itemId}`, { importFrom: "2026-09-01" }); // forces a full re-read
+    pages = [{ added: [tx("del", 5, "2026-10-02")] }];
+    expect((await sync()).added).toBe(0);
+    expect(await list()).toHaveLength(0);
+    expect((await t.api("GET", "/api/transactions?deleted=true")).body).toHaveLength(1);
+  });
 });

@@ -59,7 +59,7 @@ export async function transactionsCsv(db: Db, from?: string, to?: string) {
   const incomeById = new Map(income.map((i) => [i.id, i]));
 
   const txs = await db.query.transactions.findMany({
-    where: (t, { and, gte, lte }) => and(from ? gte(t.date, from) : undefined, to ? lte(t.date, to) : undefined),
+    where: (t, { and, gte, lte, isNull }) => and(from ? gte(t.date, from) : undefined, to ? lte(t.date, to) : undefined, isNull(t.deletedAt)),
     orderBy: (t, { asc }) => [asc(t.date), asc(t.id)],
     with: { splits: { orderBy: (s, { asc }) => [asc(s.id)] } },
   });
@@ -135,7 +135,7 @@ export type ImportData = z.infer<typeof importSchema>;
 // JSON turns dates into strings; turn timestamp fields back into Dates
 function revive(row: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...row };
-  for (const key of ["createdAt", "updatedAt", "lastUsedAt"]) {
+  for (const key of ["createdAt", "updatedAt", "lastUsedAt", "deletedAt"]) {
     if (typeof out[key] === "string") out[key] = new Date(out[key] as string);
   }
   return out;

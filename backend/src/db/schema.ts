@@ -147,6 +147,10 @@ export const transactions = pgTable(
     plaidTransactionId: text("plaid_transaction_id").unique(),
     plaidAccountId: text("plaid_account_id"),
     pending: boolean("pending").notNull().default(false), // not posted at the bank yet
+    // Deleted transactions wait in the Deleted tab and can be restored. Their budget assignment is
+    // set aside here (so budgets, funds and suggestions stop counting them) and put back on restore.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedSplits: jsonb("deleted_splits").$type<{ lineItemId: number | null; incomeItemId: number | null; amountCents: number }[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

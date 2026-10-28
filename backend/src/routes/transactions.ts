@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import {
   budgetMonths,
@@ -123,6 +123,8 @@ export default async function transactionRoutes(app: FastifyInstance) {
         // Search: every word must match the merchant, note, budget item or bank account;
         // something like "12.50" or "$1,200" also matches that amount
         q: z.string().trim().max(100).optional(),
+        // Deleted transactions are left out unless deleted=true, which lists only them
+        deleted: z.enum(["true", "false"]).optional(),
       })
       .parse(req.query);
 
@@ -135,6 +137,7 @@ export default async function transactionRoutes(app: FastifyInstance) {
         const filters: (SQL | undefined)[] = [
           from ? gte(t.date, from) : undefined,
           to ? lte(t.date, to) : undefined,
+          q.deleted === "true" ? isNotNull(t.deletedAt) : isNull(t.deletedAt),
         ];
         if (q.unassigned === "true") {
           filters.push(
@@ -219,7 +222,7 @@ export default async function transactionRoutes(app: FastifyInstance) {
     const rows = await db.execute(sql`
       select distinct on (merchant_key) merchant, merchant_key, date
       from ${transactions}
-      where merchant_key is not null and merchant_key <> ''
+      where merchant_key is not null and merchant_key <> '' and deleted_at is null
         ${term ? sql`and (lower(merchant) like ${"%" + term + "%"} or merchant_key like ${"%" + normalizeMerchant(term) + "%"})` : sql``}
       order by merchant_key, date desc, id desc`);
     const list = (rows.rows as { merchant: string; date: string }[]).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, q.limit);
@@ -230,7 +233,7 @@ export default async function transactionRoutes(app: FastifyInstance) {
   async function acceptSuggestions(ids: number[]) {
     if (!ids.length) return 0;
     const rows = await db.query.transactions.findMany({
-      where: inArray(transactions.id, ids),
+      where: and(inArray(transactions.id, ids), isNull(transactions.deletedAt)),
       with: { splits: { columns: { lineItemId: true, incomeItemId: true } } },
     });
     const unassigned = rows.filter((r) => r.splits.every((sp) => !sp.lineItemId && !sp.incomeItemId));
@@ -292,7 +295,9 @@ export default async function transactionRoutes(app: FastifyInstance) {
   app.put("/api/transactions/:id", async (req) => {
     const { id } = idParam.parse(req.params);
     const input = transactionSchema.parse(req.body);
-    if (!(await loadTransaction(db, id))) throw notFound("Transaction");
+    const existing = await loadTransaction(db, id);
+    if (!existing) throw notFound("Transaction");
+    if (existing.deletedAt) throw badRequest("This transaction is deleted. Restore it first.");
     await validateSplits(db, input);
     await db.transaction(async (tx) => {
       const { splits, autoAssign: _a, ...fields } = input;
@@ -309,10 +314,54 @@ export default async function transactionRoutes(app: FastifyInstance) {
     return loadTransaction(db, id);
   });
 
+  // Delete: moves it to the Deleted tab (its assignment is set aside so budgets and funds stop
+  // counting it). ?permanent=true erases it for good (from the Deleted tab).
   app.delete("/api/transactions/:id", async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    const deleted = await db.delete(transactions).where(eq(transactions.id, id)).returning({ id: transactions.id });
-    if (!deleted.length) throw notFound("Transaction");
+    const { permanent } = z.object({ permanent: z.enum(["true", "false"]).optional() }).parse(req.query);
+    const row = await loadTransaction(db, id);
+    if (!row) throw notFound("Transaction");
+    if (permanent === "true") {
+      await db.delete(transactions).where(eq(transactions.id, id));
+      return reply.status(204).send();
+    }
+    if (!row.deletedAt) {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(transactions)
+          .set({ deletedAt: new Date(), deletedSplits: row.splits.map((s) => ({ lineItemId: s.lineItemId, incomeItemId: s.incomeItemId, amountCents: s.amountCents })) })
+          .where(eq(transactions.id, id));
+        await tx.delete(transactionSplits).where(eq(transactionSplits.transactionId, id));
+      });
+      await syncTransaction(db, id);
+    }
     return reply.status(204).send();
+  });
+
+  // Bring a deleted transaction back, with its old assignment when those items still exist in its month
+  app.post("/api/transactions/:id/restore", async (req) => {
+    const { id } = idParam.parse(req.params);
+    const row = await loadTransaction(db, id);
+    if (!row) throw notFound("Transaction");
+    if (!row.deletedAt) return loadTransaction(db, id);
+    const saved = (row.deletedSplits ?? []).filter((s) => s.lineItemId || s.incomeItemId);
+    let splits: typeof saved = [];
+    if (saved.length) {
+      try {
+        await validateSplits(db, {
+          date: row.date, merchant: row.merchant, amountCents: row.amountCents, type: row.type, note: row.note,
+          splits: saved.map((s) => (s.lineItemId ? { lineItemId: s.lineItemId, amountCents: s.amountCents } : { incomeItemId: s.incomeItemId!, amountCents: s.amountCents })),
+        });
+        splits = saved;
+      } catch {
+        splits = []; // those items are gone (or moved months): comes back unassigned
+      }
+    }
+    await db.transaction(async (tx) => {
+      await tx.update(transactions).set({ deletedAt: null, deletedSplits: null }).where(eq(transactions.id, id));
+      if (splits.length) await tx.insert(transactionSplits).values(splits.map((s) => ({ ...s, transactionId: id })));
+    });
+    await syncTransaction(db, id);
+    return loadTransaction(db, id);
   });
 }

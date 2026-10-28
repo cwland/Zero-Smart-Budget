@@ -230,7 +230,7 @@ export async function monthsWaiting(db: Db) {
   const r = await db.execute(sql`
     select extract(year from t.date)::int as year, extract(month from t.date)::int as month, count(*)::int as count
     from ${transactions} t
-    where not exists (
+    where t.deleted_at is null and not exists (
       select 1 from ${budgetMonths} m
       where m.year = extract(year from t.date)::int and m.month = extract(month from t.date)::int
     )

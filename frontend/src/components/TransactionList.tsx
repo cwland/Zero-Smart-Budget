@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, waitingNote, type Budget, type Transaction } from "../api";
 import { MONTH_NAMES, addMonths, monthBounds, shortDate, type YearMonth } from "../dates";
 import { formatCents } from "../money";
@@ -131,6 +131,40 @@ function UnassignedRow({ t, onOpen, onAccept, busy, draggable }: { t: Transactio
   );
 }
 
+// A deleted transaction: Restore puts it back (with its old item when possible); the trash can
+// erases it for good after a second click
+function DeletedRow({ t, busy, onRestore, onErase }: { t: Transaction; busy: boolean; onRestore: () => void; onErase: () => void }) {
+  const [confirm, setConfirm] = useState(false);
+  const when = t.deletedAt ? new Date(t.deletedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+  return (
+    <TransactionRow
+      t={t}
+      label={`Deleted ${when}${accountText(t) ? ` · ${accountText(t)}` : ""}`}
+      onOpen={() => setConfirm(false)}
+      trailing={
+        <span className="flex items-center gap-1">
+          {confirm ? (
+            <button onClick={onErase} disabled={busy} onBlur={() => setConfirm(false)} className="rounded bg-error px-2 py-0.5 text-sm font-semibold text-white disabled:opacity-50">
+              Delete forever
+            </button>
+          ) : (
+            <>
+              <button onClick={onRestore} disabled={busy} aria-label={`Restore ${t.merchant}`} className="rounded-full border-2 border-action/70 bg-white px-3 py-0.5 text-sm font-semibold text-action hover:bg-pressed disabled:opacity-50">
+                Restore
+              </button>
+              <button onClick={() => setConfirm(true)} disabled={busy} aria-label={`Delete ${t.merchant} forever`} title="Delete forever" className="rounded p-1 text-muted hover:bg-error-subtle hover:text-error">
+                <svg viewBox="0 0 24 24" className="size-4 fill-none stroke-current" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3" />
+                </svg>
+              </button>
+            </>
+          )}
+        </span>
+      }
+    />
+  );
+}
+
 function SearchIcon() {
   return (
     <svg viewBox="0 0 24 24" className="size-4 fill-none stroke-current" strokeWidth={2} strokeLinecap="round" aria-hidden>
@@ -140,17 +174,35 @@ function SearchIcon() {
   );
 }
 
-type Tab = "new" | "tracked" | "pending";
+type Tab = "new" | "tracked" | "pending" | "deleted";
 
 // New: waiting to be assigned. Tracked: assigned. Pending: not posted at the bank yet (an assigned
 // pending charge stays in Tracked, tagged Pending).
-const tabOf = (t: Transaction): Tab => (!isUnassigned(t) ? "tracked" : t.pending ? "pending" : "new");
+const TAB_NAMES: Record<Tab, string> = { new: "New", tracked: "Tracked", deleted: "Deleted", pending: "Pending" };
+
+const tabOf = (t: Transaction): Tab => (t.deletedAt ? "deleted" : !isUnassigned(t) ? "tracked" : t.pending ? "pending" : "new");
+
+// Remembered while you open a transaction and come back (the list is rebuilt each time)
+const remembered = { tab: "new" as Tab, monthsBack: 1, month: "" };
 
 export default function TransactionList({ budget, transactions, onAdd, onOpen, onChanged }: Props) {
   const current: YearMonth = { year: budget.year, month: budget.month };
-  const [tab, setTab] = useState<Tab>("new");
-  const [monthsBack, setMonthsBack] = useState(1); // how many months before this one are shown
+  const sameMonth = remembered.month === ymKey(current);
+  const [tab, setTabState] = useState<Tab>(remembered.tab);
+  const [monthsBack, setMonthsBackState] = useState(sameMonth ? remembered.monthsBack : 1); // months before this one that are shown
+  const setTab = (t: Tab) => {
+    remembered.tab = t;
+    setTabState(t);
+  };
+  const setMonthsBack = (fn: (n: number) => number) =>
+    setMonthsBackState((n) => {
+      const next = fn(n);
+      remembered.monthsBack = next;
+      return next;
+    });
+  remembered.month = ymKey(current);
   const [earlier, setEarlier] = useState<Transaction[]>([]);
+  const [deleted, setDeleted] = useState<Transaction[]>([]); // deleted ones in the shown months
   const [oldest, setOldest] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
@@ -162,7 +214,15 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
   const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Back to "this month and last" when you switch months
-  useEffect(() => setMonthsBack(1), [budget.year, budget.month]);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    setMonthsBack(() => 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budget.year, budget.month]);
 
   // Earlier months' transactions. Reloads whenever this month's list does (i.e. after any change).
   useEffect(() => {
@@ -170,11 +230,16 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
     const last = monthBounds(addMonths(current, -1)).max;
     let stale = false;
     setLoadingMore(true);
-    Promise.all([api<Transaction[]>("GET", `/api/transactions?from=${first}&to=${last}`), api<{ date: string | null }>("GET", "/api/transactions/oldest")])
-      .then(([list, o]) => {
+    Promise.all([
+      api<Transaction[]>("GET", `/api/transactions?from=${first}&to=${last}`),
+      api<{ date: string | null }>("GET", "/api/transactions/oldest"),
+      api<Transaction[]>("GET", `/api/transactions?deleted=true&from=${first}&to=${monthBounds(current).max}`),
+    ])
+      .then(([list, o, del]) => {
         if (stale) return;
         setEarlier(list);
         setOldest(o.date);
+        setDeleted(del);
       })
       .catch((e) => !stale && setError((e as Error).message))
       .finally(() => !stale && setLoadingMore(false));
@@ -193,8 +258,8 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
     }
     let stale = false;
     const timer = setTimeout(() => {
-      api<Transaction[]>("GET", `/api/transactions?q=${encodeURIComponent(q)}`)
-        .then((r) => !stale && setResults(r))
+      Promise.all([api<Transaction[]>("GET", `/api/transactions?q=${encodeURIComponent(q)}`), api<Transaction[]>("GET", `/api/transactions?q=${encodeURIComponent(q)}&deleted=true`)])
+        .then(([live, del]) => !stale && setResults([...live, ...del]))
         .catch((e) => !stale && setError((e as Error).message));
     }, 250);
     return () => {
@@ -210,8 +275,13 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
   }, []);
 
   const searching = results !== null;
-  const shown = searching ? results : [...transactions, ...earlier];
-  const byTab = { new: shown.filter((t) => tabOf(t) === "new"), tracked: shown.filter((t) => tabOf(t) === "tracked"), pending: shown.filter((t) => tabOf(t) === "pending") };
+  const shown = searching ? results : [...transactions, ...earlier, ...deleted];
+  const byTab = {
+    new: shown.filter((t) => tabOf(t) === "new"),
+    tracked: shown.filter((t) => tabOf(t) === "tracked"),
+    pending: shown.filter((t) => tabOf(t) === "pending"),
+    deleted: shown.filter((t) => tabOf(t) === "deleted"),
+  };
   const list = byTab[tab];
   const withSuggestion = byTab.new.filter((t) => t.suggestion);
   const inThisMonth = (t: Transaction) => t.date.startsWith(ymKey(current));
@@ -284,15 +354,15 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       )}
 
       <div role="tablist" aria-label="Transaction lists" className="mt-4 flex border-b border-line text-sm">
-        {(["new", "tracked", "pending"] as Tab[]).map((id) => (
+        {(["new", "tracked", "deleted", "pending"] as Tab[]).map((id) => (
           <button
             key={id}
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`-mb-px flex-1 border-b-[3px] px-1 pb-2 pt-1 font-semibold ${tab === id ? "border-action text-action" : "border-transparent text-subtle hover:text-ink"}`}
+            className={`-mb-px flex-1 whitespace-nowrap border-b-[3px] px-0.5 pb-2 pt-1 font-semibold ${tab === id ? "border-action text-action" : "border-transparent text-subtle hover:text-ink"}`}
           >
-            {id === "new" ? `New${byTab.new.length ? ` (${byTab.new.length})` : ""}` : id === "tracked" ? "Tracked" : `Pending${byTab.pending.length ? ` (${byTab.pending.length})` : ""}`}
+            {TAB_NAMES[id]} ({byTab[id].length})
           </button>
         ))}
       </div>
@@ -312,7 +382,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       {searching && (
         <p role="status" className="px-2 pt-2 text-sm text-subtle">
           {list.length === 0
-            ? `Nothing in ${tab === "new" ? "New" : tab === "tracked" ? "Tracked" : "Pending"} matches “${query.trim()}”${results.length ? ` (${results.length} in other tabs)` : ""}`
+            ? `Nothing in ${TAB_NAMES[tab]} matches “${query.trim()}”${results.length ? ` (${results.length} in other tabs)` : ""}`
             : `${list.length} match${list.length === 1 ? "" : "es"} in all months`}
         </p>
       )}
@@ -369,6 +439,8 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
                       onOpen={() => onOpen(t)}
                       onAccept={() => run(() => api("POST", `/api/transactions/${t.id}/accept-suggestion`))}
                     />
+                  ) : tab === "deleted" ? (
+                    <DeletedRow key={t.id} t={t} busy={busy} onRestore={() => run(() => api("POST", `/api/transactions/${t.id}/restore`))} onErase={() => run(() => api("DELETE", `/api/transactions/${t.id}?permanent=true`))} />
                   ) : (
                     <TransactionRow key={t.id} t={t} label={assignedLabel(t)} tone="item" draggable={inThisMonth(t) && t.splits.length === 1} onOpen={() => onOpen(t)} />
                   )
