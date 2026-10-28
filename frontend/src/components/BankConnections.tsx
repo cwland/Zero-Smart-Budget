@@ -23,8 +23,12 @@ interface Item {
   status: "ok" | "login_required" | "error";
   errorMessage: string | null;
   lastSyncedAt: string | null;
+  importFrom: string; // YYYY-MM-DD
   accounts: Account[];
 }
+
+const syncedLabel = (iso: string | null) =>
+  iso ? `Last synced ${new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Not synced yet";
 
 const kind = (a: Account) => (a.subtype ? a.subtype.replace(/\b\w/g, (c) => c.toUpperCase()) : a.type);
 
@@ -60,6 +64,23 @@ export default function BankConnections() {
       const list = await api<Item[]>("POST", "/api/plaid/exchange", result);
       setItems(list);
       setMsg({ ok: true, text: `Connected ${list[list.length - 1]?.institutionName ?? "your bank"}` });
+    });
+
+  const syncNow = () =>
+    run("sync", async () => {
+      const r = await api<{ added: number; updated: number; removed: number; results: { error?: string }[]; items: Item[] }>("POST", "/api/plaid/sync");
+      setItems(r.items);
+      const problems = r.results.filter((x) => x.error).map((x) => x.error);
+      if (problems.length) throw new Error(problems.join(" "));
+      const parts = [r.added && `${r.added} new`, r.updated && `${r.updated} updated`, r.removed && `${r.removed} removed`].filter(Boolean);
+      setMsg({ ok: true, text: parts.length ? `Synced: ${parts.join(", ")}. New ones are in the Transactions tab, waiting to be assigned.` : "Synced: nothing new" });
+    });
+
+  const setImportFrom = (item: Item, importFrom: string) =>
+    run(`from-${item.id}`, async () => {
+      if (!importFrom || importFrom === item.importFrom) return;
+      setItems(await api<Item[]>("PATCH", `/api/plaid/items/${item.id}`, { importFrom }));
+      setMsg({ ok: true, text: importFrom < item.importFrom ? "Saved. The next sync brings in the earlier transactions." : "Saved" });
     });
 
   const reconnect = (item: Item) =>
@@ -103,7 +124,7 @@ export default function BankConnections() {
   return (
     <Card
       title="Bank connections"
-      description="Sign in to your bank in Plaid's window. Your bank password goes to Plaid, never to Cory's Dollar. Transactions you already imported stay if you disconnect."
+      description="Sign in to your bank in Plaid's window. Your bank password goes to Plaid, never to Cory's Dollar. New transactions are imported every 6 hours (or click Sync now) and wait in the Transactions tab for you to assign. Transactions you already imported stay if you disconnect."
     >
       <div className="flex flex-col gap-4">
         {items?.length === 0 && <p className="text-subtle">No banks connected yet.</p>}
@@ -127,6 +148,21 @@ export default function BankConnections() {
                   {busy === `reconnect-${item.id}` ? "Opening…" : "Reconnect"}
                 </button>
               )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2 text-sm text-subtle">
+              <span>{syncedLabel(item.lastSyncedAt)}</span>
+              <label className="flex items-center gap-2">
+                Import from
+                <input
+                  type="date"
+                  aria-label={`Import ${item.institutionName} transactions from`}
+                  defaultValue={item.importFrom}
+                  key={item.importFrom}
+                  onBlur={(e) => setImportFrom(item, e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                  className="rounded border border-line bg-white px-2 py-1 text-ink"
+                />
+              </label>
             </div>
             <ul className="divide-y divide-line">
               {item.accounts.map((a) => (
@@ -171,6 +207,11 @@ export default function BankConnections() {
           <button type="button" onClick={connect} disabled={!!busy} className={primaryButton}>
             {busy === "connect" ? "Opening Plaid…" : "Connect a bank"}
           </button>
+          {!!items?.some((i) => i.active) && (
+            <button type="button" onClick={syncNow} disabled={!!busy} className={secondaryButton}>
+              {busy === "sync" ? "Syncing…" : "Sync now"}
+            </button>
+          )}
           <Notice msg={msg} />
         </div>
       </div>

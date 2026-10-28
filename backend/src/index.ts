@@ -5,6 +5,7 @@ import { backfillMerchantKeys } from "./lib/merchant.js";
 import { buildApp, defaultBackupDir } from "./app.js";
 import { startBackupSchedule } from "./lib/backup.js";
 import { emailConfigFromEnv } from "./lib/mail.js";
+import { syncAll } from "./lib/plaidSync.js";
 
 const { db } = createDb(process.env.DATABASE_URL!);
 await runMigrations(db);
@@ -29,6 +30,22 @@ if (process.env.BACKUP_ENABLED !== "false") {
     error: (err) => app.log.error(err),
   });
 }
+// Import bank transactions through Plaid every few hours (PLAID_SYNC_HOURS=0 turns it off)
+const syncHours = Number(process.env.PLAID_SYNC_HOURS ?? 6);
+if (syncHours > 0) {
+  const run = () =>
+    syncAll(db, app.plaid)
+      .then((results) => {
+        for (const r of results) {
+          if (r.error) app.log.warn(`Plaid sync ${r.institutionName}: ${r.error}`);
+          else if (r.added || r.updated || r.removed) app.log.info(`Plaid sync ${r.institutionName}: ${r.added} new, ${r.updated} updated, ${r.removed} removed`);
+        }
+      })
+      .catch((err) => app.log.error(err));
+  setTimeout(run, 60 * 1000); // a minute after starting
+  setInterval(run, syncHours * 60 * 60 * 1000);
+}
+
 const port = Number(process.env.PORT ?? 4000);
 
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

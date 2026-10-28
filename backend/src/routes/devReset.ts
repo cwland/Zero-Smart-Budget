@@ -25,10 +25,13 @@ export default async function devResetRoutes(app: FastifyInstance) {
       if (body.scope === "transactions") {
         await tx.execute(sql`delete from transactions`); // also removes splits and fund spending entries
         await tx.execute(sql`select setval(pg_get_serial_sequence('transactions', 'id'), 1, false)`);
+        await tx.execute(sql`update plaid_items set cursor = null`); // next bank sync imports them again
       } else if (body.scope === "budget") {
         await tx.execute(sql.raw(`truncate ${BUDGET_TABLES} restart identity cascade`));
+        await tx.execute(sql`update plaid_items set cursor = null`);
       } else {
         await tx.execute(sql.raw(`truncate ${BUDGET_TABLES}, ${ACCOUNT_TABLES} restart identity cascade`));
+        await tx.execute(sql`update plaid_items set cursor = null`);
       }
     });
     req.log.warn(`Testing reset: ${body.scope} (backup ${backup.name})`);

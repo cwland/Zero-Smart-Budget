@@ -4,7 +4,8 @@ import { and, eq } from "drizzle-orm";
 import { plaidAccounts, plaidItems } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 import { PlaidError, type PlaidEnv } from "../lib/plaid.js";
-import { idParam } from "../lib/validation.js";
+import { idParam, isoDate } from "../lib/validation.js";
+import { markItemError, syncAll } from "../lib/plaidSync.js";
 
 // Connecting banks through Plaid Link:
 //  1. the page asks for a link token, opens Plaid's window, and the person signs in to their bank there
@@ -36,8 +37,11 @@ const accountRow = (a: PlaidAccount) => ({
   availableBalanceCents: toCents(a.balances.available),
 });
 
-// Plaid errors that mean "sign in to the bank again"
-const LOGIN_ERRORS = new Set(["ITEM_LOGIN_REQUIRED", "PENDING_EXPIRATION", "PENDING_DISCONNECT", "INVALID_CREDENTIALS", "INSUFFICIENT_CREDENTIALS", "USER_SETUP_REQUIRED", "MFA_NOT_SUPPORTED", "NO_ACCOUNTS"]);
+// First day of this month, in the server's time zone (where a new bank starts importing)
+const startOfMonth = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+};
 
 export default async function plaidRoutes(app: FastifyInstance) {
   const { db, plaid } = app;
@@ -55,8 +59,7 @@ export default async function plaidRoutes(app: FastifyInstance) {
       return await plaid.call<T>(path, { access_token: plaid.decryptToken(item.accessTokenEnc), ...body }, keys);
     } catch (e) {
       if (e instanceof PlaidError) {
-        const status = LOGIN_ERRORS.has(e.code) ? "login_required" : "error";
-        await db.update(plaidItems).set({ status, errorCode: e.code, errorMessage: e.message }).where(eq(plaidItems.id, item.id));
+        const status = await markItemError(db, item.id, e);
         throw new HttpError(400, status === "login_required" ? `${item.institutionName} needs you to sign in again. Click Reconnect.` : `${e.message} (${e.code})`);
       }
       throw e;
@@ -139,7 +142,7 @@ export default async function plaidRoutes(app: FastifyInstance) {
     await db.transaction(async (tx) => {
       const [item] = await tx
         .insert(plaidItems)
-        .values({ itemId: exchanged.item_id, accessTokenEnc: plaid.encryptToken(exchanged.access_token), env: keys.env, institutionId, institutionName })
+        .values({ itemId: exchanged.item_id, accessTokenEnc: plaid.encryptToken(exchanged.access_token), env: keys.env, institutionId, institutionName, importFrom: startOfMonth() })
         .returning({ id: plaidItems.id });
       if (accounts.accounts.length) {
         await tx.insert(plaidAccounts).values(accounts.accounts.map((a) => ({ plaidItemId: item.id, accountId: a.account_id, ...accountRow(a) })));
@@ -165,6 +168,32 @@ export default async function plaidRoutes(app: FastifyInstance) {
       }
       await tx.update(plaidItems).set({ status: "ok", errorCode: null, errorMessage: null }).where(eq(plaidItems.id, item.id));
     });
+    return listItems();
+  });
+
+  // Import transactions from every connected bank (also runs on a schedule)
+  app.post("/api/plaid/sync", async () => {
+    const results = await syncAll(db, plaid);
+    return {
+      results,
+      added: results.reduce((n, r) => n + r.added, 0),
+      updated: results.reduce((n, r) => n + r.updated, 0),
+      removed: results.reduce((n, r) => n + r.removed, 0),
+      items: await listItems(),
+    };
+  });
+
+  // Change where importing starts. Moving it earlier re-reads the bank's history from the start
+  // (already-imported transactions are matched, not duplicated).
+  app.patch("/api/plaid/items/:id", async (req) => {
+    requireLogin(req);
+    const { id } = idParam.parse(req.params);
+    const { importFrom } = z.object({ importFrom: isoDate }).strict().parse(req.body);
+    const item = await loadItem(id);
+    await db
+      .update(plaidItems)
+      .set({ importFrom, ...(importFrom < item.importFrom ? { cursor: null } : {}) })
+      .where(eq(plaidItems.id, id));
     return listItems();
   });
 

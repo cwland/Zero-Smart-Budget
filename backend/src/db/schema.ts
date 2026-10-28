@@ -143,6 +143,10 @@ export const transactions = pgTable(
     amountCents: integer("amount_cents").notNull(), // always positive; type gives direction
     type: transactionType("type").notNull().default("expense"),
     note: text("note"),
+    // Imported from a bank through Plaid (null = typed in by hand)
+    plaidTransactionId: text("plaid_transaction_id").unique(),
+    plaidAccountId: text("plaid_account_id"),
+    pending: boolean("pending").notNull().default(false), // not posted at the bank yet
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -221,6 +225,7 @@ export const plaidItems = pgTable("plaid_items", {
   errorCode: text("error_code"),
   errorMessage: text("error_message"),
   cursor: text("cursor"), // where /transactions/sync left off
+  importFrom: date("import_from", { mode: "string" }).notNull(), // skip bank history before this date
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

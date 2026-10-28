@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type Budget, type Transaction } from "../api";
 import { shortDate } from "../dates";
 import { formatCents } from "../money";
@@ -12,6 +12,22 @@ interface Props {
   onChanged: () => Promise<void>;
 }
 
+// For transactions imported from a bank: a "Pending" tag (right after the date, so it's never cut
+// off) and the account ("Plaid Checking ••0000", shown last since it can be long)
+function PendingTag({ t }: { t: Transaction }) {
+  return t.pending ? <span className="ml-1.5 rounded bg-page px-1.5 py-0.5 text-xs font-semibold text-subtle">Pending</span> : null;
+}
+function AccountName({ t }: { t: Transaction }) {
+  if (!t.account) return null;
+  return (
+    <>
+      {" · "}
+      {t.account.name}
+      {t.account.mask && ` ••${t.account.mask}`}
+    </>
+  );
+}
+
 // An unassigned transaction, with a dashed "+ Groceries" chip when we can guess the item
 function UnassignedRow({ t, onOpen, onAccept, busy }: { t: Transaction; onOpen: () => void; onAccept: () => void; busy: boolean }) {
   const s = t.suggestion;
@@ -22,7 +38,9 @@ function UnassignedRow({ t, onOpen, onAccept, busy }: { t: Transaction; onOpen: 
           <span className="block truncate font-semibold">{t.merchant}</span>
           <span className="block truncate text-sm text-subtle">
             {shortDate(t.date)}
+            <PendingTag t={t} />
             {!s && <> · <span className="font-medium text-warning">Unassigned</span></>}
+            <AccountName t={t} />
           </span>
         </span>
         <span className={`tabular shrink-0 ${t.type === "income" ? "text-success" : ""}`}>
@@ -53,7 +71,9 @@ export function TransactionRow({ t, label, onOpen, amountCents }: { t: Transacti
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{t.merchant}</span>
           <span className="block truncate text-sm text-subtle">
-            {shortDate(t.date)} · <span className={label === "Unassigned" ? "font-medium text-warning" : ""}>{label}</span>
+            {shortDate(t.date)}
+            <PendingTag t={t} /> · <span className={label === "Unassigned" ? "font-medium text-warning" : ""}>{label}</span>
+            <AccountName t={t} />
           </span>
         </span>
         <span className={`tabular shrink-0 ${t.type === "income" ? "text-success" : ""}`}>
@@ -72,6 +92,31 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
   const withSuggestion = unassigned.filter((t) => t.suggestion);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [hasBanks, setHasBanks] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    api<{ active: boolean }[]>("GET", "/api/plaid/items")
+      .then((items) => setHasBanks(items.some((i) => i.active)))
+      .catch(() => setHasBanks(false));
+  }, []);
+
+  async function syncBanks() {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const r = await api<{ added: number; updated: number; removed: number; results: { error?: string }[] }>("POST", "/api/plaid/sync");
+      const problems = r.results.filter((x) => x.error).map((x) => x.error);
+      const parts = [r.added && `${r.added} new`, r.updated && `${r.updated} updated`, r.removed && `${r.removed} removed`].filter(Boolean);
+      setSyncMsg(problems.length ? { ok: false, text: problems.join(" ") } : { ok: true, text: parts.length ? `Bank sync: ${parts.join(", ")}` : "Bank sync: nothing new" });
+      await onChanged();
+    } catch (e) {
+      setSyncMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -91,6 +136,18 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       <button onClick={onAdd} className="w-full rounded bg-primary py-3 font-semibold text-white hover:bg-primary-pressed">
         Add Transaction
       </button>
+      {hasBanks && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
+          <button onClick={syncBanks} disabled={syncing} className="text-sm font-semibold text-link hover:underline disabled:opacity-50">
+            {syncing ? "Syncing banks…" : "Sync bank transactions"}
+          </button>
+          {syncMsg && (
+            <span role={syncMsg.ok ? "status" : "alert"} className={`text-sm ${syncMsg.ok ? "text-success" : "text-error"}`}>
+              {syncMsg.text}
+            </span>
+          )}
+        </div>
+      )}
 
       {unassigned.length > 0 && (
         <section aria-label="Unassigned transactions" className="mt-5 rounded-xl border border-warning/50 bg-warning/5 p-2">

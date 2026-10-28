@@ -50,6 +50,13 @@
       "when": 1793149391062,
       "tag": "0006_plaid_items",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793150463080,
+      "tag": "0007_plaid_sync",
+      "breakpoints": true
     }
   ]
 }

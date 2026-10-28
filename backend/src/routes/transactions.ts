@@ -6,6 +6,7 @@ import {
   budgetMonths,
   categoryGroups,
   incomeItems,
+  plaidAccounts,
   lineItems,
   transactions,
   transactionSplits,
@@ -156,7 +157,14 @@ export default async function transactionRoutes(app: FastifyInstance) {
     // Unassigned transactions get a suggestion learned from earlier ones
     const unassigned = rows.filter((r) => r.splits.every((sp) => !sp.lineItemId && !sp.incomeItemId));
     const suggestions = await suggestFor(db, unassigned);
-    return rows.map((r) => ({ ...r, suggestion: suggestions.get(r.id) ?? null }));
+    // Which bank account an imported transaction came from
+    const accountIds = [...new Set(rows.flatMap((r) => (r.plaidAccountId ? [r.plaidAccountId] : [])))];
+    const accounts = accountIds.length
+      ? new Map(
+          (await db.select({ accountId: plaidAccounts.accountId, name: plaidAccounts.name, mask: plaidAccounts.mask }).from(plaidAccounts).where(inArray(plaidAccounts.accountId, accountIds))).map((a) => [a.accountId, { name: a.name, mask: a.mask }])
+        )
+      : new Map<string, { name: string; mask: string | null }>();
+    return rows.map((r) => ({ ...r, suggestion: suggestions.get(r.id) ?? null, account: r.plaidAccountId ? accounts.get(r.plaidAccountId) ?? null : null }));
   });
 
   // What would this merchant be assigned to? (used by the Add Transaction form)

@@ -120,6 +120,9 @@ export interface Transaction {
   splits: TransactionSplit[];
   // For unassigned transactions: the item this merchant went to last time (if any)
   suggestion?: Suggestion | null;
+  // Imported from a bank through Plaid
+  pending?: boolean;
+  account?: { name: string; mask: string | null } | null;
 }
 
 export interface Suggestion {
