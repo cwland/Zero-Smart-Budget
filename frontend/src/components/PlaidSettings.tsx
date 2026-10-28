@@ -142,9 +142,20 @@ export default function PlaidSettings() {
           Client ID
           <input aria-label="Client ID" autoComplete="off" value={clientId} onChange={(e) => setClientId(e.target.value)} className={field} required />
         </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {secretInput("sandbox", sandboxSecret, setSandboxSecret, !!saved?.sandboxSecretSet)}
-          {secretInput("production", productionSecret, setProductionSecret, !!saved?.productionSecretSet)}
+        {/* Only the secret for the environment picked above; the other one stays saved */}
+        <div>
+          {env === "sandbox"
+            ? secretInput("sandbox", sandboxSecret, setSandboxSecret, !!saved?.sandboxSecretSet)
+            : secretInput("production", productionSecret, setProductionSecret, !!saved?.productionSecretSet)}
+          <p className="mt-1.5 text-sm text-subtle">
+            {env === "sandbox"
+              ? saved?.productionSecretSet
+                ? "Your Production secret is also saved, ready for when you switch."
+                : "Pick Production above when you're ready to add your Production secret."
+              : saved?.sandboxSecretSet
+                ? "Your Sandbox secret is also saved, ready for when you switch back."
+                : "Pick Sandbox above to add a Sandbox secret for testing."}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
