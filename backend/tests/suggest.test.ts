@@ -116,6 +116,20 @@ describe("suggestions", () => {
     expect((await t.api("GET", "/api/transactions/suggest?merchant=WinCo%20Pharmacy&date=2026-11-28")).body.suggestion).toBeNull();
   });
 
+  it("no two-word guess when merchants sharing those words went to different items", async () => {
+    const { oct, find } = await twoMonths();
+    const add = (merchant: string, item: string) => t.api("POST", "/api/transactions", { date: "2026-10-30", merchant, amountCents: 100, splits: [{ lineItemId: find(oct, item).id, amountCents: 100 }] });
+    await add("Sinking Fund: Travel", "Groceries");
+    await add("Sinking Fund: Home Repairs", "Miscellaneous");
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=Sinking%20Fund%3A%20Holiday%20Gifts&date=2026-11-30")).body.suggestion).toBeNull();
+    // Exact merchants still match
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=Sinking%20Fund%3A%20Travel&date=2026-11-30")).body.suggestion.itemName).toBe("Groceries");
+    // Different merchants under one prefix that all went to the same item are still a clear guess
+    await add("WinCo Foods Weekly", "Groceries");
+    await add("WinCo Foods Bulk", "Groceries");
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=WinCo%20Foods%20%2377&date=2026-11-28")).body.suggestion.itemName).toBe("Groceries");
+  });
+
   it("a split teaches its biggest part", async () => {
     const { oct, find } = await twoMonths();
     await t.api("POST", "/api/transactions", {

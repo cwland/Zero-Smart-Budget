@@ -112,12 +112,34 @@ export async function suggestFor(db: Db, targets: Target[]): Promise<Map<number,
     const merged = [...(pastByPrefix.get(`${type}|${p}`) ?? []), ...list].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     pastByPrefix.set(`${type}|${p}`, merged);
   }
+  // A prefix is only trusted when every merchant sharing it was last filed under the same item
+  // name. "sinking fund travel" and "sinking fund holiday gifts" share "sinking fund" but go to
+  // different items, so a new "sinking fund ..." merchant gets no guess.
+  const latestByPrefix = new Map<string, Past[]>(); // newest assignment of each merchant under a prefix
+  for (const [k, list] of pastBy) {
+    const [type, key] = [k.slice(0, k.indexOf("|")), k.slice(k.indexOf("|") + 1)];
+    const p = prefixOf(key);
+    if (p) latestByPrefix.set(`${type}|${p}`, [...(latestByPrefix.get(`${type}|${p}`) ?? []), list[0]]);
+  }
+  const mixed = [...latestByPrefix.values()].filter((l) => l.length > 1);
+  const mixedLineIds = [...new Set(mixed.flat().flatMap((p) => (p.lineItemId ? [p.lineItemId] : [])))];
+  const mixedIncomeIds = [...new Set(mixed.flat().flatMap((p) => (p.incomeItemId ? [p.incomeItemId] : [])))];
+  const nameOf = new Map<string, string>([
+    ...(mixedLineIds.length ? await db.select({ id: lineItems.id, name: lineItems.name }).from(lineItems).where(inArray(lineItems.id, mixedLineIds)) : []).map((r) => [`l${r.id}`, lower(r.name)] as [string, string]),
+    ...(mixedIncomeIds.length ? await db.select({ id: incomeItems.id, name: incomeItems.name }).from(incomeItems).where(inArray(incomeItems.id, mixedIncomeIds)) : []).map((r) => [`i${r.id}`, lower(r.name)] as [string, string]),
+  ]);
+  const prefixIsClear = (pk: string) => {
+    const l = latestByPrefix.get(pk) ?? [];
+    return new Set(l.map((p) => (p.lineItemId ? nameOf.get(`l${p.lineItemId}`) : nameOf.get(`i${p.incomeItemId}`)))).size <= 1;
+  };
+
   const learned = new Map<number, { lineItemId: number | null; incomeItemId: number | null }>(); // by target tx id
   for (const t of targets) {
     if (!t.merchantKey) continue;
     const exact = pastBy.get(`${t.type}|${t.merchantKey}`);
     const p = prefixOf(t.merchantKey);
-    const pick = choose(exact?.length ? exact : p ? pastByPrefix.get(`${t.type}|${p}`) ?? [] : [], t);
+    const pk = `${t.type}|${p}`;
+    const pick = choose(exact?.length ? exact : p && prefixIsClear(pk) ? pastByPrefix.get(pk) ?? [] : [], t);
     if (pick) learned.set(t.id, pick);
   }
   if (!learned.size) return out;
