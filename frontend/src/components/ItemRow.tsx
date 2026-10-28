@@ -25,6 +25,8 @@ interface Props {
   onSelect?: () => void;
   sortableId: string;
   sortable?: boolean; // false for the Favorites card (reorder items in their own group)
+  canDropTx?: boolean; // a transaction being dragged could be dropped here
+  onDropTx?: () => void;
 }
 
 export function ProgressBar({ actual, planned }: { actual: number; planned: number }) {
@@ -41,8 +43,9 @@ export function secondValue(row: { plannedCents: number; actualCents: number }, 
   return column === "actual" ? row.actualCents : row.plannedCents - row.actualCents;
 }
 
-export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId, sortable = true }: Props) {
+export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId, sortable = true, canDropTx, onDropTx }: Props) {
   const amountRef = useRef<HTMLInputElement>(null);
+  const [dropOver, setDropOver] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const second = secondValue(row, column);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId, disabled: !sortable });
@@ -51,7 +54,22 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`group/row relative cursor-pointer px-4 sm:px-6 ${selected ? "bg-active" : "bg-white hover:bg-page"} ${isDragging ? "z-10 opacity-40" : ""}`}
+      className={`group/row relative cursor-pointer px-4 sm:px-6 ${dropOver ? "bg-active ring-2 ring-inset ring-action" : selected ? "bg-active" : "bg-white hover:bg-page"} ${isDragging ? "z-10 opacity-40" : ""}`}
+      data-drop-target={canDropTx ? "yes" : undefined}
+      onDragOver={(e) => {
+        if (!canDropTx) return;
+        e.preventDefault(); // allows the drop
+        e.dataTransfer.dropEffect = "move";
+        if (!dropOver) setDropOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDropOver(false);
+        if (canDropTx) onDropTx?.();
+      }}
       onClick={(e) => {
         // Clicks on the name/amount boxes edit; clicks anywhere else on the row open its details
         if (!(e.target as HTMLElement).closest("input,button,select")) onSelect?.();

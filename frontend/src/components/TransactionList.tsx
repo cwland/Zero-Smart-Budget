@@ -3,6 +3,7 @@ import { api, waitingNote, type Budget, type Transaction } from "../api";
 import { MONTH_NAMES, addMonths, monthBounds, shortDate, type YearMonth } from "../dates";
 import { formatCents } from "../money";
 import { isUnassigned } from "./budgetLookup";
+import { setDraggedTransaction } from "../txDrag";
 
 // The transactions tab, laid out like EveryDollar's: the month you're viewing first, then the month
 // before, then "Load <month> transactions" to reach further back. Search looks through everything.
@@ -59,6 +60,8 @@ export function TransactionRow({
   amountCents,
   tone = "subtle",
   trailing,
+  draggable,
+  hidePending,
 }: {
   t: Transaction;
   label: string;
@@ -66,38 +69,51 @@ export function TransactionRow({
   amountCents?: number;
   tone?: "item" | "subtle" | "warning";
   trailing?: React.ReactNode;
+  draggable?: boolean; // can be dragged onto a budget item
+  hidePending?: boolean; // in the Pending tab every row is pending, so no tag
 }) {
   const toneClass = tone === "item" ? "text-action" : tone === "warning" ? "font-medium text-warning" : "text-subtle";
   return (
-    <li className="flex items-center gap-1 rounded-lg hover:bg-pressed">
-      <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2.5 text-left">
+    <li
+      className={`relative rounded-lg hover:bg-pressed ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      draggable={draggable}
+      title={draggable ? "Drag onto a budget item to assign it" : undefined}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", t.merchant);
+        e.dataTransfer.effectAllowed = "move";
+        setDraggedTransaction(t);
+      }}
+      onDragEnd={() => setDraggedTransaction(null)}
+    >
+      <button onClick={onOpen} className="flex w-full min-w-0 items-center gap-3 px-2 py-2.5 text-left">
         <DateBadge iso={t.date} pending={t.pending} />
         <span className="sr-only">{shortDate(t.date)}</span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <span className="min-w-0 flex-1 truncate font-semibold">{t.merchant}</span>
-            {!trailing && <SignedAmount t={t} amountCents={amountCents} />}
+            <SignedAmount t={t} amountCents={amountCents} />
           </span>
-          <span className={`block truncate text-sm ${toneClass}`}>
-            {t.pending && <span className="mr-1.5 rounded bg-page px-1.5 py-0.5 text-xs font-semibold text-subtle">Pending</span>}
+          {/* Second line; leaves room on the right for a suggestion chip */}
+          <span className={`block min-h-[1.75rem] truncate pt-1 text-sm ${toneClass} ${trailing ? "pr-[9.5rem]" : ""}`}>
+            {t.pending && !hidePending && <span className="mr-1.5 rounded bg-page px-1.5 py-0.5 text-xs font-semibold text-subtle">Pending</span>}
             {label}
           </span>
         </span>
-        {trailing && <SignedAmount t={t} amountCents={amountCents} />}
       </button>
-      {trailing}
+      {trailing && <span className="absolute bottom-2 right-2">{trailing}</span>}
     </li>
   );
 }
 
 // An unassigned transaction, with a dashed "+ Groceries" chip when we can guess the item
-function UnassignedRow({ t, onOpen, onAccept, busy }: { t: Transaction; onOpen: () => void; onAccept: () => void; busy: boolean }) {
+function UnassignedRow({ t, onOpen, onAccept, busy, draggable }: { t: Transaction; onOpen: () => void; onAccept: () => void; busy: boolean; draggable: boolean }) {
   const s = t.suggestion;
   return (
     <TransactionRow
       t={t}
       label={accountText(t)}
       onOpen={onOpen}
+      draggable={draggable}
       trailing={
         s ? (
           <button
@@ -105,7 +121,7 @@ function UnassignedRow({ t, onOpen, onAccept, busy }: { t: Transaction; onOpen: 
             disabled={busy}
             title={`Assign to ${s.groupName} › ${s.itemName}`}
             aria-label={`Assign ${t.merchant} to ${s.itemName}`}
-            className="mr-2 max-w-[8.5rem] shrink-0 truncate rounded-full border-2 border-dashed border-action/70 px-3 py-1 text-sm font-semibold text-action hover:border-solid hover:bg-white disabled:opacity-50"
+            className="block max-w-[9rem] truncate rounded-full border-2 border-dashed border-action/70 bg-white px-3 py-0.5 text-sm font-semibold text-action hover:border-solid hover:bg-pressed disabled:opacity-50"
           >
             + {s.itemName}
           </button>
@@ -124,8 +140,15 @@ function SearchIcon() {
   );
 }
 
+type Tab = "new" | "tracked" | "pending";
+
+// New: waiting to be assigned. Tracked: assigned. Pending: not posted at the bank yet (an assigned
+// pending charge stays in Tracked, tagged Pending).
+const tabOf = (t: Transaction): Tab => (!isUnassigned(t) ? "tracked" : t.pending ? "pending" : "new");
+
 export default function TransactionList({ budget, transactions, onAdd, onOpen, onChanged }: Props) {
   const current: YearMonth = { year: budget.year, month: budget.month };
+  const [tab, setTab] = useState<Tab>("new");
   const [monthsBack, setMonthsBack] = useState(1); // how many months before this one are shown
   const [earlier, setEarlier] = useState<Transaction[]>([]);
   const [oldest, setOldest] = useState<string | null>(null);
@@ -188,14 +211,15 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
 
   const searching = results !== null;
   const shown = searching ? results : [...transactions, ...earlier];
-  const unassigned = shown.filter(isUnassigned);
-  const withSuggestion = unassigned.filter((t) => t.suggestion);
+  const byTab = { new: shown.filter((t) => tabOf(t) === "new"), tracked: shown.filter((t) => tabOf(t) === "tracked"), pending: shown.filter((t) => tabOf(t) === "pending") };
+  const list = byTab[tab];
+  const withSuggestion = byTab.new.filter((t) => t.suggestion);
+  const inThisMonth = (t: Transaction) => t.date.startsWith(ymKey(current));
 
   // Month sections: when browsing, every shown month (even empty ones); when searching, only months with results
   const sections = useMemo(() => {
     const byMonth = new Map<string, Transaction[]>();
-    for (const t of shown) {
-      if (isUnassigned(t)) continue;
+    for (const t of list) {
       const k = t.date.slice(0, 7);
       byMonth.set(k, [...(byMonth.get(k) ?? []), t]);
     }
@@ -204,11 +228,13 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       : Array.from({ length: monthsBack + 1 }, (_, i) => addMonths(current, -i));
     return months.map((ym) => ({ ym, list: byMonth.get(ymKey(ym)) ?? [] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, searching, monthsBack, budget.year, budget.month]);
+  }, [list, searching, monthsBack, budget.year, budget.month]);
 
   const nextOlder = addMonths(current, -(monthsBack + 1));
-  const canLoadMore = !searching && !!oldest && oldest <= monthBounds(nextOlder).max;
+  const canLoadMore = !searching && tab !== "pending" && !!oldest && oldest <= monthBounds(nextOlder).max;
   const monthTitle = (ym: YearMonth) => (ym.year === current.year ? MONTH_NAMES[ym.month - 1] : `${MONTH_NAMES[ym.month - 1]} ${ym.year}`);
+  const pendingIn = byTab.pending.filter((t) => t.type === "income").reduce((n, t) => n + t.amountCents, 0);
+  const pendingOut = byTab.pending.filter((t) => t.type === "expense").reduce((n, t) => n + t.amountCents, 0);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -257,7 +283,21 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
         </div>
       )}
 
-      <label className="mt-4 flex items-center gap-2 rounded-lg bg-page px-3 py-2 text-subtle focus-within:ring-2 focus-within:ring-action/20">
+      <div role="tablist" aria-label="Transaction lists" className="mt-4 flex border-b border-line text-sm">
+        {(["new", "tracked", "pending"] as Tab[]).map((id) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`-mb-px flex-1 border-b-[3px] px-1 pb-2 pt-1 font-semibold ${tab === id ? "border-action text-action" : "border-transparent text-subtle hover:text-ink"}`}
+          >
+            {id === "new" ? `New${byTab.new.length ? ` (${byTab.new.length})` : ""}` : id === "tracked" ? "Tracked" : `Pending${byTab.pending.length ? ` (${byTab.pending.length})` : ""}`}
+          </button>
+        ))}
+      </div>
+
+      <label className="mt-3 flex items-center gap-2 rounded-lg bg-page px-3 py-2 text-subtle focus-within:ring-2 focus-within:ring-action/20">
         <SearchIcon />
         <input
           type="search"
@@ -271,50 +311,79 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       </label>
       {searching && (
         <p role="status" className="px-2 pt-2 text-sm text-subtle">
-          {results.length === 0 ? `Nothing matches “${query.trim()}”` : `${results.length}${results.length === 300 ? "+" : ""} match${results.length === 1 ? "" : "es"} in all months`}
+          {list.length === 0
+            ? `Nothing in ${tab === "new" ? "New" : tab === "tracked" ? "Tracked" : "Pending"} matches “${query.trim()}”${results.length ? ` (${results.length} in other tabs)` : ""}`
+            : `${list.length} match${list.length === 1 ? "" : "es"} in all months`}
         </p>
       )}
       {error && <p role="alert" className="px-2 pt-2 text-sm text-error">{error}</p>}
 
-      {unassigned.length > 0 && (
-        <section aria-label="Unassigned transactions" className="mt-4 rounded-xl border border-warning/50 bg-warning/5 p-2">
-          <div className="flex items-center justify-between gap-2 px-2 pt-1">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-subtle">
-              Unassigned <span className="ml-1 rounded-full bg-warning px-2 py-0.5 text-xs text-white">{unassigned.length}</span>
-            </h3>
-            {withSuggestion.length > 1 && (
-              <button
-                disabled={busy}
-                onClick={() => run(() => api("POST", "/api/transactions/accept-suggestions", { ids: withSuggestion.map((t) => t.id) }))}
-                className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-white disabled:opacity-50"
-              >
-                Accept all ({withSuggestion.length})
-              </button>
-            )}
-          </div>
-          <ul>
-            {unassigned.map((t) => (
-              <UnassignedRow key={t.id} t={t} busy={busy} onOpen={() => onOpen(t)} onAccept={() => run(() => api("POST", `/api/transactions/${t.id}/accept-suggestion`))} />
-            ))}
-          </ul>
-          {withSuggestion.length > 0 && <p className="px-2 pb-1 pt-2 text-xs text-subtle">Dashed suggestions come from how you assigned the same merchant before. Click one to accept it.</p>}
-        </section>
+      {tab === "new" && withSuggestion.length > 1 && (
+        <div className="flex justify-end pt-2">
+          <button
+            disabled={busy}
+            onClick={() => run(() => api("POST", "/api/transactions/accept-suggestions", { ids: withSuggestion.map((t) => t.id) }))}
+            className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-pressed disabled:opacity-50"
+          >
+            Accept all suggestions ({withSuggestion.length})
+          </button>
+        </div>
       )}
 
-      {sections.map(({ ym, list }) => (
-        <section key={ymKey(ym)} aria-label={`${monthTitle(ym)} transactions`} className="mt-5">
-          <h3 className="border-b border-line px-2 pb-2 text-lg font-semibold">{monthTitle(ym)}</h3>
+      {tab === "pending" ? (
+        <section aria-label="Pending transactions" className="mt-3">
+          <p className="px-2 text-sm text-subtle">
+            Pending transactions haven't posted at your bank yet. They move to New when they clear, and the amount or date can change a little by then.
+          </p>
+          <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 px-2 text-sm">
+            <dt className="text-subtle">Total pending income</dt>
+            <dd className="tabular text-right font-semibold text-success">{formatCents(pendingIn)}</dd>
+            <dt className="text-subtle">Total pending expenses</dt>
+            <dd className="tabular text-right font-semibold">-{formatCents(pendingOut)}</dd>
+          </dl>
           {list.length === 0 ? (
-            <p className="px-2 py-6 text-center text-sm italic text-subtle">No transactions</p>
+            <p className="px-2 py-8 text-center text-sm italic text-subtle">No pending transactions</p>
           ) : (
-            <ul className="divide-y divide-line">
+            <ul className="mt-3 divide-y divide-line border-t border-line">
               {list.map((t) => (
-                <TransactionRow key={t.id} t={t} label={assignedLabel(t)} tone="item" onOpen={() => onOpen(t)} />
+                <TransactionRow key={t.id} t={t} label={accountText(t)} hidePending onOpen={() => onOpen(t)} />
               ))}
             </ul>
           )}
         </section>
-      ))}
+      ) : (
+        sections.map(({ ym, list: rows }) => (
+          <section key={ymKey(ym)} aria-label={`${monthTitle(ym)} transactions`} className="mt-5">
+            <h3 className="border-b border-line px-2 pb-2 text-lg font-semibold">{monthTitle(ym)}</h3>
+            {rows.length === 0 ? (
+              <p className="px-2 py-6 text-center text-sm italic text-subtle">No transactions</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {rows.map((t) =>
+                  tab === "new" ? (
+                    <UnassignedRow
+                      key={t.id}
+                      t={t}
+                      busy={busy}
+                      draggable={inThisMonth(t)}
+                      onOpen={() => onOpen(t)}
+                      onAccept={() => run(() => api("POST", `/api/transactions/${t.id}/accept-suggestion`))}
+                    />
+                  ) : (
+                    <TransactionRow key={t.id} t={t} label={assignedLabel(t)} tone="item" draggable={inThisMonth(t) && t.splits.length === 1} onOpen={() => onOpen(t)} />
+                  )
+                )}
+              </ul>
+            )}
+          </section>
+        ))
+      )}
+
+      {tab === "new" && byTab.new.length > 0 && (
+        <p className="px-2 pt-3 text-xs text-subtle">
+          Drag a transaction onto a budget item to assign it{withSuggestion.length > 0 ? ", or click a dashed suggestion" : ""}.
+        </p>
+      )}
 
       {canLoadMore && (
         <div className="py-4 text-center">

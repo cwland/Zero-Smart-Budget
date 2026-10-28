@@ -23,6 +23,7 @@ import { applyDrop, groupOfItem, moveItemAcrossGroups, parseDragId } from "./dra
 import AddGroup from "./AddGroup";
 import CreateMonth from "./CreateMonth";
 import GroupCard from "./GroupCard";
+import { canDropOn, setDraggedTransaction, useDraggedTransaction } from "../txDrag";
 import type { SecondColumn } from "./ItemRow";
 import MonthHeader from "./MonthHeader";
 import SummaryBanner from "./SummaryBanner";
@@ -52,7 +53,7 @@ export default function BudgetPage() {
     ]);
     const waiting = await api<Transaction[]>("GET", "/api/transactions?unassigned=true");
     if (seq !== loadSeq.current) return;
-    setUnassignedCount(waiting.length);
+    setUnassignedCount(waiting.filter((t) => !t.pending).length); // same as the New tab (pending ones wait in Pending)
     setData(month);
     setMonths(list);
     setTransactions(txs);
@@ -89,6 +90,17 @@ export default function BudgetPage() {
   );
 
   const budget = data?.exists ? (data as Budget) : null;
+
+  // ---------- drag a transaction onto an item ----------
+  const draggedTx = useDraggedTransaction();
+  const dropTarget = (kind: "income" | "expense") => !!budget && canDropOn(draggedTx, { kind, year: budget.year, month: budget.month });
+  const dropTx = (kind: "income" | "line", itemId: number) => {
+    const t = draggedTx;
+    setDraggedTransaction(null);
+    if (!t) return;
+    const split = kind === "income" ? { incomeItemId: itemId, amountCents: t.amountCents } : { lineItemId: itemId, amountCents: t.amountCents };
+    void change(() => api("PUT", `/api/transactions/${t.id}`, { date: t.date, merchant: t.merchant, amountCents: t.amountCents, type: t.type, note: t.note, splits: [split] }));
+  };
   const favoriteItems = budget ? budget.groups.flatMap((g) => g.items.filter((i) => i.favorite)) : [];
 
   // ---------- drag to reorder ----------
@@ -228,6 +240,8 @@ export default function BudgetPage() {
               onDeleteItem={(id) => change(() => api("DELETE", `/api/income/${id}`))}
               selectedId={selectedIncome}
               onSelect={(id) => showView({ kind: "item", item: { type: "income", id } })}
+              canDropTx={dropTarget("income")}
+              onDropTx={(id) => dropTx("income", id)}
             />
 
             {/* Favorites: starred items from any group (they stay in their own groups too) */}
@@ -245,6 +259,8 @@ export default function BudgetPage() {
                 onDeleteItem={(id) => change(() => api("DELETE", `/api/items/${id}`))}
                 selectedId={selectedLine}
                 onSelect={(id) => showView({ kind: "item", item: { type: "line", id } })}
+                canDropTx={dropTarget("expense")}
+                onDropTx={(id) => dropTx("line", id)}
               />
             )}
 
@@ -268,6 +284,8 @@ export default function BudgetPage() {
                 onDeleteItem={(id) => change(() => api("DELETE", `/api/items/${id}`))}
                 selectedId={selectedLine}
                 onSelect={(id) => showView({ kind: "item", item: { type: "line", id } })}
+                canDropTx={dropTarget("expense")}
+                onDropTx={(id) => dropTx("line", id)}
               />
             ))}
             </SortableContext>

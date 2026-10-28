@@ -25,6 +25,8 @@ interface Props {
   rowPrefix: string;
   compact?: boolean; // header only (while a group is being dragged)
   favorites?: boolean; // the Favorites card: no Add Item / totals, rows reorder in their own group
+  canDropTx?: boolean; // a dragged transaction can land on this card's items
+  onDropTx?: (rowId: number) => void;
 }
 
 export default function GroupCard(props: Props) {
@@ -126,6 +128,8 @@ export default function GroupCard(props: Props) {
               onAmountEnter={() => setDrafting(true)}
               selected={props.selectedId === row.id}
               onSelect={() => props.onSelect?.(row.id)}
+              canDropTx={props.canDropTx}
+              onDropTx={() => props.onDropTx?.(row.id)}
             />
           ))}
           </SortableContext>
