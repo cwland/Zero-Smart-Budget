@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApiError, api } from "../api";
+import { ApiError, api, waitingNote } from "../api";
 import { formatCents } from "../money";
 import { openPlaidLink } from "../plaidLink";
 import { Card, Notice, primaryButton, secondaryButton } from "./settingsUi";
@@ -68,12 +68,12 @@ export default function BankConnections() {
 
   const syncNow = () =>
     run("sync", async () => {
-      const r = await api<{ added: number; updated: number; removed: number; results: { error?: string }[]; items: Item[] }>("POST", "/api/plaid/sync");
+      const r = await api<{ added: number; updated: number; removed: number; results: { error?: string }[]; items: Item[]; waiting: { year: number; month: number; count: number }[] }>("POST", "/api/plaid/sync");
       setItems(r.items);
       const problems = r.results.filter((x) => x.error).map((x) => x.error);
       if (problems.length) throw new Error(problems.join(" "));
       const parts = [r.added && `${r.added} new`, r.updated && `${r.updated} updated`, r.removed && `${r.removed} removed`].filter(Boolean);
-      setMsg({ ok: true, text: parts.length ? `Synced: ${parts.join(", ")}. New ones are in the Transactions tab, waiting to be assigned.` : "Synced: nothing new" });
+      setMsg({ ok: true, text: (parts.length ? `Synced: ${parts.join(", ")}. New ones are in the Transactions tab, waiting to be assigned.` : "Synced: nothing new.") + waitingNote(r.waiting) });
     });
 
   const setImportFrom = (item: Item, importFrom: string) =>

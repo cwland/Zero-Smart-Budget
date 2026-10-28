@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { plaidAccounts, plaidItems, transactions, transactionSplits } from "../db/schema.js";
+import { budgetMonths, plaidAccounts, plaidItems, transactions, transactionSplits } from "../db/schema.js";
 import { syncTransaction } from "./fundLedger.js";
 import { normalizeMerchant } from "./merchant.js";
 import { PlaidError, type PlaidEnv, type PlaidService } from "./plaid.js";
@@ -91,10 +91,14 @@ async function fetchChanges(plaid: PlaidService, keysEnv: PlaidEnv, accessToken:
 
 type Row = typeof transactions.$inferSelect;
 
-// Apply a new amount/date/type to an existing row, keeping its budget assignment when it still fits
+// Apply a new amount/date/type to an existing row, keeping its budget assignment when it still fits.
+// Returns false when nothing actually changed (e.g. re-reading history we already have).
 async function updateRow(db: Db, row: Row, t: PlaidTx, newPlaidId: string) {
   const amountCents = cents(t.amount);
   const type = typeOf(t);
+  const same =
+    row.plaidTransactionId === newPlaidId && row.plaidAccountId === t.account_id && row.amountCents === amountCents && row.type === type && row.date === t.date && row.pending === t.pending;
+  if (same) return false;
   const splits = await db.select().from(transactionSplits).where(eq(transactionSplits.transactionId, row.id));
   const sameMonth = row.date.slice(0, 7) === t.date.slice(0, 7);
   if (splits.length) {
@@ -110,6 +114,7 @@ async function updateRow(db: Db, row: Row, t: PlaidTx, newPlaidId: string) {
     .update(transactions)
     .set({ plaidTransactionId: newPlaidId, plaidAccountId: t.account_id, amountCents, type, date: t.date, pending: t.pending })
     .where(eq(transactions.id, row.id));
+  return true;
 }
 
 export async function syncItem(db: Db, plaid: PlaidService, item: typeof plaidItems.$inferSelect): Promise<ItemSyncResult> {
@@ -131,9 +136,10 @@ export async function syncItem(db: Db, plaid: PlaidService, item: typeof plaidIt
     for (const t of changes.added) {
       const already = existing.get(t.transaction_id) ?? (t.pending_transaction_id ? existing.get(t.pending_transaction_id) : undefined);
       if (already) {
-        await updateRow(tx, already, t, t.transaction_id);
-        touched.add(already.id);
-        result.updated++;
+        if (await updateRow(tx, already, t, t.transaction_id)) {
+          touched.add(already.id);
+          result.updated++;
+        }
         continue;
       }
       if (!wanted(t)) continue;
@@ -160,8 +166,7 @@ export async function syncItem(db: Db, plaid: PlaidService, item: typeof plaidIt
     const mods = await byPlaidId(changes.modified.map((t) => t.transaction_id));
     for (const t of changes.modified) {
       const row = mods.get(t.transaction_id);
-      if (!row) continue;
-      await updateRow(tx, row, t, t.transaction_id);
+      if (!row || !(await updateRow(tx, row, t, t.transaction_id))) continue;
       touched.add(row.id);
       result.updated++;
     }
@@ -217,4 +222,18 @@ export function syncAll(db: Db, plaid: PlaidService): Promise<ItemSyncResult[]> 
     }
   })();
   return running;
+}
+
+// Months that have transactions but no budget yet (those transactions only show once the month is
+// created), e.g. [{ year: 2026, month: 7, count: 16 }]
+export async function monthsWaiting(db: Db) {
+  const r = await db.execute(sql`
+    select extract(year from t.date)::int as year, extract(month from t.date)::int as month, count(*)::int as count
+    from ${transactions} t
+    where not exists (
+      select 1 from ${budgetMonths} m
+      where m.year = extract(year from t.date)::int and m.month = extract(month from t.date)::int
+    )
+    group by 1, 2 order by 1, 2`);
+  return r.rows as { year: number; month: number; count: number }[];
 }

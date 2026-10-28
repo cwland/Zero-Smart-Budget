@@ -99,6 +99,7 @@ export interface MissingMonth {
   year: number;
   month: number;
   canCopyFrom: { year: number; month: number } | null;
+  waitingTransactions?: number; // already in this month (e.g. imported from a bank)
 }
 
 export type MonthResponse = Budget | MissingMonth;
@@ -188,4 +189,12 @@ export interface BackupInfo {
   name: string;
   size: number;
   createdAt: string;
+}
+
+// " Waiting for a budget: June 2026 (14), July 2026 (16)." for bank sync messages
+export function waitingNote(waiting: { year: number; month: number; count: number }[] | undefined) {
+  if (!waiting?.length) return "";
+  const name = (w: { year: number; month: number }) => new Date(w.year, w.month - 1, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
+  const list = waiting.map((w) => `${name(w)} (${w.count})`).join(", ");
+  return ` Waiting for a budget: ${list}. Create ${waiting.length === 1 ? "that month" : "those months"} to see them.`;
 }

@@ -5,7 +5,7 @@ import { plaidAccounts, plaidItems } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 import { PlaidError, type PlaidEnv } from "../lib/plaid.js";
 import { idParam, isoDate } from "../lib/validation.js";
-import { markItemError, syncAll } from "../lib/plaidSync.js";
+import { markItemError, monthsWaiting, syncAll } from "../lib/plaidSync.js";
 
 // Connecting banks through Plaid Link:
 //  1. the page asks for a link token, opens Plaid's window, and the person signs in to their bank there
@@ -179,6 +179,7 @@ export default async function plaidRoutes(app: FastifyInstance) {
       added: results.reduce((n, r) => n + r.added, 0),
       updated: results.reduce((n, r) => n + r.updated, 0),
       removed: results.reduce((n, r) => n + r.removed, 0),
+      waiting: await monthsWaiting(db), // transactions in months with no budget yet
       items: await listItems(),
     };
   });

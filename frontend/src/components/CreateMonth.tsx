@@ -24,6 +24,11 @@ export default function CreateMonth({ missing, onCreate }: Props) {
     <div className="rounded-2xl bg-white p-8 text-center">
       <h2 className="text-xl font-semibold">Start your {monthLabel(missing)} budget</h2>
       <p className="mt-2 text-subtle">Every dollar gets a job. How do you want to begin?</p>
+      {!!missing.waitingTransactions && (
+        <p role="status" className="mx-auto mt-4 max-w-sm rounded-lg bg-warning/10 px-4 py-2 text-sm text-ink">
+          {missing.waitingTransactions} {missing.waitingTransactions === 1 ? "transaction is" : "transactions are"} already waiting for this month. They'll show up once you create it.
+        </p>
+      )}
       <div className="mx-auto mt-6 flex max-w-xs flex-col gap-3">
         {missing.canCopyFrom && (
           <button

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Budget, type Transaction } from "../api";
+import { api, waitingNote, type Budget, type Transaction } from "../api";
 import { shortDate } from "../dates";
 import { formatCents } from "../money";
 import { assignmentLabel, isUnassigned, itemNames } from "./budgetLookup";
@@ -39,7 +39,6 @@ function UnassignedRow({ t, onOpen, onAccept, busy }: { t: Transaction; onOpen: 
           <span className="block truncate text-sm text-subtle">
             {shortDate(t.date)}
             <PendingTag t={t} />
-            {!s && <> · <span className="font-medium text-warning">Unassigned</span></>}
             <AccountName t={t} />
           </span>
         </span>
@@ -106,10 +105,10 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const r = await api<{ added: number; updated: number; removed: number; results: { error?: string }[] }>("POST", "/api/plaid/sync");
+      const r = await api<{ added: number; updated: number; removed: number; results: { error?: string }[]; waiting: { year: number; month: number; count: number }[] }>("POST", "/api/plaid/sync");
       const problems = r.results.filter((x) => x.error).map((x) => x.error);
       const parts = [r.added && `${r.added} new`, r.updated && `${r.updated} updated`, r.removed && `${r.removed} removed`].filter(Boolean);
-      setSyncMsg(problems.length ? { ok: false, text: problems.join(" ") } : { ok: true, text: parts.length ? `Bank sync: ${parts.join(", ")}` : "Bank sync: nothing new" });
+      setSyncMsg(problems.length ? { ok: false, text: problems.join(" ") } : { ok: true, text: (parts.length ? `Bank sync: ${parts.join(", ")}.` : "Bank sync: nothing new.") + waitingNote(r.waiting) });
       await onChanged();
     } catch (e) {
       setSyncMsg({ ok: false, text: (e as Error).message });

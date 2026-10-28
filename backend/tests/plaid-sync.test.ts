@@ -171,7 +171,7 @@ describe("importing bank transactions", () => {
     await sync();
     await t.api("PATCH", `/api/plaid/items/${itemId}`, { importFrom: "2026-09-01" });
     pages = [{ added: [tx("sep", 7, "2026-09-15"), tx("a", 5, "2026-10-02")] }];
-    expect(await sync()).toMatchObject({ added: 1, updated: 1 });
+    expect(await sync()).toMatchObject({ added: 1, updated: 0 }); // the October one is unchanged, so not counted
     expect(syncCursors.at(-1)).toBeUndefined();
     expect(await list()).toHaveLength(2);
   });
@@ -211,5 +211,18 @@ describe("importing bank transactions", () => {
     const key = (await t.api("POST", "/api/keys", { name: "n8n" })).body.key;
     t.setToken("");
     expect((await t.api("POST", "/api/plaid/sync", undefined, { "x-api-key": key })).status).toBe(200);
+  });
+
+  it("reports months that have imported transactions but no budget yet", async () => {
+    await t.api("PATCH", `/api/plaid/items/${itemId}`, { importFrom: "2026-07-01" });
+    await t.api("POST", "/api/months/2026/10", { mode: "template" });
+    pages = [{ added: [tx("j1", 1, "2026-07-05"), tx("j2", 2, "2026-07-20"), tx("a1", 3, "2026-08-01"), tx("o1", 4, "2026-10-01")] }];
+    const res = await sync();
+    expect(res.waiting).toEqual([{ year: 2026, month: 7, count: 2 }, { year: 2026, month: 8, count: 1 }]);
+    const july = (await t.api("GET", "/api/months/2026/7")).body;
+    expect(july).toMatchObject({ exists: false, waitingTransactions: 2 });
+    expect((await t.api("GET", "/api/months/2026/9")).body.waitingTransactions).toBe(0);
+    await t.api("POST", "/api/months/2026/7", { mode: "template" });
+    expect((await sync()).waiting).toEqual([{ year: 2026, month: 8, count: 1 }]);
   });
 });

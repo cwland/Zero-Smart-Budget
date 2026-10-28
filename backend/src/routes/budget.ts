@@ -6,6 +6,7 @@ import { budgetMonths, categoryGroups, incomeItems, lineItems, sinkingFunds } fr
 import { loadBudget, nextSortOrder } from "../lib/budget.js";
 import { STARTER_GROUPS, STARTER_INCOME } from "../lib/template.js";
 import { syncLineItem } from "../lib/fundLedger.js";
+import { monthsWaiting } from "../lib/plaidSync.js";
 import { monthIndex } from "../lib/calc.js";
 import { badRequest, HttpError, notFound } from "../lib/errors.js";
 import { cents, idList, idParam, name, yearMonthParams } from "../lib/validation.js";
@@ -86,6 +87,8 @@ export default async function budgetRoutes(app: FastifyInstance) {
         year,
         month,
         canCopyFrom: previous ? { year: previous.year, month: previous.month } : null,
+        // Transactions already in this month (e.g. imported from a bank), shown once it's created
+        waitingTransactions: (await monthsWaiting(db)).find((w) => w.year === year && w.month === month)?.count ?? 0,
       };
     }
     return { exists: true, ...(await loadBudget(db, row.id)) };

@@ -22,7 +22,7 @@ async function makeOctober() {
 describe("months", () => {
   it("a missing month says it doesn't exist", async () => {
     const res = await t.api("GET", "/api/months/2026/10");
-    expect(res.body).toEqual({ exists: false, year: 2026, month: 10, canCopyFrom: null });
+    expect(res.body).toEqual({ exists: false, year: 2026, month: 10, canCopyFrom: null, waitingTransactions: 0 });
   });
 
   it("creates a blank month once", async () => {
