@@ -12,6 +12,7 @@ import {
   date,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -19,6 +20,29 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  displayName: text("display_name"),
+  email: text("email"), // used for password resets (and later, notifications)
+  // Bumped to sign out every device: login tokens carry the version they were issued with
+  tokenVersion: integer("token_version").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// App-wide settings changed from the Settings page (e.g. "email"). Secrets inside are encrypted.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One-time password reset links. Only a hash of the token is stored.
+export const passwordResets = pgTable("password_resets", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -98,6 +122,7 @@ export const lineItems = pgTable(
     sinkingFundId: integer("sinking_fund_id").references(() => sinkingFunds.id, {
       onDelete: "set null",
     }),
+    favorite: boolean("favorite").notNull().default(false), // shown in the Favorites card too
   },
   (t) => [
     index("line_items_group_idx").on(t.groupId),
@@ -113,6 +138,8 @@ export const transactions = pgTable(
     id: serial("id").primaryKey(),
     date: date("date", { mode: "string" }).notNull(), // YYYY-MM-DD
     merchant: text("merchant").notNull(),
+    // Cleaned-up merchant name used to match repeat merchants ("ACH CREDIT HOME DEPOT *4986 10/13" -> "home depot")
+    merchantKey: text("merchant_key"),
     amountCents: integer("amount_cents").notNull(), // always positive; type gives direction
     type: transactionType("type").notNull().default("expense"),
     note: text("note"),
@@ -122,7 +149,7 @@ export const transactions = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (t) => [index("transactions_date_idx").on(t.date)]
+  (t) => [index("transactions_date_idx").on(t.date), index("transactions_merchant_key_idx").on(t.merchantKey)]
 );
 
 // Links a transaction to line items (expenses) or income items (income).
@@ -145,6 +172,37 @@ export const transactionSplits = pgTable(
     index("splits_transaction_idx").on(t.transactionId),
     index("splits_line_item_idx").on(t.lineItemId),
     index("splits_income_item_idx").on(t.incomeItemId),
+  ]
+);
+
+// Permanent history of money in and out of each sinking fund.
+// Balance as of a month = starting balance + every entry dated on or before the end of that month.
+//  - budgeted:   one per linked line item (planned amount), dated the 1st of its month
+//  - spent:      one per (transaction, linked line item), negative, dated like the transaction
+//  - adjustment: added by hand
+// While an item is linked, its entries are kept in sync. If the item is unlinked or deleted,
+// its entries stay as they were (history is never rewritten).
+export const fundEntryKind = pgEnum("fund_entry_kind", ["budgeted", "spent", "adjustment"]);
+
+export const fundEntries = pgTable(
+  "fund_entries",
+  {
+    id: serial("id").primaryKey(),
+    fundId: integer("fund_id")
+      .notNull()
+      .references(() => sinkingFunds.id, { onDelete: "cascade" }),
+    kind: fundEntryKind("kind").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    amountCents: integer("amount_cents").notNull(), // + adds to the fund, - takes out
+    description: text("description"),
+    lineItemId: integer("line_item_id").references(() => lineItems.id, { onDelete: "set null" }),
+    transactionId: integer("transaction_id").references(() => transactions.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("fund_entries_fund_date_idx").on(t.fundId, t.date),
+    index("fund_entries_line_item_idx").on(t.lineItemId),
+    index("fund_entries_transaction_idx").on(t.transactionId),
   ]
 );
 
@@ -171,6 +229,10 @@ export const lineItemsRelations = relations(lineItems, ({ one, many }) => ({
 }));
 export const sinkingFundsRelations = relations(sinkingFunds, ({ many }) => ({
   lineItems: many(lineItems),
+  entries: many(fundEntries),
+}));
+export const fundEntriesRelations = relations(fundEntries, ({ one }) => ({
+  fund: one(sinkingFunds, { fields: [fundEntries.fundId], references: [sinkingFunds.id] }),
 }));
 export const transactionsRelations = relations(transactions, ({ many }) => ({
   splits: many(transactionSplits),

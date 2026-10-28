@@ -24,6 +24,7 @@ interface Props {
   sortableId?: string;
   rowPrefix: string;
   compact?: boolean; // header only (while a group is being dragged)
+  favorites?: boolean; // the Favorites card: no Add Item / totals, rows reorder in their own group
 }
 
 export default function GroupCard(props: Props) {
@@ -117,6 +118,7 @@ export default function GroupCard(props: Props) {
             <ItemRow
               key={row.id}
               sortableId={`${props.rowPrefix}-${row.id}`}
+              sortable={!props.favorites}
               row={row}
               column={column}
               onSave={(changes) => props.onUpdateItem(row.id, changes)}
@@ -129,8 +131,8 @@ export default function GroupCard(props: Props) {
           </SortableContext>
           {drafting && <DraftRow onCreate={props.onAddItem} onClose={() => setDrafting(false)} />}
 
-          {/* Footer */}
-          <footer className="flex items-center gap-2 px-4 pb-6 pt-4 sm:px-6">
+          {/* Footer (the Favorites card has none, like EveryDollar) */}
+          {props.favorites ? <div className="pb-4" /> : <footer className="flex items-center gap-2 px-4 pb-6 pt-4 sm:px-6">
             <button
               onClick={() => setDrafting(true)}
               className="flex-1 whitespace-nowrap text-left text-link hover:underline"
@@ -141,7 +143,7 @@ export default function GroupCard(props: Props) {
             <div className={`tabular w-[5.5rem] shrink-0 sm:w-[6.5rem] text-right ${secondTotal < 0 ? "text-error" : "text-subtle"}`}>
               {formatCents(secondTotal)}
             </div>
-          </footer>
+          </footer>}
         </>
       )}
     </section>

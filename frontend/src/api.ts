@@ -20,7 +20,7 @@ export function setToken(token: string | null) {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public details?: { path: string; message: string }[]) {
     super(message);
   }
 }
@@ -40,7 +40,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   if (res.status === 204) return undefined as T;
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`, data.details);
   return data as T;
 }
 
@@ -62,6 +62,7 @@ export interface BudgetLine {
   spentCents: number;
   remainingCents: number;
   sinkingFund: { id: number; name: string; targetCents: number | null; balanceCents: number } | null;
+  favorite: boolean;
 }
 
 export interface BudgetGroup {
@@ -117,6 +118,15 @@ export interface Transaction {
   type: "expense" | "income";
   note: string | null;
   splits: TransactionSplit[];
+  // For unassigned transactions: the item this merchant went to last time (if any)
+  suggestion?: Suggestion | null;
+}
+
+export interface Suggestion {
+  lineItemId?: number;
+  incomeItemId?: number;
+  itemName: string;
+  groupName: string;
 }
 
 export interface TransactionInput {
@@ -136,7 +146,19 @@ export interface SinkingFund {
   archived: boolean;
   contributedCents: number;
   spentCents: number;
+  adjustmentsCents: number;
   balanceCents: number;
+}
+
+export interface FundEntry {
+  id: number;
+  kind: "budgeted" | "spent" | "adjustment";
+  date: string;
+  amountCents: number;
+  description: string | null;
+  lineItemId: number | null;
+  transactionId: number | null;
+  live: boolean; // follows a linked budget item (can't be deleted here)
 }
 
 // Download a file from the API (needs the login header, so a plain link won't do)

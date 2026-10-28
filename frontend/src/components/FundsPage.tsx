@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type SinkingFund } from "../api";
 import { centsToInput, formatCents, parseMoney } from "../money";
+import FundHistory, { AdjustmentForm } from "./FundHistory";
 import { PiggyIcon } from "./Icons";
 import { ProgressBar } from "./ItemRow";
 
@@ -85,7 +86,14 @@ function FundForm({
   );
 }
 
-function FundCard({ fund, onEdit, onArchive }: { fund: SinkingFund; onEdit: () => void; onArchive: (archived: boolean) => void }) {
+function FundCard({ fund, onEdit, onArchive, onChanged }: { fund: SinkingFund; onEdit: () => void; onArchive: (archived: boolean) => void; onChanged: () => Promise<void> }) {
+  const [showHistory, setShowHistory] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
+  const [version, setVersion] = useState(0);
+  const refresh = async () => {
+    await onChanged();
+    setVersion((v) => v + 1);
+  };
   const pct = fund.targetCents ? Math.min(100, Math.round((fund.balanceCents / fund.targetCents) * 100)) : null;
   return (
     <article aria-label={fund.name} className={`rounded-2xl bg-white p-5 ${fund.archived ? "opacity-60" : ""}`}>
@@ -112,7 +120,7 @@ function FundCard({ fund, onEdit, onArchive }: { fund: SinkingFund; onEdit: () =
         </div>
       ) : null}
 
-      <dl className="tabular mt-4 grid grid-cols-3 gap-2 text-sm">
+      <dl className="tabular mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
         <div className="rounded-lg bg-page px-3 py-2">
           <dt className="text-xs uppercase tracking-wide text-subtle">Starting</dt>
           <dd>{formatCents(fund.startingBalanceCents)}</dd>
@@ -123,16 +131,45 @@ function FundCard({ fund, onEdit, onArchive }: { fund: SinkingFund; onEdit: () =
         </div>
         <div className="rounded-lg bg-page px-3 py-2">
           <dt className="text-xs uppercase tracking-wide text-subtle">Spent</dt>
-          <dd className="text-error">−{formatCents(fund.spentCents)}</dd>
+          <dd className={fund.spentCents > 0 ? "text-error" : fund.spentCents < 0 ? "text-success" : ""}>
+            {fund.spentCents > 0 ? "−" : fund.spentCents < 0 ? "+" : ""}
+            {formatCents(Math.abs(fund.spentCents))}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-page px-3 py-2">
+          <dt className="text-xs uppercase tracking-wide text-subtle">Adjusted</dt>
+          <dd className={fund.adjustmentsCents < 0 ? "text-error" : fund.adjustmentsCents > 0 ? "text-success" : ""}>
+            {fund.adjustmentsCents > 0 ? "+" : fund.adjustmentsCents < 0 ? "−" : ""}
+            {formatCents(Math.abs(fund.adjustmentsCents))}
+          </dd>
         </div>
       </dl>
 
-      <div className="mt-4 flex gap-4 text-sm font-semibold">
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold">
+        <button onClick={() => setAdjusting((a) => !a)} className="text-link hover:underline">
+          Add / take out
+        </button>
+        <button onClick={() => setShowHistory((h) => !h)} aria-expanded={showHistory} className="text-link hover:underline">
+          {showHistory ? "Hide history" : "History"}
+        </button>
         <button onClick={onEdit} className="text-link hover:underline">Edit</button>
         <button onClick={() => onArchive(!fund.archived)} className="text-subtle hover:underline">
           {fund.archived ? "Restore" : "Archive"}
         </button>
       </div>
+
+      {adjusting && (
+        <AdjustmentForm
+          fundId={fund.id}
+          onCancel={() => setAdjusting(false)}
+          onDone={async () => {
+            setAdjusting(false);
+            setShowHistory(true);
+            await refresh();
+          }}
+        />
+      )}
+      {showHistory && <FundHistory fundId={fund.id} version={version} onChanged={refresh} />}
     </article>
   );
 }
@@ -144,8 +181,11 @@ export default function FundsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
-    setFunds(await api<SinkingFund[]>("GET", `/api/funds?includeArchived=${showArchived}`));
+    const seq = ++loadSeq.current;
+    const list = await api<SinkingFund[]>("GET", `/api/funds?includeArchived=${showArchived}`);
+    if (seq === loadSeq.current) setFunds(list); // ignore answers that arrive out of order
   }, [showArchived]);
 
   useEffect(() => {
@@ -171,7 +211,7 @@ export default function FundsPage() {
       </div>
 
       <p className="mt-4 text-sm text-subtle">
-        Link a budget item to a fund (click the item on your budget). What you plan for it each month is added to the fund, and spending on it comes out.
+        Link a budget item to a fund (click the item on your budget). What you plan for it each month is added to the fund, and spending on it comes out. Each fund keeps its history, so unlinking or deleting an item later doesn't change what's already happened.
       </p>
 
       {error && <p role="alert" className="mt-4 rounded bg-error-subtle px-3 py-2 text-error">{error}</p>}
@@ -191,7 +231,7 @@ export default function FundsPage() {
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="min-h-32 rounded-2xl border-2 border-dotted border-strong p-6 font-semibold text-action hover:bg-white"
+            className="min-h-32 self-start rounded-2xl border-2 border-dotted border-strong p-6 font-semibold text-action hover:bg-white"
           >
             Add Fund
           </button>
@@ -220,6 +260,7 @@ export default function FundsPage() {
               key={f.id}
               fund={f}
               onEdit={() => setEditingId(f.id)}
+              onChanged={load}
               onArchive={(archived) =>
                 api("PATCH", `/api/funds/${f.id}`, { archived })
                   .then(load)

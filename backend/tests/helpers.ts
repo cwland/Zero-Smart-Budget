@@ -7,20 +7,44 @@ import { createDb } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
+import type { EmailConfig, MailMessage } from "../src/lib/mail.js";
 
 // Tests use their own database so they never touch your real budget.
 // Create it once with: createdb corysdollar_test
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/corysdollar_test";
 if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a test database");
 
-export async function setupTestApp() {
+export async function setupTestApp(opts: { email?: boolean } = {}) {
   const { db, pool } = createDb(url);
   await db.execute(sql`drop schema if exists public cascade`);
   await db.execute(sql`drop schema if exists drizzle cascade`);
   await db.execute(sql`create schema public`);
   await runMigrations(db);
   const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "cd-backups-"));
-  const app = buildApp({ db, jwtSecret: "test-secret-that-is-long-enough", backupDir, backupKeep: 3 });
+  // Fake mail transport: records messages (and the settings used) instead of sending
+  const sent: (MailMessage & { from: string; config: EmailConfig })[] = [];
+  const failNext = { value: "" };
+  const emailEnv: EmailConfig | null =
+    opts.email === false
+      ? null
+      : { host: "env.smtp", port: 25, security: "none", username: null, password: null, fromName: null, fromAddress: "app@test", appUrl: "http://budget.test" };
+  const app = buildApp({
+    db,
+    jwtSecret: "test-secret-that-is-long-enough",
+    backupDir,
+    backupKeep: 3,
+    emailEnv,
+    mailTransport: (config) => ({
+      sendMail: async (m) => {
+        if (failNext.value) {
+          const msg = failNext.value;
+          failNext.value = "";
+          throw new Error(msg);
+        }
+        sent.push({ ...m, config });
+      },
+    }),
+  });
   await app.ready();
 
   let token = "";
@@ -40,8 +64,12 @@ export async function setupTestApp() {
     db,
     api,
     backupDir,
+    sent,
+    failNext,
     async reset() {
-      await db.execute(sql`truncate users, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);
+      sent.length = 0;
+      failNext.value = "";
+      await db.execute(sql`truncate users, password_resets, app_settings, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);
       resetLoginLockouts();
       token = "";
     },
@@ -49,6 +77,7 @@ export async function setupTestApp() {
       const res = await api("POST", "/api/auth/setup", { username: "cory", password: "password123" });
       token = res.body.token;
     },
+    getToken: () => token,
     setToken(t: string) {
       token = t;
     },

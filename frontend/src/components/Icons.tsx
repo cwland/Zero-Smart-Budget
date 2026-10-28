@@ -61,3 +61,17 @@ export const GripIcon = ({ className = "size-4" }: P) => (
     <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
   </svg>
 );
+
+export const UserIcon = ({ className = "size-5" }: P) => (
+  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 20a8 8 0 0116 0" />
+  </svg>
+);
+
+export const ResetIcon = ({ className = "size-5" }: P) => (
+  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 12a8 8 0 108-8 8.5 8.5 0 00-6 2.5L4 8" />
+    <path d="M4 4v4h4" />
+  </svg>
+);

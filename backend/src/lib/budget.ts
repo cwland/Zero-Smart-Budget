@@ -3,16 +3,18 @@ import type { Db } from "../db/index.js";
 import {
   budgetMonths,
   categoryGroups,
+  fundEntries,
   incomeItems,
   lineItems,
   sinkingFunds,
+  transactions,
   transactionSplits,
 } from "../db/schema.js";
-import { budgetTotals, fundBalance, monthIndex, remaining, sum } from "./calc.js";
+import { budgetTotals, fundBalance, remaining, sum } from "./calc.js";
 
 const toNumber = (v: string | number | null) => Number(v ?? 0);
 
-// Sinking fund balances, counting money budgeted in months up to and including asOf
+// Sinking fund balances from their history, counting entries dated on or before the end of asOf's month
 export async function loadFunds(
   db: Db,
   asOf: { year: number; month: number },
@@ -27,39 +29,26 @@ export async function loadFunds(
   );
   const funds = await db.select().from(sinkingFunds).where(fundFilter).orderBy(asc(sinkingFunds.id));
   if (!funds.length) return [];
-  const ids = funds.map((f) => f.id);
 
-  const contributed = await db
-    .select({ fundId: lineItems.sinkingFundId, total: sqlSum(lineItems.plannedCents) })
-    .from(lineItems)
-    .innerJoin(categoryGroups, eq(lineItems.groupId, categoryGroups.id))
-    .innerJoin(budgetMonths, eq(categoryGroups.monthId, budgetMonths.id))
-    .where(
-      and(
-        inArray(lineItems.sinkingFundId, ids),
-        lte(sql`${budgetMonths.year} * 12 + (${budgetMonths.month} - 1)`, monthIndex(asOf.year, asOf.month))
-      )
-    )
-    .groupBy(lineItems.sinkingFundId);
-
-  const spent = await db
-    .select({ fundId: lineItems.sinkingFundId, total: sqlSum(transactionSplits.amountCents) })
-    .from(transactionSplits)
-    .innerJoin(lineItems, eq(transactionSplits.lineItemId, lineItems.id))
-    .where(inArray(lineItems.sinkingFundId, ids))
-    .groupBy(lineItems.sinkingFundId);
-
-  const contributedBy = new Map(contributed.map((r) => [r.fundId, toNumber(r.total)]));
-  const spentBy = new Map(spent.map((r) => [r.fundId, toNumber(r.total)]));
+  const lastDay = new Date(Date.UTC(asOf.year, asOf.month, 0)).getUTCDate();
+  const asOfDate = `${asOf.year}-${String(asOf.month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  const totals = await db
+    .select({ fundId: fundEntries.fundId, kind: fundEntries.kind, total: sqlSum(fundEntries.amountCents) })
+    .from(fundEntries)
+    .where(and(inArray(fundEntries.fundId, funds.map((f) => f.id)), lte(fundEntries.date, asOfDate)))
+    .groupBy(fundEntries.fundId, fundEntries.kind);
+  const get = (fundId: number, kind: string) => toNumber(totals.find((t) => t.fundId === fundId && t.kind === kind)?.total ?? 0);
 
   return funds.map((f) => {
-    const contributedCents = contributedBy.get(f.id) ?? 0;
-    const spentCents = spentBy.get(f.id) ?? 0;
+    const contributedCents = get(f.id, "budgeted");
+    const spentCents = -get(f.id, "spent");
+    const adjustmentsCents = get(f.id, "adjustment");
     return {
       ...f,
       contributedCents,
       spentCents,
-      balanceCents: fundBalance(f.startingBalanceCents, contributedCents, spentCents),
+      adjustmentsCents,
+      balanceCents: fundBalance(f.startingBalanceCents, contributedCents, spentCents) + adjustmentsCents,
     };
   });
 }
@@ -91,8 +80,13 @@ export async function loadBudget(db: Db, monthId: number) {
   const itemIds = items.map((i) => i.id);
   const spentRows = itemIds.length
     ? await db
-        .select({ id: transactionSplits.lineItemId, total: sqlSum(transactionSplits.amountCents) })
+        // Net spending: expenses add, income on a budget item (refund / money back) subtracts
+        .select({
+          id: transactionSplits.lineItemId,
+          total: sql<string>`sum(case when ${transactions.type} = 'income' then -${transactionSplits.amountCents} else ${transactionSplits.amountCents} end)`,
+        })
         .from(transactionSplits)
+        .innerJoin(transactions, eq(transactionSplits.transactionId, transactions.id))
         .where(inArray(transactionSplits.lineItemId, itemIds))
         .groupBy(transactionSplits.lineItemId)
     : [];
@@ -132,6 +126,7 @@ export async function loadBudget(db: Db, monthId: number) {
           plannedCents: i.plannedCents,
           spentCents,
           remainingCents: remaining({ plannedCents: i.plannedCents, spentCents }),
+          favorite: i.favorite,
           sinkingFund: fund
             ? { id: fund.id, name: fund.name, targetCents: fund.targetCents, balanceCents: fund.balanceCents }
             : null,

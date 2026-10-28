@@ -1,42 +1,61 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { eq, count } from "drizzle-orm";
-import { users } from "../db/schema.js";
-import { checkPassword, hashPassword, signToken } from "../lib/auth.js";
+import { and, count, eq, gt, isNull, sql } from "drizzle-orm";
+import { passwordResets, users } from "../db/schema.js";
+import { checkPassword, generateResetToken, hashApiKey, hashPassword, signToken } from "../lib/auth.js";
 import { HttpError } from "../lib/errors.js";
 
-const credentials = z.object({
-  username: z.string().trim().min(1).max(100),
-  password: z.string().min(8, "Password must be at least 8 characters").max(200),
-});
+const password = z.string().min(8, "Password must be at least 8 characters").max(200);
+const credentials = z.object({ username: z.string().trim().min(1).max(100), password });
+
+const RESET_LIFETIME_MS = 60 * 60 * 1000; // reset links work for 1 hour
 
 // Simple lockout: 5 failed logins from one address blocks it for 15 minutes
 const MAX_FAILURES = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 const failures = new Map<string, { count: number; until: number }>();
+// At most one reset email per minute, and 5 per hour
+let resetSends: number[] = [];
 
 function checkLockout(req: FastifyRequest) {
   const entry = failures.get(req.ip);
   if (entry && entry.count >= MAX_FAILURES && entry.until > Date.now()) {
-    throw new HttpError(429, "Too many failed logins. Try again in 15 minutes.");
+    throw new HttpError(429, "Too many failed attempts. Try again in 15 minutes.");
   }
 }
 function recordFailure(req: FastifyRequest) {
   const entry = failures.get(req.ip);
-  const count = entry && entry.until > Date.now() ? entry.count + 1 : 1;
-  failures.set(req.ip, { count, until: Date.now() + LOCKOUT_MS });
+  const n = entry && entry.until > Date.now() ? entry.count + 1 : 1;
+  failures.set(req.ip, { count: n, until: Date.now() + LOCKOUT_MS });
 }
 
 export function resetLoginLockouts() {
   failures.clear();
+  resetSends = [];
 }
+
+const publicUser = (u: typeof users.$inferSelect) => ({
+  id: u.id,
+  username: u.username,
+  displayName: u.displayName,
+  email: u.email,
+});
 
 export default async function authRoutes(app: FastifyInstance) {
   const { db } = app;
 
   const userCount = async () => (await db.select({ n: count() }).from(users))[0].n;
+  const emailEnabled = () => app.mail.canSendLinks();
 
-  app.get("/api/auth/status", async () => ({ setupRequired: (await userCount()) === 0 }));
+  app.get("/api/auth/status", async () => {
+    const [user] = await db.select({ email: users.email }).from(users).limit(1);
+    const enabled = await emailEnabled();
+    return {
+      setupRequired: !user,
+      emailEnabled: enabled,
+      resetAvailable: enabled && !!user?.email,
+    };
+  });
 
   // First run only: create the single account
   app.post("/api/auth/setup", async (req) => {
@@ -45,45 +64,109 @@ export default async function authRoutes(app: FastifyInstance) {
     const [user] = await db
       .insert(users)
       .values({ username: body.username, passwordHash: await hashPassword(body.password) })
-      .returning({ id: users.id, username: users.username });
-    return { token: signToken(user.id, app.jwtSecret), user };
+      .returning();
+    return { token: signToken(user.id, user.tokenVersion, app.jwtSecret), user: publicUser(user) };
   });
 
   app.post("/api/auth/login", async (req) => {
     checkLockout(req);
     const body = z.object({ username: z.string(), password: z.string() }).parse(req.body);
-    const [user] = await db.select().from(users).where(eq(users.username, body.username.trim()));
+    const [user] = await db.select().from(users).where(sql`lower(${users.username}) = ${body.username.trim().toLowerCase()}`); // usernames ignore capitalization
     if (!user || !(await checkPassword(body.password, user.passwordHash))) {
       recordFailure(req);
       throw new HttpError(401, "Wrong username or password");
     }
     failures.delete(req.ip);
-    return { token: signToken(user.id, app.jwtSecret), user: { id: user.id, username: user.username } };
+    return { token: signToken(user.id, user.tokenVersion, app.jwtSecret), user: publicUser(user) };
   });
 
   app.get("/api/auth/me", async (req) => {
     if (req.auth?.method !== "token") return { method: "apiKey" };
-    const [user] = await db
-      .select({ id: users.id, username: users.username })
-      .from(users)
-      .where(eq(users.id, req.auth.userId));
+    const [user] = await db.select().from(users).where(eq(users.id, req.auth.userId));
     if (!user) throw new HttpError(401, "Not logged in");
-    return { method: "token", user };
+    return { method: "token", user: publicUser(user) };
   });
 
+  // Change password. Signs out every other device; returns a fresh token for this one.
   app.post("/api/auth/password", async (req) => {
     if (req.auth?.method !== "token") throw new HttpError(403, "Log in to change the password");
-    const body = z
-      .object({ currentPassword: z.string(), newPassword: credentials.shape.password })
-      .parse(req.body);
+    const body = z.object({ currentPassword: z.string(), newPassword: password }).parse(req.body);
     const [user] = await db.select().from(users).where(eq(users.id, req.auth.userId));
     if (!user || !(await checkPassword(body.currentPassword, user.passwordHash))) {
       throw new HttpError(400, "Current password is wrong");
     }
-    await db
+    const [updated] = await db
       .update(users)
-      .set({ passwordHash: await hashPassword(body.newPassword) })
-      .where(eq(users.id, user.id));
+      .set({ passwordHash: await hashPassword(body.newPassword), tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, user.id))
+      .returning();
+    return { ok: true, token: signToken(updated.id, updated.tokenVersion, app.jwtSecret) };
+  });
+
+  // Sign out everywhere. With keepThisDevice, returns a fresh token so this browser stays in.
+  app.post("/api/auth/logout-all", async (req) => {
+    if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
+    const body = z.object({ keepThisDevice: z.boolean().default(false) }).parse(req.body ?? {});
+    const [updated] = await db
+      .update(users)
+      .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, req.auth.userId))
+      .returning();
+    return { ok: true, token: body.keepThisDevice ? signToken(updated.id, updated.tokenVersion, app.jwtSecret) : undefined };
+  });
+
+  // Email a reset link to the account's address. Always answers the same way, so it
+  // never reveals whether an address is on file.
+  app.post("/api/auth/forgot", async (req) => {
+    const active = await app.mail.active();
+    if (!active?.config.appUrl) throw new HttpError(400, "Email isn't set up on this server. Use `npm run reset-password` on the server instead.");
+    const now = Date.now();
+    resetSends = resetSends.filter((t) => now - t < 60 * 60 * 1000);
+    if (resetSends.some((t) => now - t < 60 * 1000) || resetSends.length >= 5) {
+      throw new HttpError(429, "A reset email was sent recently. Check your inbox, or try again in a few minutes.");
+    }
+
+    const [user] = await db.select().from(users).limit(1);
+    if (user?.email) {
+      resetSends.push(now);
+      // Only the newest link works
+      await db.update(passwordResets).set({ usedAt: new Date() }).where(and(eq(passwordResets.userId, user.id), isNull(passwordResets.usedAt)));
+      const { token, hash } = generateResetToken();
+      await db.insert(passwordResets).values({ userId: user.id, tokenHash: hash, expiresAt: new Date(now + RESET_LIFETIME_MS) });
+      const link = `${active.config.appUrl}/#/reset?token=${token}`;
+      try {
+        await app.mail.send({
+          to: user.email,
+          subject: "Reset your Cory's Dollar password",
+          text: `Someone (hopefully you) asked to reset the password for "${user.username}".\n\nReset it here (this link works once, for 1 hour):\n${link}\n\nIf this wasn't you, you can ignore this email. Your password won't change.`,
+          html: `<p>Someone (hopefully you) asked to reset the password for <strong>${user.username.replace(/[<>&]/g, "")}</strong>.</p><p><a href="${link}">Reset your password</a> (this link works once, for 1 hour).</p><p>If this wasn't you, you can ignore this email. Your password won't change.</p>`,
+        });
+      } catch (err) {
+        req.log.error(err);
+        throw new HttpError(502, "Couldn't send the email. Check the email settings on the server.");
+      }
+    }
     return { ok: true };
+  });
+
+  // Use a reset link: set a new password, sign out everywhere, and sign in here
+  app.post("/api/auth/reset", async (req) => {
+    checkLockout(req);
+    const body = z.object({ token: z.string().min(10).max(200), newPassword: password }).parse(req.body);
+    const [reset] = await db
+      .select()
+      .from(passwordResets)
+      .where(and(eq(passwordResets.tokenHash, hashApiKey(body.token)), isNull(passwordResets.usedAt), gt(passwordResets.expiresAt, new Date())));
+    if (!reset) {
+      recordFailure(req);
+      throw new HttpError(400, "This reset link is invalid or has expired. Ask for a new one.");
+    }
+    await db.update(passwordResets).set({ usedAt: new Date() }).where(eq(passwordResets.id, reset.id));
+    const [user] = await db
+      .update(users)
+      .set({ passwordHash: await hashPassword(body.newPassword), tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, reset.userId))
+      .returning();
+    return { token: signToken(user.id, user.tokenVersion, app.jwtSecret), user: publicUser(user) };
   });
 }

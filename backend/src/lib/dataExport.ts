@@ -4,6 +4,7 @@ import type { Db } from "../db/index.js";
 import {
   budgetMonths,
   categoryGroups,
+  fundEntries,
   incomeItems,
   lineItems,
   sinkingFunds,
@@ -11,8 +12,10 @@ import {
   transactionSplits,
 } from "../db/schema.js";
 import { loadBudget } from "./budget.js";
+import { rebuildAllEntries } from "./fundLedger.js";
+import { backfillMerchantKeys } from "./merchant.js";
 
-export const EXPORT_VERSION = 1;
+export const EXPORT_VERSION = 2; // 2 added fundEntries
 
 // Everything except the login and API keys
 export async function buildExport(db: Db) {
@@ -27,6 +30,7 @@ export async function buildExport(db: Db) {
     sinkingFunds: await db.select().from(sinkingFunds).orderBy(asc(sinkingFunds.id)),
     transactions: await db.select().from(transactions).orderBy(asc(transactions.id)),
     transactionSplits: await db.select().from(transactionSplits).orderBy(asc(transactionSplits.id)),
+    fundEntries: await db.select().from(fundEntries).orderBy(asc(fundEntries.id)),
   };
 }
 
@@ -116,7 +120,7 @@ export async function budgetCsv(db: Db, year?: number, month?: number) {
 const rows = z.array(z.record(z.string(), z.unknown()));
 export const importSchema = z.object({
   app: z.literal("Cory's Dollar"),
-  exportVersion: z.literal(EXPORT_VERSION),
+  exportVersion: z.union([z.literal(1), z.literal(2)]),
   months: rows,
   incomeItems: rows,
   groups: rows,
@@ -124,6 +128,7 @@ export const importSchema = z.object({
   sinkingFunds: rows,
   transactions: rows,
   transactionSplits: rows,
+  fundEntries: rows.optional(), // missing in version 1 files: rebuilt from links
 });
 export type ImportData = z.infer<typeof importSchema>;
 
@@ -150,6 +155,7 @@ const TABLES = [
   "line_items",
   "transactions",
   "transaction_splits",
+  "fund_entries",
 ];
 
 // Replaces ALL budget data with the backup's contents (the login and API keys are kept).
@@ -164,12 +170,15 @@ export async function importData(db: Db, data: ImportData) {
     await insertChunks(tx, lineItems, data.lineItems);
     await insertChunks(tx, transactions, data.transactions);
     await insertChunks(tx, transactionSplits, data.transactionSplits);
+    if (data.fundEntries) await insertChunks(tx, fundEntries, data.fundEntries);
     // New rows should get ids after the restored ones
     for (const t of TABLES) {
       await tx.execute(
         sql.raw(`select setval(pg_get_serial_sequence('${t}', 'id'), coalesce((select max(id) from ${t}), 0) + 1, false)`)
       );
     }
+    if (!data.fundEntries) await rebuildAllEntries(tx as unknown as Db);
+    await backfillMerchantKeys(tx as unknown as Db); // older backups have no merchant keys
   });
   return {
     months: data.months.length,

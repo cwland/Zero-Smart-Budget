@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { api, type Budget, type Transaction, type TransactionInput } from "../api";
+import { api, type Budget, type Suggestion, type Transaction, type TransactionInput } from "../api";
 import { defaultDateFor, monthBounds } from "../dates";
 import { centsToInput, formatCents, parseMoney } from "../money";
 import { ChevronLeft, Trash } from "./Icons";
@@ -26,6 +26,9 @@ interface Props {
   onCancel: () => void;
 }
 
+const suggestionTarget = (s: Suggestion | null | undefined): Target =>
+  !s ? "" : s.lineItemId ? `l:${s.lineItemId}` : s.incomeItemId ? `i:${s.incomeItemId}` : "";
+
 const targetOf = (s: { lineItemId: number | null; incomeItemId: number | null }): Target =>
   s.lineItemId ? `l:${s.lineItemId}` : s.incomeItemId ? `i:${s.incomeItemId}` : "";
 
@@ -46,7 +49,14 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
   const [date, setDate] = useState(existing?.date ?? defaultDateFor(ym));
   const [merchant, setMerchant] = useState(existing?.merchant ?? "");
   const [note, setNote] = useState(existing?.note ?? "");
-  const [target, setTarget] = useState<Target>(existingTargets.length === 1 ? existingTargets[0] : preset?.target ?? "");
+  // Starting item: the transaction's own item, else the item it was opened from, else last time's item
+  const initialTarget: Target =
+    existingTargets.length === 1 ? existingTargets[0] : preset?.target ? preset.target : suggestionTarget(existing?.suggestion);
+  const [target, setTarget] = useState<Target>(initialTarget);
+  // Once the user picks an item themselves, stop auto-picking from merchant history
+  const [targetTouched, setTargetTouched] = useState((!!existing && existingTargets.length > 0) || !!preset?.target);
+  const [autoPicked, setAutoPicked] = useState<string | null>(existing?.suggestion && existingTargets.length === 0 ? existing.suggestion.itemName : null);
+  const [merchantOptions, setMerchantOptions] = useState<string[]>([]);
   const [splitMode, setSplitMode] = useState((existing?.splits.length ?? 0) > 1);
   const [splits, setSplits] = useState<SplitDraft[]>(
     existing && existing.splits.length > 1
@@ -57,6 +67,35 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Autocomplete merchants you've used before
+  useEffect(() => {
+    const q = merchant.trim();
+    const timer = setTimeout(() => {
+      api<string[]>("GET", `/api/merchants?q=${encodeURIComponent(q)}&limit=8`)
+        .then((list) => setMerchantOptions(list.filter((m) => m !== merchant)))
+        .catch(() => setMerchantOptions([]));
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [merchant]);
+
+  // Pick the item this merchant went to last time (until the user picks one themselves)
+  useEffect(() => {
+    if (targetTouched || splitMode || merchant.trim().length < 2) return;
+    const timer = setTimeout(() => {
+      const cents = parseMoney(amount);
+      api<{ suggestion: Suggestion | null }>(
+        "GET",
+        `/api/transactions/suggest?merchant=${encodeURIComponent(merchant)}&date=${date}&type=${type}${cents ? `&amountCents=${cents}` : ""}`
+      )
+        .then(({ suggestion }) => {
+          setTarget(suggestionTarget(suggestion));
+          setAutoPicked(suggestion ? suggestion.itemName : null);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [merchant, date, type, amount, targetTouched, splitMode]);
+
   // Clear an old error as soon as the user changes something
   useEffect(() => setError(""), [amount, splits, target, type, merchant]);
 
@@ -65,20 +104,29 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
   const leftToSplit = (totalCents ?? 0) - splitSum;
 
   // Item choices for the picker, grouped like the budget
-  const options = useMemo(
-    () =>
-      type === "income"
-        ? [{ label: "Income", items: budget.income.map((i) => ({ value: `i:${i.id}`, name: i.name })) }]
-        : budget.groups.map((g) => ({ label: g.name, items: g.items.map((i) => ({ value: `l:${i.id}`, name: i.name })) })),
-    [budget, type]
-  );
+  // Expenses go to budget items. Income goes to income items, or to a budget item as money back
+  // (a refund, or the incoming side of a transfer into a sinking fund).
+  const options = useMemo(() => {
+    const favs = budget.groups.flatMap((g) => g.items.filter((i) => i.favorite)).map((i) => ({ value: `l:${i.id}`, name: i.name }));
+    const groups = [
+      ...(favs.length ? [{ label: type === "income" ? "★ Favorites (money back)" : "★ Favorites", items: favs }] : []),
+      ...budget.groups.map((g) => ({
+        label: type === "income" ? `${g.name} (money back)` : g.name,
+        items: g.items.map((i) => ({ value: `l:${i.id}`, name: i.name })),
+      })),
+    ];
+    return type === "income" ? [{ label: "Income", items: budget.income.map((i) => ({ value: `i:${i.id}`, name: i.name })) }, ...groups] : groups;
+  }, [budget, type]);
+  const isMoneyBack = (t: Target) => type === "income" && t.startsWith("l:");
 
   function switchType(t: "expense" | "income") {
     if (t === type) return;
     setType(t);
-    // Expense items and income items can't mix, so clear any picks
-    setTarget("");
-    setSplits((s) => s.map((x) => ({ ...x, target: "" })));
+    // Expenses can't go to income items, so clear those picks (budget items are fine either way)
+    if (t === "expense") {
+      setTarget((cur) => (cur.startsWith("i:") ? "" : cur));
+      setSplits((s) => s.map((x) => (x.target.startsWith("i:") ? { ...x, target: "" } : x)));
+    }
   }
 
   function startSplit() {
@@ -144,7 +192,7 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
 
   const picker = (value: Target, onChange: (v: Target) => void, aria: string) => (
     <select aria-label={aria} value={value} onChange={(e) => onChange(e.target.value)} className={`${field} ${value ? "" : "text-muted"}`}>
-      <option value="">{type === "income" ? "Choose income item" : "Choose budget item"}</option>
+      <option value="">{type === "income" ? "Choose income or budget item" : "Choose budget item"}</option>
       {options.map((g) => (
         <optgroup key={g.label} label={g.label}>
           {g.items.map((i) => (
@@ -212,14 +260,45 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
         </label>
         <label className={label}>
           {type === "income" ? "From" : "Merchant"}
-          <input aria-label="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder={type === "income" ? "Employer" : "Where?"} className={`${field} mt-1`} />
+          <input
+            aria-label="Merchant"
+            list="merchant-options"
+            autoComplete="off"
+            value={merchant}
+            onChange={(e) => setMerchant(e.target.value)}
+            placeholder={type === "income" ? "Employer" : "Where?"}
+            className={`${field} mt-1`}
+          />
+          <datalist id="merchant-options">
+            {merchantOptions.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
         </label>
       </div>
 
       {!splitMode ? (
         <div>
-          <span className={label}>{type === "income" ? "Income item" : "Budget item"}</span>
-          <div className="mt-1">{picker(target, setTarget, "Budget item")}</div>
+          <span className={label}>{type === "income" ? "Income or budget item" : "Budget item"}</span>
+          <div className="mt-1">
+            {picker(
+              target,
+              (v) => {
+                setTarget(v);
+                setTargetTouched(true);
+                setAutoPicked(null);
+              },
+              "Budget item"
+            )}
+          </div>
+          {autoPicked && target && (
+            <p role="status" className="mt-1 text-sm text-success">
+              Picked <strong>{autoPicked}</strong> based on last time.
+            </p>
+          )}
+          {isMoneyBack(target) && (
+            <p className="mt-1 text-sm text-subtle">Counts as money back on this item, like a refund or a transfer back into a fund. It lowers what's spent; it isn't income.</p>
+          )}
           <button type="button" onClick={startSplit} className="mt-2 text-sm font-semibold text-link hover:underline">
             Split
           </button>

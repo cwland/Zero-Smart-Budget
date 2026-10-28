@@ -5,6 +5,7 @@ import type { Db } from "../db/index.js";
 import { budgetMonths, categoryGroups, incomeItems, lineItems, sinkingFunds } from "../db/schema.js";
 import { loadBudget, nextSortOrder } from "../lib/budget.js";
 import { STARTER_GROUPS, STARTER_INCOME } from "../lib/template.js";
+import { syncLineItem } from "../lib/fundLedger.js";
 import { monthIndex } from "../lib/calc.js";
 import { badRequest, HttpError, notFound } from "../lib/errors.js";
 import { cents, idList, idParam, name, yearMonthParams } from "../lib/validation.js";
@@ -132,12 +133,23 @@ export default async function budgetRoutes(app: FastifyInstance) {
               plannedCents: i.plannedCents,
               sortOrder: i.sortOrder,
               sinkingFundId: i.sinkingFundId,
+              favorite: i.favorite,
             }))
           );
         }
       }
       return created.id;
     });
+
+    // Copied items that are linked to sinking funds add this month's money to them
+    if (mode === "copy") {
+      const linked = await db
+        .select({ id: lineItems.id })
+        .from(lineItems)
+        .innerJoin(categoryGroups, eq(lineItems.groupId, categoryGroups.id))
+        .where(and(eq(categoryGroups.monthId, newId), sql`${lineItems.sinkingFundId} is not null`));
+      for (const l of linked) await syncLineItem(db, l.id);
+    }
 
     return reply.status(201).send({ exists: true, ...(await loadBudget(db, newId)) });
   });
@@ -243,6 +255,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
       .insert(lineItems)
       .values({ groupId: id, name: body.name, plannedCents: body.plannedCents, sinkingFundId: body.sinkingFundId ?? null, sortOrder })
       .returning();
+    await syncLineItem(db, row.id);
     return reply.status(201).send(row);
   });
 
@@ -255,6 +268,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
         plannedCents: cents.optional(),
         sinkingFundId: z.number().int().positive().nullable().optional(),
         groupId: z.number().int().positive().optional(),
+        favorite: z.boolean().optional(),
       })
       .parse(req.body);
 
@@ -266,6 +280,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
       name: body.name,
       plannedCents: body.plannedCents,
       sinkingFundId: body.sinkingFundId,
+      favorite: body.favorite,
     };
     if (body.groupId !== undefined && body.groupId !== item.groupId) {
       const [from, to] = [await requireGroup(db, item.groupId), await requireGroup(db, body.groupId)];
@@ -274,6 +289,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
       changes.sortOrder = await nextSortOrder(db, lineItems, eq(lineItems.groupId, to.id));
     }
     const [row] = await db.update(lineItems).set(changes).where(eq(lineItems.id, id)).returning();
+    await syncLineItem(db, id);
     return row;
   });
 

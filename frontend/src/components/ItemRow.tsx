@@ -24,6 +24,7 @@ interface Props {
   selected?: boolean;
   onSelect?: () => void;
   sortableId: string;
+  sortable?: boolean; // false for the Favorites card (reorder items in their own group)
 }
 
 export function ProgressBar({ actual, planned }: { actual: number; planned: number }) {
@@ -40,11 +41,11 @@ export function secondValue(row: { plannedCents: number; actualCents: number }, 
   return column === "actual" ? row.actualCents : row.plannedCents - row.actualCents;
 }
 
-export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId }: Props) {
+export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId, sortable = true }: Props) {
   const amountRef = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState(false);
   const second = secondValue(row, column);
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId, disabled: !sortable });
 
   return (
     <div
@@ -56,7 +57,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
         if (!(e.target as HTMLElement).closest("input,button,select")) onSelect?.();
       }}
     >
-      <button
+      {sortable && <button
         ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
@@ -64,7 +65,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
         className="absolute left-0 top-1/2 flex h-10 w-4 -translate-y-1/2 cursor-grab touch-none items-center justify-center text-muted opacity-40 hover:text-ink focus:opacity-100 active:cursor-grabbing sm:left-1 sm:w-5 sm:opacity-0 sm:group-hover/row:opacity-100"
       >
         <GripIcon />
-      </button>
+      </button>}
       <div className="flex items-center gap-2 py-3">
         <div className="flex min-w-0 flex-1 flex-col">
           <InlineText

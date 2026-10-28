@@ -59,7 +59,6 @@ describe("transactions", () => {
     const bad = [
       { date: "2026-10-05", merchant: "A", amountCents: 100, splits: [{ lineItemId: ids.groceries, amountCents: 99 }] },
       { date: "2026-10-05", merchant: "A", amountCents: 100, splits: [{ incomeItemId: ids.pay, amountCents: 100 }] },
-      { date: "2026-10-05", merchant: "A", amountCents: 100, type: "income", splits: [{ lineItemId: ids.rent, amountCents: 100 }] },
       { date: "2026-11-05", merchant: "A", amountCents: 100, splits: [{ lineItemId: ids.groceries, amountCents: 100 }] },
       { date: "2026-10-05", merchant: "A", amountCents: 100, splits: [{ lineItemId: 99999, amountCents: 100 }] },
       { date: "2026-10-05", merchant: "A", amountCents: 100, splits: [{ lineItemId: ids.rent, incomeItemId: ids.pay, amountCents: 100 }] },
@@ -117,5 +116,30 @@ describe("transactions", () => {
     b = await budget();
     expect(item(b, ids.household).spentCents).toBe(0);
     expect((await t.api("GET", `/api/transactions/${created.id}`)).status).toBe(404);
+  });
+
+  it("income on a budget item is money back: it lowers spent but isn't income", async () => {
+    await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Target", amountCents: 8000, splits: [{ lineItemId: ids.household, amountCents: 8000 }] });
+    const refund = await t.api("POST", "/api/transactions", { date: "2026-10-09", merchant: "Target refund", amountCents: 2500, type: "income", splits: [{ lineItemId: ids.household, amountCents: 2500 }] });
+    expect(refund.status).toBe(201);
+    const b = await budget();
+    expect(item(b, ids.household)).toMatchObject({ spentCents: 5500, remainingCents: 4500 });
+    expect(b.totals).toMatchObject({ spentCents: 5500, incomeReceivedCents: 0, leftToBudgetCents: 80000 });
+  });
+
+  it("an income transaction can be split between a paycheck and money back", async () => {
+    await t.api("POST", "/api/transactions", {
+      date: "2026-10-15", merchant: "Employer", amountCents: 151000, type: "income",
+      splits: [{ incomeItemId: ids.pay, amountCents: 150000 }, { lineItemId: ids.groceries, amountCents: 1000 }],
+    });
+    const b = await budget();
+    expect(b.income[0].receivedCents).toBe(150000);
+    expect(item(b, ids.groceries).spentCents).toBe(-1000);
+    expect(item(b, ids.groceries).remainingCents).toBe(61000);
+  });
+
+  it("expenses still can't go to income items", async () => {
+    const res = await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "A", amountCents: 100, splits: [{ incomeItemId: ids.pay, amountCents: 100 }] });
+    expect(res.status).toBe(400);
   });
 });

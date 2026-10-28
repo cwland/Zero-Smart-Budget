@@ -128,3 +128,22 @@ describe("income, groups and items", () => {
     expect((await t.api("PATCH", `/api/items/${rent.id}`, { groupId: novGroup.id })).status).toBe(400);
   });
 });
+
+describe("favorites", () => {
+  it("star an item; it stays in its group, is flagged in the budget, and carries to copied months", async () => {
+    const { food, groceries, rent } = await makeOctober();
+    expect((await t.api("PATCH", `/api/items/${groceries.id}`, { favorite: true })).body.favorite).toBe(true);
+    await t.api("PATCH", `/api/items/${rent.id}`, { favorite: true });
+    let b = (await t.api("GET", "/api/months/2026/10")).body;
+    const all = b.groups.flatMap((g: any) => g.items);
+    expect(all.filter((i: any) => i.favorite).map((i: any) => i.name)).toEqual(["Rent", "Groceries"]);
+    expect(b.groups.find((g: any) => g.id === food.id).items[0]).toMatchObject({ name: "Groceries", favorite: true });
+
+    const nov = (await t.api("POST", "/api/months/2026/11", { mode: "copy" })).body;
+    expect(nov.groups.flatMap((g: any) => g.items).filter((i: any) => i.favorite).map((i: any) => i.name)).toEqual(["Rent", "Groceries"]);
+
+    await t.api("PATCH", `/api/items/${groceries.id}`, { favorite: false });
+    b = (await t.api("GET", "/api/months/2026/10")).body;
+    expect(b.groups.flatMap((g: any) => g.items).filter((i: any) => i.favorite).map((i: any) => i.name)).toEqual(["Rent"]);
+  });
+});

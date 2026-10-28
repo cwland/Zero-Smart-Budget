@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import BudgetPage from "./BudgetPage";
 import FundsPage from "./FundsPage";
 import SettingsPage from "./SettingsPage";
-import { BudgetIcon, GearIcon, Logo, LogoutIcon, PiggyIcon } from "./Icons";
+import AccountMenu from "./AccountMenu";
+import DevResetButton from "./DevReset"; // TEMPORARY testing tool
+import { BudgetIcon, GearIcon, Logo, PiggyIcon } from "./Icons";
 
 type Page = "budget" | "funds" | "settings";
 const pageFromHash = (): Page => {
-  const h = window.location.hash.replace("#/", "");
+  const h = window.location.hash.replace("#/", "").split("/")[0];
   return h === "funds" || h === "settings" ? h : "budget";
 };
 
@@ -16,13 +18,7 @@ const PAGES: { id: Page; label: string; icon: JSX.Element }[] = [
   { id: "settings", label: "Settings", icon: <GearIcon /> },
 ];
 
-interface Props {
-  username: string;
-  onLogout: () => void;
-}
-
-export default function AppShell({ username, onLogout }: Props) {
-  const initials = username.slice(0, 2).toUpperCase();
+export default function AppShell() {
   const [page, setPage] = useState<Page>(pageFromHash);
 
   useEffect(() => {
@@ -33,7 +29,7 @@ export default function AppShell({ username, onLogout }: Props) {
   return (
     <div className="flex min-h-screen bg-page">
       {/* Left icon nav */}
-      <nav className="sticky top-0 hidden h-screen w-14 shrink-0 flex-col items-center bg-white py-4 sm:flex">
+      <nav className="sticky top-0 z-40 hidden h-screen w-14 shrink-0 flex-col items-center bg-white py-4 sm:flex">
         <Logo className="size-8" />
         <div className="mt-8 flex flex-col gap-2">
           {PAGES.map((p) => (
@@ -49,13 +45,9 @@ export default function AppShell({ username, onLogout }: Props) {
             </a>
           ))}
         </div>
-        <div className="mt-auto flex flex-col items-center gap-3">
-          <button onClick={onLogout} aria-label="Sign out" title="Sign out" className="flex size-10 items-center justify-center rounded-lg text-subtle hover:bg-page">
-            <LogoutIcon />
-          </button>
-          <div title={username} className="flex size-9 items-center justify-center rounded-full bg-page text-xs font-semibold text-ink">
-            {initials}
-          </div>
+        <div className="mt-auto flex flex-col items-center gap-2">
+          <DevResetButton /> {/* TEMPORARY testing tool */}
+          <AccountMenu variant="rail" />
         </div>
       </nav>
 
@@ -77,10 +69,7 @@ export default function AppShell({ username, onLogout }: Props) {
             {p.label}
           </a>
         ))}
-        <button onClick={onLogout} aria-label="Sign out" className="flex flex-col items-center text-xs text-subtle">
-          <LogoutIcon />
-          Sign out
-        </button>
+        <AccountMenu variant="bar" />
       </nav>
     </div>
   );

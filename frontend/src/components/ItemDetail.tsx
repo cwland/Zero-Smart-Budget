@@ -1,6 +1,7 @@
 import type { Budget, Transaction } from "../api";
 import { formatCents } from "../money";
 import { ChevronLeft } from "./Icons";
+import { api } from "../api";
 import FundLink from "./FundLink";
 import { ProgressBar } from "./ItemRow";
 import { TransactionRow } from "./TransactionList";
@@ -23,6 +24,7 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
   let planned = 0;
   let actual = 0;
   let fund: Budget["groups"][number]["items"][number]["sinkingFund"] = null;
+  let favorite = false;
 
   if (item.type === "income") {
     const i = budget.income.find((x) => x.id === item.id);
@@ -33,7 +35,7 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
     for (const g of budget.groups) {
       const i = g.items.find((x) => x.id === item.id);
       if (i) {
-        ({ name, plannedCents: planned, spentCents: actual, sinkingFund: fund } = i);
+        ({ name, plannedCents: planned, spentCents: actual, sinkingFund: fund, favorite } = i);
         groupName = g.name;
       }
     }
@@ -63,10 +65,26 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
         <button onClick={onClose} aria-label="Back to summary" className="rounded p-1 text-action hover:bg-pressed">
           <ChevronLeft className="size-5" />
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-wide text-subtle">{groupName}</div>
           <h2 className="truncate text-lg font-semibold">{name}</h2>
         </div>
+        {item.type === "line" && (
+          <button
+            onClick={async () => {
+              await api("PATCH", `/api/items/${item.id}`, { favorite: !favorite });
+              await onChanged();
+            }}
+            aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+            aria-pressed={favorite}
+            title={favorite ? "Remove from favorites" : "Add to favorites"}
+            className={`rounded-full p-2 hover:bg-page ${favorite ? "text-[#f5b301]" : "text-muted"}`}
+          >
+            <svg viewBox="0 0 24 24" className="size-6" fill={favorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} strokeLinejoin="round">
+              <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="mt-4 flex gap-2">
@@ -94,7 +112,7 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
               key={t.id}
               t={t}
               amountCents={share}
-              label={t.splits.length > 1 ? `Split · ${formatCents(t.amountCents)} total` : t.note || (item.type === "income" ? "Income" : "Expense")}
+              label={t.splits.length > 1 ? `Split · ${formatCents(t.amountCents)} total` : t.note || (item.type === "income" ? "Income" : t.type === "income" ? "Money back" : "Expense")}
               onOpen={() => onOpen(t)}
             />
           ))}

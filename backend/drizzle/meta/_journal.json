@@ -8,6 +8,41 @@
       "when": 1793128915191,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793137470732,
+      "tag": "0001_fund_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793138516351,
+      "tag": "0002_profile_sessions_resets",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793144177944,
+      "tag": "0003_app_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793145704006,
+      "tag": "0004_merchant_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793146943825,
+      "tag": "0005_favorites",
+      "breakpoints": true
     }
   ]
 }

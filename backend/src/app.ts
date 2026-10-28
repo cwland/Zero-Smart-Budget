@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
 import type { Db } from "./db/index.js";
-import { apiKeys } from "./db/schema.js";
+import { apiKeys, users } from "./db/schema.js";
 import { HttpError } from "./lib/errors.js";
 import { hashApiKey, verifyToken } from "./lib/auth.js";
 import authRoutes from "./routes/auth.js";
@@ -13,6 +13,10 @@ import budgetRoutes from "./routes/budget.js";
 import transactionRoutes from "./routes/transactions.js";
 import fundRoutes from "./routes/funds.js";
 import exportRoutes from "./routes/export.js";
+import profileRoutes from "./routes/profile.js";
+import settingsRoutes from "./routes/settings.js";
+import devResetRoutes from "./routes/devReset.js"; // TEMPORARY testing tool
+import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -20,6 +24,7 @@ declare module "fastify" {
     jwtSecret: string;
     backupDir: string;
     backupKeep: number;
+    mail: MailService;
   }
   interface FastifyRequest {
     auth?: { method: "token"; userId: number } | { method: "apiKey"; keyId: number };
@@ -32,6 +37,8 @@ export interface AppOptions {
   logger?: boolean;
   backupDir?: string;
   backupKeep?: number;
+  emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
+  mailTransport?: TransportFactory; // tests swap in a fake
 }
 
 // Backups go in <repo>/backups unless BACKUP_DIR says otherwise
@@ -43,9 +50,11 @@ const PUBLIC_ROUTES = new Set([
   "GET /api/auth/status",
   "POST /api/auth/setup",
   "POST /api/auth/login",
+  "POST /api/auth/forgot",
+  "POST /api/auth/reset",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30 }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -55,6 +64,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.decorate("jwtSecret", jwtSecret);
   app.decorate("backupDir", backupDir);
   app.decorate("backupKeep", backupKeep);
+  app.decorate("mail", new MailService(db, jwtSecret, emailEnv, mailTransport));
 
   // Every /api route needs a login token or an API key, except the public ones
   app.addHook("onRequest", async (req) => {
@@ -63,10 +73,14 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
 
     const header = req.headers.authorization;
     if (header?.startsWith("Bearer ")) {
-      const userId = verifyToken(header.slice(7), jwtSecret);
-      if (userId) {
-        req.auth = { method: "token", userId };
-        return;
+      const claims = verifyToken(header.slice(7), jwtSecret);
+      if (claims) {
+        // Tokens issued before the last "sign out everywhere" / password change no longer work
+        const [user] = await db.select({ tv: users.tokenVersion }).from(users).where(eq(users.id, claims.userId));
+        if (user && user.tv === claims.tokenVersion) {
+          req.auth = { method: "token", userId: claims.userId };
+          return;
+        }
       }
     }
 
@@ -112,6 +126,9 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(transactionRoutes);
   app.register(fundRoutes);
   app.register(exportRoutes);
+  app.register(profileRoutes);
+  app.register(settingsRoutes);
+  app.register(devResetRoutes); // TEMPORARY testing tool
 
   return app;
 }

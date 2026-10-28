@@ -39,12 +39,17 @@ export default function BudgetPage() {
   const [view, setView] = useState<PanelView>({ kind: "summary" });
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Every load gets a number; only the newest one may update the screen. Without this, a slow
+  // answer for the month you just left can arrive last and show the wrong month's budget.
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const [month, list, txs] = await Promise.all([
       api<MonthResponse>("GET", `/api/months/${ym.year}/${ym.month}`),
       api<YearMonth[]>("GET", "/api/months"),
       api<Transaction[]>("GET", `/api/transactions?year=${ym.year}&month=${ym.month}`),
     ]);
+    if (seq !== loadSeq.current) return;
     setData(month);
     setMonths(list);
     setTransactions(txs);
@@ -81,6 +86,7 @@ export default function BudgetPage() {
   );
 
   const budget = data?.exists ? (data as Budget) : null;
+  const favoriteItems = budget ? budget.groups.flatMap((g) => g.items.filter((i) => i.favorite)) : [];
 
   // ---------- drag to reorder ----------
   const sensors = useSensors(
@@ -220,6 +226,24 @@ export default function BudgetPage() {
               selectedId={selectedIncome}
               onSelect={(id) => showView({ kind: "item", item: { type: "income", id } })}
             />
+
+            {/* Favorites: starred items from any group (they stay in their own groups too) */}
+            {favoriteItems.length > 0 && !draggingGroup && (
+              <GroupCard
+                kind="expense"
+                favorites
+                title="Favorites"
+                rowPrefix="fav"
+                rows={favoriteItems.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund }))}
+                column={column}
+                onColumnChange={setColumn}
+                onAddItem={async () => {}}
+                onUpdateItem={(id, changes) => change(() => api("PATCH", `/api/items/${id}`, changes))}
+                onDeleteItem={(id) => change(() => api("DELETE", `/api/items/${id}`))}
+                selectedId={selectedLine}
+                onSelect={(id) => showView({ kind: "item", item: { type: "line", id } })}
+              />
+            )}
 
             <SortableContext items={budget.groups.map((g) => `group-${g.id}`)} strategy={verticalListSortingStrategy}>
             {budget.groups.map((g) => (

@@ -13,11 +13,11 @@ describe("login", () => {
   });
 
   it("first run requires setup, then setup is locked", async () => {
-    expect((await t.api("GET", "/api/auth/status")).body).toEqual({ setupRequired: true });
+    expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ setupRequired: true });
     const setup = await t.api("POST", "/api/auth/setup", { username: "cory", password: "password123" });
     expect(setup.status).toBe(200);
     expect(setup.body.token).toBeTruthy();
-    expect((await t.api("GET", "/api/auth/status")).body).toEqual({ setupRequired: false });
+    expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ setupRequired: false });
     const again = await t.api("POST", "/api/auth/setup", { username: "other", password: "password123" });
     expect(again.status).toBe(409);
   });
@@ -35,6 +35,15 @@ describe("login", () => {
     expect(ok.status).toBe(200);
     t.setToken(ok.body.token);
     expect((await t.api("GET", "/api/auth/me")).body.user.username).toBe("cory");
+  });
+
+  it("ignores capitalization in the username (but not the password)", async () => {
+    await t.login();
+    t.setToken("");
+    for (const username of ["Cory", "CORY", "  cOrY "]) {
+      expect((await t.api("POST", "/api/auth/login", { username, password: "password123" })).status).toBe(200);
+    }
+    expect((await t.api("POST", "/api/auth/login", { username: "Cory", password: "PASSWORD123" })).status).toBe(401);
   });
 
   it("rejects a bad token", async () => {
