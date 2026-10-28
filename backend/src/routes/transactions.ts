@@ -120,6 +120,9 @@ export default async function transactionRoutes(app: FastifyInstance) {
         month: z.coerce.number().int().min(1).max(12).optional(),
         unassigned: z.enum(["true", "false"]).optional(),
         lineItemId: z.coerce.number().int().positive().optional(),
+        // Search: every word must match the merchant, note, budget item or bank account;
+        // something like "12.50" or "$1,200" also matches that amount
+        q: z.string().trim().max(100).optional(),
       })
       .parse(req.query);
 
@@ -138,6 +141,20 @@ export default async function transactionRoutes(app: FastifyInstance) {
             sql`not exists (select 1 from ${transactionSplits} s where s.transaction_id = ${t.id} and (s.line_item_id is not null or s.income_item_id is not null))`
           );
         }
+        if (q.q) {
+          const like = (w: string) => `%${w.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
+          const wordMatches = q.q.split(/\s+/).filter(Boolean).map((w) => sql`(
+            ${t.merchant} ilike ${like(w)}
+            or coalesce(${t.note}, '') ilike ${like(w)}
+            or exists (select 1 from ${transactionSplits} s join ${lineItems} li on li.id = s.line_item_id where s.transaction_id = ${t.id} and li.name ilike ${like(w)})
+            or exists (select 1 from ${transactionSplits} s join ${incomeItems} ii on ii.id = s.income_item_id where s.transaction_id = ${t.id} and ii.name ilike ${like(w)})
+            or exists (select 1 from ${plaidAccounts} pa where pa.account_id = ${t.plaidAccountId} and pa.name ilike ${like(w)})
+          )`);
+          const text = and(...wordMatches);
+          const m = /^\$?(\d{1,3}(,\d{3})*|\d+)(\.\d{1,2})?$/.exec(q.q);
+          const amountCents = m ? Math.round(Number(q.q.replace(/[$,]/g, "")) * 100) : null;
+          filters.push(amountCents !== null ? sql`(${text} or ${t.amountCents} = ${amountCents})` : text);
+        }
         if (q.lineItemId) {
           filters.push(
             sql`exists (select 1 from ${transactionSplits} s where s.transaction_id = ${t.id} and s.line_item_id = ${q.lineItemId})`
@@ -146,10 +163,12 @@ export default async function transactionRoutes(app: FastifyInstance) {
         return and(...filters);
       },
       orderBy: [desc(transactions.date), desc(transactions.id)],
+      ...(q.q ? { limit: 300 } : {}),
       with: {
         splits: {
           columns: { id: true, lineItemId: true, incomeItemId: true, amountCents: true },
           orderBy: (s, { asc }) => [asc(s.id)],
+          with: { lineItem: { columns: { name: true } }, incomeItem: { columns: { name: true } } },
         },
       },
     });
@@ -164,7 +183,19 @@ export default async function transactionRoutes(app: FastifyInstance) {
           (await db.select({ accountId: plaidAccounts.accountId, name: plaidAccounts.name, mask: plaidAccounts.mask }).from(plaidAccounts).where(inArray(plaidAccounts.accountId, accountIds))).map((a) => [a.accountId, { name: a.name, mask: a.mask }])
         )
       : new Map<string, { name: string; mask: string | null }>();
-    return rows.map((r) => ({ ...r, suggestion: suggestions.get(r.id) ?? null, account: r.plaidAccountId ? accounts.get(r.plaidAccountId) ?? null : null }));
+    return rows.map((r) => ({
+      ...r,
+      // Each split carries its item's name, so a list spanning several months can label it
+      splits: r.splits.map(({ lineItem, incomeItem, ...sp }) => ({ ...sp, itemName: lineItem?.name ?? incomeItem?.name ?? null })),
+      suggestion: suggestions.get(r.id) ?? null,
+      account: r.plaidAccountId ? accounts.get(r.plaidAccountId) ?? null : null,
+    }));
+  });
+
+  // The earliest transaction date (the list offers "Load <month>" until it gets there)
+  app.get("/api/transactions/oldest", async () => {
+    const [row] = await db.select({ date: sql<string | null>`min(${transactions.date})` }).from(transactions);
+    return { date: row?.date ?? null };
   });
 
   // What would this merchant be assigned to? (used by the Add Transaction form)

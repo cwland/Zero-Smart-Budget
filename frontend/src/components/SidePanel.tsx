@@ -1,6 +1,6 @@
-import { useState } from "react";
-import type { Budget, Transaction } from "../api";
-import { isUnassigned } from "./budgetLookup";
+import { useEffect, useState } from "react";
+import { api, type Budget, type MonthResponse, type Transaction } from "../api";
+import { monthLabel } from "../dates";
 import ItemDetail, { type ItemRef } from "./ItemDetail";
 import TransactionForm, { type FormPreset } from "./TransactionForm";
 import TransactionList from "./TransactionList";
@@ -109,6 +109,42 @@ export function SummaryChart({ budget }: { budget: Budget }) {
   );
 }
 
+// The transaction editor offers the items of the transaction's own month. Opening one from an
+// earlier month (from the transactions list) loads that month's budget first.
+function FormForMonth(props: { budget: Budget; existing?: Transaction; preset?: FormPreset; onCancel: () => void; onSaved: () => void }) {
+  const { budget, existing } = props;
+  const ym = existing ? { year: Number(existing.date.slice(0, 4)), month: Number(existing.date.slice(5, 7)) } : { year: budget.year, month: budget.month };
+  const sameMonth = ym.year === budget.year && ym.month === budget.month;
+  const [other, setOther] = useState<MonthResponse | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (sameMonth) return;
+    api<MonthResponse>("GET", `/api/months/${ym.year}/${ym.month}`)
+      .then(setOther)
+      .catch((e) => setError((e as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sameMonth, ym.year, ym.month]);
+
+  if (sameMonth) return <TransactionForm {...props} />;
+  if (error) return <p role="alert" className="p-4 text-error">{error}</p>;
+  if (!other) return <p className="p-6 text-center text-subtle">Loading {monthLabel(ym)}…</p>;
+  if (!other.exists) {
+    return (
+      <div className="p-4">
+        <button onClick={props.onCancel} className="text-sm font-semibold text-action hover:underline">
+          ‹ Back
+        </button>
+        <p className="mt-4 font-semibold">{existing?.merchant}</p>
+        <p className="mt-2 text-subtle">
+          This transaction is in {monthLabel(ym)}, which has no budget yet. Create the {monthLabel(ym)} budget (use the arrows at the top) to assign it.
+        </p>
+      </div>
+    );
+  }
+  return <TransactionForm {...props} budget={other} />;
+}
+
 export type PanelView =
   | { kind: "summary" }
   | { kind: "transactions" }
@@ -118,13 +154,13 @@ export type PanelView =
 interface PanelProps {
   budget: Budget;
   transactions: Transaction[];
+  unassignedCount: number; // in every month
   view: PanelView;
   onView: (v: PanelView) => void;
   onChanged: () => Promise<void>;
 }
 
-export default function SidePanel({ budget, transactions, view, onView, onChanged }: PanelProps) {
-  const unassignedCount = transactions.filter(isUnassigned).length;
+export default function SidePanel({ budget, transactions, unassignedCount, view, onView, onChanged }: PanelProps) {
   const tabClass = (on: boolean) => `relative flex flex-1 justify-center rounded-md py-2 ${on ? "bg-white text-ink shadow-sm" : "text-action"}`;
   const openForm = (back: PanelView, existing?: Transaction, preset?: FormPreset) => onView({ kind: "form", existing, preset, back });
 
@@ -156,7 +192,7 @@ export default function SidePanel({ budget, transactions, view, onView, onChange
     );
   } else {
     content = (
-      <TransactionForm
+      <FormForMonth
         key={view.existing?.id ?? "new"}
         budget={budget}
         existing={view.existing}

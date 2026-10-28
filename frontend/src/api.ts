@@ -109,6 +109,7 @@ export interface TransactionSplit {
   lineItemId: number | null;
   incomeItemId: number | null;
   amountCents: number;
+  itemName?: string | null; // name of the item it's assigned to (any month)
 }
 
 export interface Transaction {

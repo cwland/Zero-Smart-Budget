@@ -36,6 +36,7 @@ export default function BudgetPage() {
   const [error, setError] = useState("");
   const [newGroupId, setNewGroupId] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [unassignedCount, setUnassignedCount] = useState(0); // across every month, for the $ tab badge
   const [view, setView] = useState<PanelView>({ kind: "summary" });
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +50,9 @@ export default function BudgetPage() {
       api<YearMonth[]>("GET", "/api/months"),
       api<Transaction[]>("GET", `/api/transactions?year=${ym.year}&month=${ym.month}`),
     ]);
+    const waiting = await api<Transaction[]>("GET", "/api/transactions?unassigned=true");
     if (seq !== loadSeq.current) return;
+    setUnassignedCount(waiting.length);
     setData(month);
     setMonths(list);
     setTransactions(txs);
@@ -296,7 +299,7 @@ export default function BudgetPage() {
           ref={panelRef}
           className="w-full scroll-mt-4 min-[1100px]:sticky min-[1100px]:top-4 min-[1100px]:mt-4 min-[1100px]:max-h-[calc(100vh-2rem)] min-[1100px]:w-[400px] min-[1100px]:self-start min-[1100px]:overflow-y-auto min-[1100px]:rounded-2xl"
         >
-          <SidePanel budget={budget} transactions={transactions} view={view} onView={showView} onChanged={load} />
+          <SidePanel budget={budget} transactions={transactions} unassignedCount={unassignedCount} view={view} onView={showView} onChanged={load} />
         </div>
       )}
     </div>

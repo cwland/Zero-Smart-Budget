@@ -143,3 +143,42 @@ describe("transactions", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("transaction list: search, item names, oldest", () => {
+  const add = (b: any) => t.api("POST", "/api/transactions", b);
+  beforeEach(async () => {
+    await add({ date: "2026-10-05", merchant: "Trader Joe's", amountCents: 4250, note: "party snacks", splits: [{ lineItemId: ids.groceries, amountCents: 4250 }] });
+    await add({ date: "2026-10-06", merchant: "Home Depot", amountCents: 120000, splits: [{ lineItemId: ids.household, amountCents: 120000 }] });
+    await add({ date: "2026-10-15", merchant: "ACME PAYROLL", amountCents: 300000, type: "income", splits: [{ incomeItemId: ids.pay, amountCents: 300000 }] });
+    await add({ date: "2026-08-02", merchant: "100% Pure_Juice", amountCents: 999 });
+  });
+  const search = async (q: string) => (await t.api("GET", `/api/transactions?q=${encodeURIComponent(q)}`)).body.map((r: any) => r.merchant);
+
+  it("each split carries its item's name", async () => {
+    const rows = (await t.api("GET", "/api/transactions?year=2026&month=10")).body;
+    expect(rows.map((r: any) => r.splits.map((s: any) => s.itemName))).toEqual([["Paycheck"], ["Household"], ["Groceries"]]);
+    expect(rows[0].splits[0]).not.toHaveProperty("incomeItem");
+  });
+
+  it("searches merchant, note, item and amount across all months", async () => {
+    expect(await search("trader")).toEqual(["Trader Joe's"]);
+    expect(await search("snacks")).toEqual(["Trader Joe's"]);
+    expect(await search("groceries")).toEqual(["Trader Joe's"]);
+    expect(await search("paycheck")).toEqual(["ACME PAYROLL"]);
+    expect(await search("home depot")).toEqual(["Home Depot"]);
+    expect(await search("depot home")).toEqual(["Home Depot"]); // words in any order
+    expect(await search("42.50")).toEqual(["Trader Joe's"]);
+    expect(await search("$1,200")).toEqual(["Home Depot"]);
+    expect(await search("9.99")).toEqual(["100% Pure_Juice"]);
+    expect(await search("100%")).toEqual(["100% Pure_Juice"]); // % and _ are literal, not wildcards
+    expect(await search("e_j")).toEqual(["100% Pure_Juice"]);
+    expect(await search("zzz")).toEqual([]);
+  });
+
+  it("knows the oldest transaction date", async () => {
+    expect((await t.api("GET", "/api/transactions/oldest")).body).toEqual({ date: "2026-08-02" });
+    await t.reset();
+    await t.login();
+    expect((await t.api("GET", "/api/transactions/oldest")).body).toEqual({ date: null });
+  });
+});
