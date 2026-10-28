@@ -13,15 +13,20 @@ afterAll(async () => t.close());
 const keys = { clientId: "client-123", env: "sandbox", sandboxSecret: "sand-secret-abc", productionSecret: "prod-secret-xyz" };
 
 describe("Plaid settings", () => {
-  it("starts empty, saves keys encrypted, and never returns the secrets", async () => {
+  it("starts empty, saves keys encrypted, returns them only to the signed-in Settings page", async () => {
     expect((await t.api("GET", "/api/settings/plaid")).body).toEqual({ settings: null });
     const saved = await t.api("PUT", "/api/settings/plaid", keys);
     expect(saved.status).toBe(200);
-    expect(saved.body.settings).toEqual({ clientId: "client-123", env: "sandbox", sandboxSecretSet: true, productionSecretSet: true, unreadable: false });
+    expect(saved.body.settings).toEqual({
+      clientId: "client-123", env: "sandbox", sandboxSecretSet: true, productionSecretSet: true,
+      sandboxSecret: "sand-secret-abc", productionSecret: "prod-secret-xyz", unreadable: false,
+    });
+    // Encrypted in the database
     const raw = JSON.stringify((await t.db.execute(sql`select value from app_settings where key = 'plaid'`)).rows);
     expect(raw).not.toContain("sand-secret-abc");
     expect(raw).not.toContain("prod-secret-xyz");
-    expect(JSON.stringify((await t.api("GET", "/api/settings/plaid")).body)).not.toContain("secret-");
+    // The signed-in Settings page gets them back (for the eye button)
+    expect((await t.api("GET", "/api/settings/plaid")).body.settings.sandboxSecret).toBe("sand-secret-abc");
   });
 
   it("blank secret keeps the saved one; empty string removes it", async () => {

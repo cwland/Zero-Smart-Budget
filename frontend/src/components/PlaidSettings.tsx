@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import { Card, Notice, field, primaryButton, secondaryButton } from "./settingsUi";
+import { EyeIcon, EyeOffIcon } from "./Icons";
 
 type Env = "sandbox" | "production";
 
@@ -9,6 +10,8 @@ interface Summary {
   env: Env;
   sandboxSecretSet: boolean;
   productionSecretSet: boolean;
+  sandboxSecret: string | null;
+  productionSecret: string | null;
   unreadable: boolean;
 }
 
@@ -22,8 +25,9 @@ export default function PlaidSettings() {
   const [loaded, setLoaded] = useState(false);
   const [clientId, setClientId] = useState("");
   const [env, setEnv] = useState<Env>("sandbox");
-  const [sandboxSecret, setSandboxSecret] = useState(""); // blank = keep the saved one
+  const [sandboxSecret, setSandboxSecret] = useState(""); // what's in the box (the saved secret, or a new one)
   const [productionSecret, setProductionSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<"" | "save" | "test" | "remove">("");
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -32,8 +36,9 @@ export default function PlaidSettings() {
     setSaved(s);
     setClientId(s?.clientId ?? "");
     setEnv(s?.env ?? "sandbox");
-    setSandboxSecret("");
-    setProductionSecret("");
+    setSandboxSecret(s?.sandboxSecret ?? "");
+    setProductionSecret(s?.productionSecret ?? "");
+    setShowSecret(false);
   }
 
   useEffect(() => {
@@ -43,12 +48,12 @@ export default function PlaidSettings() {
       .finally(() => setLoaded(true));
   }, []);
 
-  // Only send secrets that were typed (blank keeps the saved one)
+  // The boxes hold the real secrets, so send them as they are (an emptied box removes that secret)
   const body = () => ({
     clientId: clientId.trim(),
     env,
-    ...(sandboxSecret.trim() ? { sandboxSecret: sandboxSecret.trim() } : {}),
-    ...(productionSecret.trim() ? { productionSecret: productionSecret.trim() } : {}),
+    sandboxSecret: sandboxSecret.trim(),
+    productionSecret: productionSecret.trim(),
   });
 
   async function run(kind: "save" | "test" | "remove", fn: () => Promise<void>) {
@@ -87,20 +92,37 @@ export default function PlaidSettings() {
       setMsg({ ok: true, text: "Plaid keys removed" });
     });
 
-  const secretInput = (which: Env, value: string, set: (v: string) => void, isSet: boolean) => (
-    <label className="text-sm font-medium text-subtle">
-      {which === "sandbox" ? "Sandbox secret" : "Production secret"}
-      <input
-        aria-label={which === "sandbox" ? "Sandbox secret" : "Production secret"}
-        type="password"
-        autoComplete="off"
-        placeholder={isSet ? "Saved. Leave blank to keep it." : "Paste the secret from Plaid"}
-        value={value}
-        onChange={(e) => set(e.target.value)}
-        className={field}
-      />
-    </label>
-  );
+  // Masked secret with an eye button to show/hide it
+  const secretInput = (which: Env, value: string, set: (v: string) => void) => {
+    const label = which === "sandbox" ? "Sandbox secret" : "Production secret";
+    return (
+      <label className="block text-sm font-medium text-subtle">
+        {label}
+        <span className="relative mt-1 block">
+          <input
+            aria-label={label}
+            type={showSecret ? "text" : "password"}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="Paste the secret from Plaid"
+            value={value}
+            onChange={(e) => set(e.target.value)}
+            className={field + " !mt-0 pr-11 font-mono"}
+          />
+          <button
+            type="button"
+            onClick={() => setShowSecret((v) => !v)}
+            aria-label={showSecret ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+            aria-pressed={showSecret}
+            title={showSecret ? "Hide" : "Show"}
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r text-subtle hover:text-ink"
+          >
+            {showSecret ? <EyeOffIcon /> : <EyeIcon />}
+          </button>
+        </span>
+      </label>
+    );
+  };
 
   if (!loaded) return null;
 
@@ -113,7 +135,7 @@ export default function PlaidSettings() {
           <a href="https://dashboard.plaid.com/developers/keys" target="_blank" rel="noreferrer" className="text-action hover:underline">
             Plaid dashboard → Developers → Keys
           </a>
-          . Secrets are stored encrypted and never shown again.
+          . Secrets are stored encrypted; use the eye to show one.
         </>
       }
     >
@@ -145,8 +167,8 @@ export default function PlaidSettings() {
         {/* Only the secret for the environment picked above; the other one stays saved */}
         <div>
           {env === "sandbox"
-            ? secretInput("sandbox", sandboxSecret, setSandboxSecret, !!saved?.sandboxSecretSet)
-            : secretInput("production", productionSecret, setProductionSecret, !!saved?.productionSecretSet)}
+            ? secretInput("sandbox", sandboxSecret, setSandboxSecret)
+            : secretInput("production", productionSecret, setProductionSecret)}
           <p className="mt-1.5 text-sm text-subtle">
             {env === "sandbox"
               ? saved?.productionSecretSet

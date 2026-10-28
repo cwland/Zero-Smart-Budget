@@ -87,7 +87,8 @@ export class PlaidService {
     await this.db.delete(appSettings).where(eq(appSettings.key, "plaid"));
   }
 
-  // What the Settings page shows (never the secrets themselves)
+  // What the Settings page shows. The secrets are included (decrypted) so they can be revealed
+  // with the eye button; only the signed-in Settings page asks for them, never API keys.
   async summary() {
     const s = await this.stored();
     if (!s) return null;
@@ -98,6 +99,8 @@ export class PlaidService {
       env: s.env,
       sandboxSecretSet: !!s.sandboxSecretEnc,
       productionSecretSet: !!s.productionSecretEnc,
+      sandboxSecret: sandbox.value,
+      productionSecret: production.value,
       unreadable: sandbox.unreadable || production.unreadable, // JWT_SECRET changed: re-enter
     };
   }
