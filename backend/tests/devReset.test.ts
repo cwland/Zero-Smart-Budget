@@ -67,4 +67,31 @@ describe("testing reset", () => {
     await t.api("POST", "/api/dev/reset", { scope: "transactions", confirm: "RESET", reimportBank: true });
     expect((await t.db.execute(sql`select cursor from plaid_items`)).rows[0]).toEqual({ cursor: null });
   });
+
+  it("disconnect banks: removes them at Plaid and here; reset everything always does", async () => {
+    await t.api("PUT", "/api/settings/plaid", { clientId: "cid", env: "sandbox", sandboxSecret: "sbx" });
+    const removed: string[] = [];
+    t.plaid.respond = (path, body) => {
+      if (path === "/item/public_token/exchange") return { status: 200, json: { access_token: "acc-" + body.public_token, item_id: "item-" + body.public_token } };
+      if (path === "/accounts/get") return { status: 200, json: { accounts: [{ account_id: "a-" + body.access_token, name: "Chk", official_name: null, mask: body.access_token, type: "depository", subtype: "checking", balances: { current: 1, available: 1 } }], item: { institution_id: null } } };
+      if (path === "/item/remove") { removed.push(body.access_token); return { status: 200, json: {} }; }
+      return { status: 200, json: {} };
+    };
+    await t.api("POST", "/api/plaid/exchange", { publicToken: "one" });
+    // Clearing transactions alone keeps banks
+    await t.api("POST", "/api/dev/reset", { scope: "transactions", confirm: "RESET" });
+    expect((await t.api("GET", "/api/plaid/items")).body).toHaveLength(1);
+    const res = await t.api("POST", "/api/dev/reset", { scope: "budget", confirm: "RESET", disconnectBanks: true });
+    expect(res.body.disconnectedBanks).toBe(1);
+    expect(removed).toEqual(["acc-one"]);
+    expect((await t.api("GET", "/api/plaid/items")).body).toHaveLength(0);
+
+    await t.api("POST", "/api/plaid/exchange", { publicToken: "two" });
+    // Plaid failing doesn't stop the reset
+    t.plaid.down = true;
+    expect((await t.api("POST", "/api/dev/reset", { scope: "everything", confirm: "RESET" })).body.disconnectedBanks).toBe(1);
+    t.plaid.down = false;
+    await t.login();
+    expect((await t.api("GET", "/api/plaid/items")).body).toHaveLength(0);
+  });
 });

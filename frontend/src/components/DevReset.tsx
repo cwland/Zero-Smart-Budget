@@ -10,13 +10,15 @@ type Scope = "transactions" | "budget" | "everything";
 const OPTIONS: { id: Scope; title: string; detail: string }[] = [
   { id: "transactions", title: "Clear all transactions", detail: "Budgets, items and funds stay. Funds lose their spending history." },
   { id: "budget", title: "Reset all budget data", detail: "Deletes every month, transaction and fund. Your login, email settings and API keys stay." },
-  { id: "everything", title: "Reset everything", detail: "Also deletes your account and settings. The app goes back to first-run setup." },
+  { id: "everything", title: "Reset everything", detail: "Also deletes your account, settings and linked banks. The app goes back to first-run setup." },
 ];
 
 export function DevResetDialog({ onClose }: { onClose: () => void }) {
   const [scope, setScope] = useState<Scope>("transactions");
   const [confirm, setConfirm] = useState("");
   const [reimportBank, setReimportBank] = useState(false);
+  const [disconnectBanks, setDisconnectBanks] = useState(false);
+  const disconnecting = disconnectBanks || scope === "everything"; // "everything" always disconnects
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export function DevResetDialog({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError("");
     try {
-      const res = await api<{ backup: string }>("POST", "/api/dev/reset", { scope, confirm, reimportBank });
+      const res = await api<{ backup: string }>("POST", "/api/dev/reset", { scope, confirm, reimportBank: reimportBank && !disconnecting, disconnectBanks: disconnecting });
       setDone(res.backup);
       if (scope === "everything") setToken(null);
       setTimeout(() => {
@@ -69,6 +71,14 @@ export function DevResetDialog({ onClose }: { onClose: () => void }) {
                 </label>
               ))}
             </div>
+            <label className={`mt-3 flex items-start gap-2 text-sm ${scope === "everything" ? "" : "cursor-pointer"}`}>
+              <input type="checkbox" checked={disconnecting} disabled={scope === "everything"} onChange={(e) => setDisconnectBanks(e.target.checked)} className="mt-0.5" />
+              <span>
+                Disconnect linked banks
+                <span className="block text-subtle">Removes them from Plaid too, freeing up those connections.</span>
+              </span>
+            </label>
+            {!disconnecting && (
             <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
               <input type="checkbox" checked={reimportBank} onChange={(e) => setReimportBank(e.target.checked)} className="mt-0.5" />
               <span>
@@ -76,6 +86,7 @@ export function DevResetDialog({ onClose }: { onClose: () => void }) {
                 <span className="block text-subtle">Leave unticked to keep imported bank transactions gone.</span>
               </span>
             </label>
+            )}
             <p className="mt-3 text-sm text-subtle">A backup is saved automatically before anything is deleted.</p>
             <label className="mt-4 block text-sm font-medium text-subtle">
               Type <strong className="font-mono text-ink">RESET</strong> to confirm
