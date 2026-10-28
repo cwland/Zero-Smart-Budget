@@ -148,7 +148,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   // The config to test or list models with: typed values, with a blank key falling back to the saved one
   const aiConfigFrom = async (body: unknown): Promise<AiConfig> => {
-    const b = aiSettings.safeParse({ enabled: false, ...(body as object) });
+    const b = aiSettings.safeParse({ ...(body as object), enabled: false }); // testing/listing: the save-time checks (like "choose a model") don't apply
     if (!b.success) throw b.error;
     const v = b.data;
     const apiKey = v.apiKey === undefined || v.apiKey === null || v.apiKey === "" ? (await app.ai.savedKey()).key : v.apiKey;

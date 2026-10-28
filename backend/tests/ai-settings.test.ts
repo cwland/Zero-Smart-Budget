@@ -95,6 +95,9 @@ describe("AI settings", () => {
 
   it("lists models for the picker", async () => {
     t.ai.respond = fake;
+    // The form sends enabled: true and no model yet: listing must still work
+    expect((await t.api("POST", "/api/settings/ai/models", { enabled: true, provider: "openai", apiKey: "K", model: "" })).body.models).toEqual(["model-a", "model-b"]);
+    expect((await t.api("POST", "/api/settings/ai/test", { enabled: true, provider: "openai", apiKey: "K", model: "" })).body.error).toBe("Choose a model first");
     expect((await t.api("POST", "/api/settings/ai/models", { provider: "openai", apiKey: "K" })).body.models).toEqual(["model-a", "model-b"]);
     expect(t.ai.calls.at(-1)).toMatchObject({ method: "GET", url: "https://api.openai.com/v1/models" });
     expect((await t.api("POST", "/api/settings/ai/models", { provider: "gemini", apiKey: "K" })).body.models).toEqual(["gem-a", "gem-b"]);

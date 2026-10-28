@@ -15,6 +15,8 @@ import { monthDateRange } from "../lib/calc.js";
 import { syncTransaction } from "../lib/fundLedger.js";
 import { normalizeMerchant } from "../lib/merchant.js";
 import { assignToSuggestion, suggestFor } from "../lib/suggest.js";
+import { aiSuggestionsFor, autoSuggest, clearAiSuggestion, runAiSuggestions } from "../lib/aiSuggest.js";
+import { AiError } from "../lib/ai.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { idParam, isoDate, name, positiveCents } from "../lib/validation.js";
 
@@ -186,8 +188,11 @@ export default async function transactionRoutes(app: FastifyInstance) {
           (await db.select({ accountId: plaidAccounts.accountId, name: plaidAccounts.name, mask: plaidAccounts.mask }).from(plaidAccounts).where(inArray(plaidAccounts.accountId, accountIds))).map((a) => [a.accountId, { name: a.name, mask: a.mask }])
         )
       : new Map<string, { name: string; mask: string | null }>();
+    // AI guesses, only where history has nothing (history always wins)
+    const aiTips = await aiSuggestionsFor(db, unassigned.filter((r) => !suggestions.has(r.id)));
     return rows.map((r) => ({
       ...r,
+      aiSuggestion: aiTips.get(r.id) ?? null,
       // Each split carries its item's name, so a list spanning several months can label it
       splits: r.splits.map(({ lineItem, incomeItem, ...sp }) => ({ ...sp, itemName: lineItem?.name ?? incomeItem?.name ?? null })),
       suggestion: suggestions.get(r.id) ?? null,
@@ -238,11 +243,15 @@ export default async function transactionRoutes(app: FastifyInstance) {
     });
     const unassigned = rows.filter((r) => r.splits.every((sp) => !sp.lineItemId && !sp.incomeItemId));
     const suggestions = await suggestFor(db, unassigned);
+    const aiTips = await aiSuggestionsFor(db, unassigned.filter((r) => !suggestions.has(r.id)));
+    let assigned = 0;
     for (const r of unassigned) {
-      const s = suggestions.get(r.id);
-      if (s) await assignToSuggestion(db, r.id, r.amountCents, s);
+      const s = suggestions.get(r.id) ?? aiTips.get(r.id); // history first, then the AI's guess
+      if (!s) continue;
+      await assignToSuggestion(db, r.id, r.amountCents, s);
+      assigned++;
     }
-    return [...suggestions.keys()].length;
+    return assigned;
   }
 
   app.post("/api/transactions/:id/accept-suggestion", async (req) => {
@@ -250,6 +259,23 @@ export default async function transactionRoutes(app: FastifyInstance) {
     if (!(await loadTransaction(db, id))) throw notFound("Transaction");
     if ((await acceptSuggestions([id])) === 0) throw badRequest("No suggestion for this transaction");
     return loadTransaction(db, id);
+  });
+
+  // Ask the AI about these transactions (or all that need it). force: ask again.
+  app.post("/api/transactions/ai-suggest", async (req) => {
+    const body = z.object({ ids: z.array(z.number().int().positive()).max(1000).optional(), force: z.boolean().optional() }).parse(req.body ?? {});
+    try {
+      return await runAiSuggestions(db, app.ai, body);
+    } catch (e) {
+      if (e instanceof AiError) throw badRequest(e.message);
+      throw e;
+    }
+  });
+
+  // Whether AI suggestions are on (the transactions list shows Ask AI buttons when they are)
+  app.get("/api/ai/status", async () => {
+    const c = await app.ai.active();
+    return { enabled: !!c, mode: c?.mode ?? null };
   });
 
   app.post("/api/transactions/accept-suggestions", async (req) => {
@@ -288,6 +314,7 @@ export default async function transactionRoutes(app: FastifyInstance) {
         autoAssigned = true;
       }
     }
+    if (!autoAssigned && !input.splits.length) autoSuggest(db, app.ai, req.log); // AI looks at it in the background (auto mode)
     return reply.status(201).send({ ...(await loadTransaction(db, id)), autoAssigned });
   });
 
@@ -298,6 +325,9 @@ export default async function transactionRoutes(app: FastifyInstance) {
     const existing = await loadTransaction(db, id);
     if (!existing) throw notFound("Transaction");
     if (existing.deletedAt) throw badRequest("This transaction is deleted. Restore it first.");
+    if (existing.aiSuggestion && (existing.merchant !== input.merchant || existing.type !== input.type || existing.date.slice(0, 7) !== input.date.slice(0, 7))) {
+      await clearAiSuggestion(db, id); // its guess was about the old details
+    }
     await validateSplits(db, input);
     await db.transaction(async (tx) => {
       const { splits, autoAssign: _a, ...fields } = input;

@@ -150,6 +150,9 @@ export const transactions = pgTable(
     // Deleted transactions wait in the Deleted tab and can be restored. Their budget assignment is
     // set aside here (so budgets, funds and suggestions stop counting them) and put back on restore.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    // The AI's guess for an unassigned transaction with no history (never assigned automatically).
+    // none: true means the AI looked and found no good fit, so it isn't asked again.
+    aiSuggestion: jsonb("ai_suggestion").$type<{ lineItemId?: number; incomeItemId?: number; none?: boolean; reason?: string; model: string; at: string }>(),
     deletedSplits: jsonb("deleted_splits").$type<{ lineItemId: number | null; incomeItemId: number | null; amountCents: number }[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

@@ -62,6 +62,7 @@ export function TransactionRow({
   trailing,
   draggable,
   hidePending,
+  leading,
 }: {
   t: Transaction;
   label: string;
@@ -71,6 +72,7 @@ export function TransactionRow({
   trailing?: React.ReactNode;
   draggable?: boolean; // can be dragged onto a budget item
   hidePending?: boolean; // in the Pending tab every row is pending, so no tag
+  leading?: React.ReactNode; // e.g. a checkbox, left of the date
 }) {
   const toneClass = tone === "item" ? "text-action" : tone === "warning" ? "font-medium text-warning" : "text-subtle";
   return (
@@ -85,7 +87,8 @@ export function TransactionRow({
       }}
       onDragEnd={() => setDraggedTransaction(null)}
     >
-      <button onClick={onOpen} className="flex w-full min-w-0 items-center gap-3 px-2 py-2.5 text-left">
+      {leading && <span className="absolute left-1 top-1/2 -translate-y-1/2">{leading}</span>}
+      <button onClick={onOpen} className={`flex w-full min-w-0 items-center gap-3 py-2.5 pr-2 text-left ${leading ? "pl-8" : "pl-2"}`}>
         <DateBadge iso={t.date} pending={t.pending} />
         <span className="sr-only">{shortDate(t.date)}</span>
         <span className="min-w-0 flex-1">
@@ -106,24 +109,53 @@ export function TransactionRow({
 }
 
 // An unassigned transaction, with a dashed "+ Groceries" chip when we can guess the item
-function UnassignedRow({ t, onOpen, onAccept, busy, draggable }: { t: Transaction; onOpen: () => void; onAccept: () => void; busy: boolean; draggable: boolean }) {
+// Chip colors: blue dashed = learned from your history; purple with a sparkle = the AI's guess
+const HISTORY_CHIP = "border-action/70 text-action";
+const AI_CHIP = "border-[#7c4dff]/70 text-[#6a3de8]";
+
+function UnassignedRow({
+  t,
+  onOpen,
+  onAccept,
+  onAskAi,
+  busy,
+  draggable,
+  selected,
+  onToggle,
+}: {
+  t: Transaction;
+  onOpen: () => void;
+  onAccept: () => void;
+  onAskAi?: () => void; // shown when AI is on and there's no suggestion yet
+  busy: boolean;
+  draggable: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const s = t.suggestion;
+  const a = !s ? t.aiSuggestion : null;
+  const chip = s ?? a;
   return (
     <TransactionRow
       t={t}
       label={accountText(t)}
       onOpen={onOpen}
       draggable={draggable}
+      leading={<input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${t.merchant}`} className="size-4 cursor-pointer accent-[#0073b9]" />}
       trailing={
-        s ? (
+        chip ? (
           <button
             onClick={onAccept}
             disabled={busy}
-            title={`Assign to ${s.groupName} › ${s.itemName}`}
-            aria-label={`Assign ${t.merchant} to ${s.itemName}`}
-            className="block max-w-[9rem] truncate rounded-full border-2 border-dashed border-action/70 bg-white px-3 py-0.5 text-sm font-semibold text-action hover:border-solid hover:bg-pressed disabled:opacity-50"
+            title={a ? `AI guess: ${a.groupName} › ${a.itemName}${a.reason ? ` (${a.reason})` : ""}` : `From your history: ${chip.groupName} › ${chip.itemName}`}
+            aria-label={`Assign ${t.merchant} to ${chip.itemName}${a ? " (AI suggestion)" : ""}`}
+            className={`block max-w-[9rem] truncate rounded-full border-2 border-dashed bg-white px-3 py-0.5 text-sm font-semibold hover:border-solid hover:bg-pressed disabled:opacity-50 ${a ? AI_CHIP : HISTORY_CHIP}`}
           >
-            + {s.itemName}
+            {a ? "✦" : "+"} {chip.itemName}
+          </button>
+        ) : onAskAi ? (
+          <button onClick={onAskAi} disabled={busy} aria-label={`Ask AI about ${t.merchant}`} className="rounded-full px-2 py-0.5 text-sm font-semibold text-[#6a3de8] hover:bg-[#7c4dff]/10 disabled:opacity-50">
+            ✦ Ask AI
           </button>
         ) : undefined
       }
@@ -212,6 +244,9 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
   const [hasBanks, setHasBanks] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [aiOn, setAiOn] = useState(false);
+  const [aiMsg, setAiMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   // Back to "this month and last" when you switch months
   const first = useRef(true);
@@ -269,6 +304,12 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
   }, [query, transactions]);
 
   useEffect(() => {
+    api<{ enabled: boolean }>("GET", "/api/ai/status")
+      .then((r) => setAiOn(r.enabled))
+      .catch(() => setAiOn(false));
+  }, []);
+
+  useEffect(() => {
     api<{ active: boolean }[]>("GET", "/api/plaid/items")
       .then((items) => setHasBanks(items.some((i) => i.active)))
       .catch(() => setHasBanks(false));
@@ -283,7 +324,8 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
     deleted: shown.filter((t) => tabOf(t) === "deleted"),
   };
   const list = byTab[tab];
-  const withSuggestion = byTab.new.filter((t) => t.suggestion);
+  const withSuggestion = byTab.new.filter((t) => t.suggestion || t.aiSuggestion); // history or AI
+  const withoutSuggestion = byTab.new.filter((t) => !t.suggestion && !t.aiSuggestion);
   const inThisMonth = (t: Transaction) => t.date.startsWith(ymKey(current));
 
   // Month sections: when browsing, every shown month (even empty ones); when searching, only months with results
@@ -318,6 +360,36 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       setBusy(false);
     }
   };
+
+  // Ask the AI about specific transactions (asks again even if it looked before)
+  async function askAi(ids: number[]) {
+    setAiMsg(null);
+    setBusy(true);
+    setError("");
+    try {
+      const r = await api<{ asked: number; suggested: number; noMatch: number; skipped: { reason: string; count: number }[]; error?: string }>("POST", "/api/transactions/ai-suggest", { ids, force: true });
+      const parts = [r.suggested && `${r.suggested} suggested`, r.noMatch && `${r.noMatch} with no good fit`].filter(Boolean);
+      const skipped = r.skipped.map((x) => `${x.count} ${x.reason}`).join("; ");
+      if (r.error) setAiMsg({ ok: false, text: r.error });
+      else setAiMsg({ ok: true, text: `AI: ${parts.length ? parts.join(", ") : "nothing to ask"}${skipped ? ` (skipped ${skipped})` : ""}.` });
+      setSelected(new Set());
+      await onChanged();
+    } catch (e) {
+      setAiMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const toggle = (id: number) =>
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectedRows = byTab.new.filter((t) => selected.has(t.id));
+  const selectedWithSuggestion = selectedRows.filter((t) => t.suggestion || t.aiSuggestion);
 
   async function syncBanks() {
     setSyncing(true);
@@ -388,16 +460,53 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       )}
       {error && <p role="alert" className="px-2 pt-2 text-sm text-error">{error}</p>}
 
-      {tab === "new" && withSuggestion.length > 1 && (
-        <div className="flex justify-end pt-2">
-          <button
-            disabled={busy}
-            onClick={() => run(() => api("POST", "/api/transactions/accept-suggestions", { ids: withSuggestion.map((t) => t.id) }))}
-            className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-pressed disabled:opacity-50"
-          >
-            Accept all suggestions ({withSuggestion.length})
-          </button>
+      {tab === "new" && byTab.new.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1 pt-2">
+          {selectedRows.length > 0 ? (
+            <>
+              <span className="mr-auto px-2 text-sm text-subtle">{selectedRows.length} selected</span>
+              {aiOn && (
+                <button disabled={busy} onClick={() => askAi(selectedRows.map((t) => t.id))} className="rounded px-2 py-1 text-sm font-semibold text-[#6a3de8] hover:bg-[#7c4dff]/10 disabled:opacity-50">
+                  ✦ Ask AI ({selectedRows.length})
+                </button>
+              )}
+              {selectedWithSuggestion.length > 0 && (
+                <button
+                  disabled={busy}
+                  onClick={() => run(async () => { await api("POST", "/api/transactions/accept-suggestions", { ids: selectedWithSuggestion.map((t) => t.id) }); setSelected(new Set()); })}
+                  className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-pressed disabled:opacity-50"
+                >
+                  Accept ({selectedWithSuggestion.length})
+                </button>
+              )}
+              <button onClick={() => setSelected(new Set())} className="rounded px-2 py-1 text-sm text-subtle hover:bg-pressed">
+                Clear
+              </button>
+            </>
+          ) : (
+            <>
+              {aiOn && withoutSuggestion.length > 0 && (
+                <button disabled={busy} onClick={() => askAi(withoutSuggestion.map((t) => t.id))} className="rounded px-2 py-1 text-sm font-semibold text-[#6a3de8] hover:bg-[#7c4dff]/10 disabled:opacity-50">
+                  ✦ Ask AI for all ({withoutSuggestion.length})
+                </button>
+              )}
+              {withSuggestion.length > 1 && (
+                <button
+                  disabled={busy}
+                  onClick={() => run(() => api("POST", "/api/transactions/accept-suggestions", { ids: withSuggestion.map((t) => t.id) }))}
+                  className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-pressed disabled:opacity-50"
+                >
+                  Accept all suggestions ({withSuggestion.length})
+                </button>
+              )}
+            </>
+          )}
         </div>
+      )}
+      {aiMsg && (
+        <p role={aiMsg.ok ? "status" : "alert"} className={`px-2 pt-1 text-sm ${aiMsg.ok ? "text-[#6a3de8]" : "text-error"}`}>
+          {aiMsg.text}
+        </p>
       )}
 
       {tab === "pending" ? (
@@ -424,7 +533,24 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       ) : (
         sections.map(({ ym, list: rows }) => (
           <section key={ymKey(ym)} aria-label={`${monthTitle(ym)} transactions`} className="mt-5">
-            <h3 className="border-b border-line px-2 pb-2 text-lg font-semibold">{monthTitle(ym)}</h3>
+            <h3 className="flex items-center gap-2 border-b border-line px-2 pb-2 text-lg font-semibold">
+              {tab === "new" && rows.length > 0 && (
+                <input
+                  type="checkbox"
+                  aria-label={`Select all in ${monthTitle(ym)}`}
+                  checked={rows.every((t) => selected.has(t.id))}
+                  onChange={(e) =>
+                    setSelected((cur) => {
+                      const next = new Set(cur);
+                      rows.forEach((t) => (e.target.checked ? next.add(t.id) : next.delete(t.id)));
+                      return next;
+                    })
+                  }
+                  className="size-4 cursor-pointer accent-[#0073b9]"
+                />
+              )}
+              {monthTitle(ym)}
+            </h3>
             {rows.length === 0 ? (
               <p className="px-2 py-6 text-center text-sm italic text-subtle">No transactions</p>
             ) : (
@@ -438,6 +564,9 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
                       draggable={inThisMonth(t)}
                       onOpen={() => onOpen(t)}
                       onAccept={() => run(() => api("POST", `/api/transactions/${t.id}/accept-suggestion`))}
+                      onAskAi={aiOn ? () => askAi([t.id]) : undefined}
+                      selected={selected.has(t.id)}
+                      onToggle={() => toggle(t.id)}
                     />
                   ) : tab === "deleted" ? (
                     <DeletedRow key={t.id} t={t} busy={busy} onRestore={() => run(() => api("POST", `/api/transactions/${t.id}/restore`))} onErase={() => run(() => api("DELETE", `/api/transactions/${t.id}?permanent=true`))} />
@@ -453,7 +582,8 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
 
       {tab === "new" && byTab.new.length > 0 && (
         <p className="px-2 pt-3 text-xs text-subtle">
-          Drag a transaction onto a budget item to assign it{withSuggestion.length > 0 ? ", or click a dashed suggestion" : ""}.
+          Drag a transaction onto a budget item to assign it, or click a suggestion:{" "}
+          <span className="font-semibold text-action">+ blue</span> learned from your history, <span className="font-semibold text-[#6a3de8]">✦ purple</span> the AI's guess.
         </p>
       )}
 

@@ -6,6 +6,7 @@ import { HttpError } from "../lib/errors.js";
 import { PlaidError, type PlaidEnv } from "../lib/plaid.js";
 import { idParam, isoDate } from "../lib/validation.js";
 import { markItemError, monthsWaiting, syncAll } from "../lib/plaidSync.js";
+import { autoSuggest } from "../lib/aiSuggest.js";
 
 // Connecting banks through Plaid Link:
 //  1. the page asks for a link token, opens Plaid's window, and the person signs in to their bank there
@@ -172,8 +173,9 @@ export default async function plaidRoutes(app: FastifyInstance) {
   });
 
   // Import transactions from every connected bank (also runs on a schedule)
-  app.post("/api/plaid/sync", async () => {
+  app.post("/api/plaid/sync", async (req) => {
     const results = await syncAll(db, plaid);
+    if (results.some((r) => r.added)) autoSuggest(db, app.ai, req.log); // AI looks at new ones in the background (auto mode)
     return {
       results,
       added: results.reduce((n, r) => n + r.added, 0),

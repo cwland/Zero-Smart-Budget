@@ -6,6 +6,7 @@ import { buildApp, defaultBackupDir } from "./app.js";
 import { startBackupSchedule } from "./lib/backup.js";
 import { emailConfigFromEnv } from "./lib/mail.js";
 import { syncAll } from "./lib/plaidSync.js";
+import { autoSuggest } from "./lib/aiSuggest.js";
 
 const { db } = createDb(process.env.DATABASE_URL!);
 await runMigrations(db);
@@ -36,6 +37,7 @@ if (syncHours > 0) {
   const run = () =>
     syncAll(db, app.plaid)
       .then((results) => {
+        if (results.some((r) => r.added)) autoSuggest(db, app.ai, app.log);
         for (const r of results) {
           if (r.error) app.log.warn(`Plaid sync ${r.institutionName}: ${r.error}`);
           else if (r.added || r.updated || r.removed) app.log.info(`Plaid sync ${r.institutionName}: ${r.added} new, ${r.updated} updated, ${r.removed} removed`);
