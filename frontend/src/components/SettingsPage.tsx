@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import BudgetSettings from "./BudgetSettings";
 import DataSettings from "./DataSettings";
 import EmailSettings from "./EmailSettings";
+import PlaidSettings from "./PlaidSettings";
 import ProfileSettings from "./ProfileSettings";
 import { ApiKeys, ChangePassword, Devices } from "./SecuritySettings";
 
@@ -11,6 +12,7 @@ const TABS = [
   { id: "security", label: "Security" },
   { id: "api", label: "API keys" },
   { id: "email", label: "Email" },
+  { id: "plaid", label: "Plaid" },
   { id: "data", label: "Data" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
@@ -63,6 +65,7 @@ export default function SettingsPage() {
         )}
         {tab === "api" && <ApiKeys />}
         {tab === "email" && <EmailSettings />}
+        {tab === "plaid" && <PlaidSettings />}
         {tab === "data" && <DataSettings />}
       </div>
     </div>

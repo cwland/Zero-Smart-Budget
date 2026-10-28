@@ -5,6 +5,7 @@ import { users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 import type { EmailConfig } from "../lib/mail.js";
 import { getBudgetPrefs, saveBudgetPrefs } from "../lib/prefs.js";
+import { PlaidError, explainPlaidError, type PlaidKeys } from "../lib/plaid.js";
 
 function requireLogin(req: FastifyRequest): number {
   if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
@@ -78,6 +79,53 @@ export default async function settingsRoutes(app: FastifyInstance) {
       env: { available: mail.envAvailable, host: mail.envHost },
       accountEmail: await accountEmail(userId),
     };
+  });
+
+  // ---------- Plaid keys ----------
+  const plaidSettings = z.object({
+    clientId: z.string().trim().min(1, "Client ID is required").max(100),
+    env: z.enum(["sandbox", "production"]),
+    sandboxSecret: z.string().trim().max(200).nullable().optional(), // undefined = keep saved, "" = remove
+    productionSecret: z.string().trim().max(200).nullable().optional(),
+  });
+
+  app.get("/api/settings/plaid", async (req) => {
+    requireLogin(req);
+    return { settings: await app.plaid.summary() };
+  });
+
+  app.put("/api/settings/plaid", async (req) => {
+    requireLogin(req);
+    const body = plaidSettings.parse(req.body);
+    await app.plaid.save(body);
+    return { settings: await app.plaid.summary() };
+  });
+
+  app.delete("/api/settings/plaid", async (req, reply) => {
+    requireLogin(req);
+    await app.plaid.clear();
+    return reply.status(204).send();
+  });
+
+  // Check keys with Plaid. With a body, tests those (unsaved) values; blank secret = the saved one.
+  app.post("/api/settings/plaid/test", async (req) => {
+    requireLogin(req);
+    let keys: PlaidKeys | undefined;
+    if (req.body && Object.keys(req.body as object).length) {
+      const b = plaidSettings.parse(req.body);
+      const given = b.env === "production" ? b.productionSecret : b.sandboxSecret;
+      const secret = given || (await app.plaid.savedSecret(b.env));
+      if (!secret) throw new HttpError(400, `Enter your ${b.env === "production" ? "Production" : "Sandbox"} secret first`);
+      keys = { clientId: b.clientId, secret, env: b.env };
+    }
+    try {
+      await app.plaid.test(keys);
+    } catch (e) {
+      if (e instanceof PlaidError) throw new HttpError(400, explainPlaidError(e));
+      throw e;
+    }
+    const env = keys?.env ?? (await app.plaid.keys())?.env;
+    return { ok: true, message: `Plaid accepted your ${env === "production" ? "Production" : "Sandbox"} keys.` };
   });
 
   // Budget preferences (Fast Track)

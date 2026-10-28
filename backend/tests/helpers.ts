@@ -8,6 +8,7 @@ import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
 import type { EmailConfig, MailMessage } from "../src/lib/mail.js";
+import type { PlaidFetch } from "../src/lib/plaid.js";
 
 // Tests use their own database so they never touch your real budget.
 // Create it once with: createdb corysdollar_test
@@ -28,7 +29,21 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
     opts.email === false
       ? null
       : { host: "env.smtp", port: 25, security: "none", username: null, password: null, fromName: null, fromAddress: "app@test", appUrl: "http://budget.test" };
+  // Fake Plaid: records calls; answer with plaid.respond(path, body) -> { status, json }
+  const plaid = {
+    calls: [] as { url: string; body: any }[],
+    respond: (_path: string, _body: any): { status: number; json: unknown } => ({ status: 200, json: { link_token: "link-sandbox-test" } }),
+    down: false,
+  };
+  const plaidFetch: PlaidFetch = async (url, init) => {
+    if (plaid.down) throw new Error("ECONNREFUSED");
+    const body = JSON.parse(init.body);
+    plaid.calls.push({ url, body });
+    const r = plaid.respond(new URL(url).pathname, body);
+    return { ok: r.status < 300, status: r.status, json: async () => r.json };
+  };
   const app = buildApp({
+    plaidFetch,
     db,
     jwtSecret: "test-secret-that-is-long-enough",
     backupDir,
@@ -66,9 +81,13 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
     backupDir,
     sent,
     failNext,
+    plaid,
     async reset() {
       sent.length = 0;
       failNext.value = "";
+      plaid.calls.length = 0;
+      plaid.down = false;
+      plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
       await db.execute(sql`truncate users, password_resets, app_settings, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);
       resetLoginLockouts();
       token = "";

@@ -17,6 +17,7 @@ import profileRoutes from "./routes/profile.js";
 import settingsRoutes from "./routes/settings.js";
 import devResetRoutes from "./routes/devReset.js"; // TEMPORARY testing tool
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
+import { PlaidService, type PlaidFetch } from "./lib/plaid.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -25,6 +26,7 @@ declare module "fastify" {
     backupDir: string;
     backupKeep: number;
     mail: MailService;
+    plaid: PlaidService;
   }
   interface FastifyRequest {
     auth?: { method: "token"; userId: number } | { method: "apiKey"; keyId: number };
@@ -39,6 +41,7 @@ export interface AppOptions {
   backupKeep?: number;
   emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
   mailTransport?: TransportFactory; // tests swap in a fake
+  plaidFetch?: PlaidFetch; // tests swap in a fake Plaid
 }
 
 // Backups go in <repo>/backups unless BACKUP_DIR says otherwise
@@ -54,7 +57,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/reset",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport, plaidFetch }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -65,6 +68,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.decorate("backupDir", backupDir);
   app.decorate("backupKeep", backupKeep);
   app.decorate("mail", new MailService(db, jwtSecret, emailEnv, mailTransport));
+  app.decorate("plaid", new PlaidService(db, jwtSecret, plaidFetch));
 
   // Every /api route needs a login token or an API key, except the public ones
   app.addHook("onRequest", async (req) => {
