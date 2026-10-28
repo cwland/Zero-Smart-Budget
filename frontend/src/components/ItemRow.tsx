@@ -27,6 +27,8 @@ interface Props {
   sortable?: boolean; // false for the Favorites card (reorder items in their own group)
   canDropTx?: boolean; // a transaction being dragged could be dropped here
   onDropTx?: () => void;
+  onAddTx?: () => void; // "+": add a transaction already set to this item
+  itemKey?: string; // "l:12" / "i:3": where accepted transactions are tossed
 }
 
 export function ProgressBar({ actual, planned }: { actual: number; planned: number }) {
@@ -43,7 +45,7 @@ export function secondValue(row: { plannedCents: number; actualCents: number }, 
   return column === "actual" ? row.actualCents : row.plannedCents - row.actualCents;
 }
 
-export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId, sortable = true, canDropTx, onDropTx }: Props) {
+export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId, sortable = true, canDropTx, onDropTx, onAddTx, itemKey }: Props) {
   const amountRef = useRef<HTMLInputElement>(null);
   const [dropOver, setDropOver] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -56,6 +58,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={`group/row relative cursor-pointer px-4 sm:px-6 ${dropOver ? "bg-active ring-2 ring-inset ring-action" : selected ? "bg-active" : "bg-white hover:bg-page"} ${isDragging ? "z-10 opacity-40" : ""}`}
       data-drop-target={canDropTx ? "yes" : undefined}
+      data-item-row={itemKey}
       onDragOver={(e) => {
         if (!canDropTx) return;
         e.preventDefault(); // allows the drop
@@ -86,13 +89,27 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
       </button>}
       <div className="flex items-center gap-2 py-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <InlineText
-            value={row.name}
-            ariaLabel="Item name"
-            onSave={(name) => onSave({ name })}
-            onEnter={() => amountRef.current?.focus()}
-            className="w-full text-base sm:text-lg"
-          />
+          <span className="flex min-w-0 items-center gap-1">
+            <InlineText
+              value={row.name}
+              ariaLabel="Item name"
+              onSave={(name) => onSave({ name })}
+              onEnter={() => amountRef.current?.focus()}
+              className="min-w-0 flex-1 text-base sm:text-lg"
+            />
+            {onAddTx && (
+              <button
+                onClick={onAddTx}
+                aria-label={`Add transaction to ${row.name}`}
+                title={`Add a transaction to ${row.name}`}
+                className="flex size-7 shrink-0 items-center justify-center rounded-full text-action opacity-60 hover:bg-pressed hover:opacity-100 focus:opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100"
+              >
+                <svg viewBox="0 0 24 24" className="size-5 fill-none stroke-current" strokeWidth={2.2} strokeLinecap="round" aria-hidden>
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            )}
+          </span>
           {row.fund && (
             <span title={`Sinking fund: ${row.fund.name}`} className="tabular flex items-center gap-1 px-1 text-sm text-success">
               <PiggyIcon className="size-4 shrink-0" />
@@ -116,6 +133,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
         <button
           onClick={onSelect}
           aria-label={`Details for ${row.name}`}
+          data-item-amount
           className={`tabular w-[5.5rem] shrink-0 rounded px-1 py-1 text-right hover:underline sm:w-[6.5rem] ${second < 0 ? "text-error" : "text-ink"}`}
         >
           {formatCents(second)}

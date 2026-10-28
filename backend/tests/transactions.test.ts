@@ -236,3 +236,14 @@ describe("deleted transactions", () => {
   });
 });
 
+
+describe("check number, account and bank wording", () => {
+  it("saves check # and account, and keeps them when not sent", async () => {
+    const a = (await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Landlord", amountCents: 1000, checkNumber: "1042", plaidAccountId: "acc-1" })).body;
+    expect(a).toMatchObject({ checkNumber: "1042", plaidAccountId: "acc-1", originalDescription: null });
+    const b = (await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-05", merchant: "Landlord", amountCents: 1000 })).body;
+    expect(b).toMatchObject({ checkNumber: "1042", plaidAccountId: "acc-1" });
+    const c = (await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-05", merchant: "Landlord", amountCents: 1000, checkNumber: "", plaidAccountId: null })).body;
+    expect(c).toMatchObject({ checkNumber: null, plaidAccountId: null });
+  });
+});

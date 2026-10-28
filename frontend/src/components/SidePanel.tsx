@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type Budget, type MonthResponse, type Transaction } from "../api";
 import { monthLabel } from "../dates";
+import { useLockBodyScroll } from "../scrollLock";
 import ItemDetail, { type ItemRef } from "./ItemDetail";
 import TransactionForm, { type FormPreset } from "./TransactionForm";
 import TransactionList from "./TransactionList";
@@ -116,6 +118,7 @@ function FormForMonth(props: { budget: Budget; existing?: Transaction; preset?: 
   const ym = existing ? { year: Number(existing.date.slice(0, 4)), month: Number(existing.date.slice(5, 7)) } : { year: budget.year, month: budget.month };
   const sameMonth = ym.year === budget.year && ym.month === budget.month;
   const [other, setOther] = useState<MonthResponse | null>(null);
+  useLockBodyScroll(!sameMonth); // the notice/loading popups (the form itself locks too)
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -127,19 +130,24 @@ function FormForMonth(props: { budget: Budget; existing?: Transaction; preset?: 
   }, [sameMonth, ym.year, ym.month]);
 
   if (sameMonth) return <TransactionForm {...props} />;
-  if (error) return <p role="alert" className="p-4 text-error">{error}</p>;
-  if (!other) return <p className="p-6 text-center text-subtle">Loading {monthLabel(ym)}…</p>;
+  if (error) return createPortal(<div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4" onMouseDown={props.onCancel}><p role="alert" className="rounded-2xl bg-white p-6 text-error">{error}</p></div>, document.body);
+  if (!other) return createPortal(<div className="fixed inset-0 z-[60] bg-ink/40" aria-busy="true" />, document.body);
   if (!other.exists) {
-    return (
-      <div className="p-4">
-        <button onClick={props.onCancel} className="text-sm font-semibold text-action hover:underline">
-          ‹ Back
-        </button>
-        <p className="mt-4 font-semibold">{existing?.merchant}</p>
-        <p className="mt-2 text-subtle">
-          This transaction is in {monthLabel(ym)}, which has no budget yet. Create the {monthLabel(ym)} budget (use the arrows at the top) to assign it.
-        </p>
-      </div>
+    return createPortal(
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && props.onCancel()}>
+        <div role="dialog" aria-modal="true" aria-label="No budget for this month" className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-[0_12px_40px_rgba(31,36,38,0.3)]">
+          <p className="font-semibold">{existing?.merchant}</p>
+          <p className="mt-2 text-subtle">
+            This transaction is in {monthLabel(ym)}, which has no budget yet. Create the {monthLabel(ym)} budget (use the arrows at the top) to assign it.
+          </p>
+          <div className="mt-5 flex justify-end">
+            <button onClick={props.onCancel} className="rounded-lg bg-primary px-5 py-2.5 font-semibold text-white hover:bg-primary-pressed">
+              OK
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
     );
   }
   return <TransactionForm {...props} budget={other} />;
@@ -164,55 +172,59 @@ export default function SidePanel({ budget, transactions, unassignedCount, view,
   const tabClass = (on: boolean) => `relative flex flex-1 justify-center rounded-md py-2 ${on ? "bg-white text-ink shadow-sm" : "text-action"}`;
   const openForm = (back: PanelView, existing?: Transaction, preset?: FormPreset) => onView({ kind: "form", existing, preset, back });
 
+  // The panel shows `shown`; the transaction editor is a popup on top of whatever was showing
+  const form = view.kind === "form" ? view : null;
+  const shown: Exclude<PanelView, { kind: "form" }> = form ? (form.back.kind === "form" ? { kind: "transactions" } : form.back) : (view as Exclude<PanelView, { kind: "form" }>);
+
   let content;
-  if (view.kind === "summary") {
+  if (shown.kind === "summary") {
     content = <SummaryChart budget={budget} />;
-  } else if (view.kind === "transactions") {
+  } else if (shown.kind === "transactions") {
     content = (
       <TransactionList
         budget={budget}
         transactions={transactions}
-        onAdd={() => openForm(view)}
-        onOpen={(t) => openForm(view, t)}
-        onChanged={onChanged}
-      />
-    );
-  } else if (view.kind === "item") {
-    const target = `${view.item.type === "line" ? "l" : "i"}:${view.item.id}`;
-    content = (
-      <ItemDetail
-        budget={budget}
-        item={view.item}
-        transactions={transactions}
-        onAdd={() => openForm(view, undefined, { type: view.item.type === "income" ? "income" : "expense", target })}
-        onOpen={(t) => openForm(view, t)}
-        onClose={() => onView({ kind: "summary" })}
+        onAdd={() => openForm(shown)}
+        onOpen={(t) => openForm(shown, t)}
         onChanged={onChanged}
       />
     );
   } else {
+    const target = `${shown.item.type === "line" ? "l" : "i"}:${shown.item.id}`;
     content = (
-      <FormForMonth
-        key={view.existing?.id ?? "new"}
+      <ItemDetail
         budget={budget}
-        existing={view.existing}
-        preset={view.preset}
-        onCancel={() => onView(view.back)}
-        onSaved={async () => {
-          await onChanged();
-          onView(view.back);
-        }}
+        item={shown.item}
+        transactions={transactions}
+        onAdd={() => openForm(shown, undefined, { type: shown.item.type === "income" ? "income" : "expense", target })}
+        onOpen={(t) => openForm(shown, t)}
+        onClose={() => onView({ kind: "summary" })}
+        onChanged={onChanged}
       />
     );
   }
 
+  const popup = form && (
+    <FormForMonth
+      key={form.existing?.id ?? `new-${form.preset?.target ?? ""}`}
+      budget={budget}
+      existing={form.existing}
+      preset={form.preset}
+      onCancel={() => onView(form.back)}
+      onSaved={async () => {
+        await onChanged();
+        onView(form.back);
+      }}
+    />
+  );
+
   return (
     <aside aria-label="Budget side panel" className="rounded-2xl bg-white p-4">
       <div className="flex rounded-lg bg-page p-1">
-        <button onClick={() => onView({ kind: "summary" })} aria-label="Summary chart" className={tabClass(view.kind === "summary")}>
+        <button onClick={() => onView({ kind: "summary" })} aria-label="Summary chart" className={tabClass(shown.kind === "summary")}>
           <PieIcon className="size-5" />
         </button>
-        <button onClick={() => onView({ kind: "transactions" })} aria-label="Transactions" className={`${tabClass(view.kind === "transactions")} text-lg font-semibold`}>
+        <button onClick={() => onView({ kind: "transactions" })} aria-label="Transactions" className={`${tabClass(shown.kind === "transactions")} text-lg font-semibold`}>
           $
           {unassignedCount > 0 && (
             <span aria-label={`${unassignedCount} unassigned`} className="absolute right-3 top-1.5 rounded-full bg-warning px-1.5 text-xs font-semibold leading-5 text-white">
@@ -222,6 +234,7 @@ export default function SidePanel({ budget, transactions, unassignedCount, view,
         </button>
       </div>
       <div className="mt-2">{content}</div>
+      {popup}
     </aside>
   );
 }

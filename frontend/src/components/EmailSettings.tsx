@@ -261,7 +261,8 @@ export default function EmailSettings() {
             <div className="relative">
               <input
                 aria-label="SMTP password"
-                type={showPassword ? "text" : "password"}
+                type="text"
+              style={showPassword ? undefined : { WebkitTextSecurity: "disc" } as React.CSSProperties} // dots without being a password box
                 autoComplete="new-password"
                 disabled={clearPassword}
                 placeholder={s?.passwordSet && !clearPassword ? "Saved. Leave blank to keep it." : "App password"}

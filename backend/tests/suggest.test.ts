@@ -42,12 +42,13 @@ describe("suggestions", () => {
   });
 
   it("Fast Track off: no suggestions, no auto-assign; back on restores them", async () => {
-    expect((await t.api("GET", "/api/settings/budget")).body).toEqual({ fastTrack: true });
+    expect((await t.api("GET", "/api/settings/budget")).body).toEqual({ fastTrack: true, tossAnimation: true });
     const { oct, find } = await twoMonths();
     await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Trader Joe's", amountCents: 5000, splits: [{ lineItemId: find(oct, "Groceries").id, amountCents: 5000 }] });
     const created = (await t.api("POST", "/api/transactions", { date: "2026-11-03", merchant: "Trader Joe's", amountCents: 6100 })).body;
 
-    expect((await t.api("PUT", "/api/settings/budget", { fastTrack: false })).body).toEqual({ fastTrack: false });
+    expect((await t.api("PUT", "/api/settings/budget", { fastTrack: false })).body).toEqual({ fastTrack: false, tossAnimation: true });
+    expect((await t.api("PUT", "/api/settings/budget", { tossAnimation: false })).body).toEqual({ fastTrack: false, tossAnimation: false });
     expect((await t.api("PUT", "/api/settings/budget", { bogus: 1 })).status).toBe(400);
     const row = () => t.api("GET", "/api/transactions?year=2026&month=11").then((r) => r.body.find((x: any) => x.id === created.id));
     expect((await row()).suggestion).toBeNull();

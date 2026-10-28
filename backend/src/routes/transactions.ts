@@ -36,6 +36,9 @@ const transactionSchema = z.object({
   amountCents: positiveCents,
   type: z.enum(["expense", "income"]).default("expense"),
   note: z.string().max(2000).nullable().optional(),
+  checkNumber: z.string().trim().max(30).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
+  // Which bank account it belongs to (a connected Plaid account id), or null for none
+  plaidAccountId: z.string().max(100).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
   // Empty = unassigned. One = normal. Several = split transaction.
   splits: z.array(splitSchema).default([]),
   // With no splits: put it on the item this merchant was assigned to last time (if any)
@@ -333,7 +336,11 @@ export default async function transactionRoutes(app: FastifyInstance) {
       const { splits, autoAssign: _a, ...fields } = input;
       await tx
         .update(transactions)
-        .set({ ...fields, note: fields.note ?? null, merchantKey: normalizeMerchant(fields.merchant) })
+        .set({
+          ...fields,
+          note: fields.note ?? null,
+          merchantKey: normalizeMerchant(fields.merchant),
+        })
         .where(eq(transactions.id, id));
       await tx.delete(transactionSplits).where(eq(transactionSplits.transactionId, id));
       if (splits.length) {
@@ -379,7 +386,7 @@ export default async function transactionRoutes(app: FastifyInstance) {
     if (saved.length) {
       try {
         await validateSplits(db, {
-          date: row.date, merchant: row.merchant, amountCents: row.amountCents, type: row.type, note: row.note,
+          date: row.date, merchant: row.merchant, amountCents: row.amountCents, type: row.type, note: row.note, checkNumber: undefined, plaidAccountId: undefined,
           splits: saved.map((s) => (s.lineItemId ? { lineItemId: s.lineItemId, amountCents: s.amountCents } : { incomeItemId: s.incomeItemId!, amountCents: s.amountCents })),
         });
         splits = saved;

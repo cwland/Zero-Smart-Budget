@@ -101,7 +101,8 @@ export default function PlaidSettings() {
         <span className="relative mt-1 block">
           <input
             aria-label={label}
-            type={showSecret ? "text" : "password"}
+            type="text"
+              style={showSecret ? undefined : { WebkitTextSecurity: "disc" } as React.CSSProperties} // dots without being a password box
             autoComplete="off"
             spellCheck={false}
             placeholder="Paste the secret from Plaid"

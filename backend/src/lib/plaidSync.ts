@@ -154,6 +154,7 @@ export async function syncItem(db: Db, plaid: PlaidService, item: typeof plaidIt
           type: typeOf(t),
           plaidTransactionId: t.transaction_id,
           plaidAccountId: t.account_id,
+          originalDescription: t.name && t.name !== merchant ? t.name.slice(0, 500) : null, // the bank's full wording
           pending: t.pending,
         })
         .returning({ id: transactions.id });

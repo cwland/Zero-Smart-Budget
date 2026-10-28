@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Notice } from "./settingsUi";
+import { setTossEnabled } from "../toss";
 
 interface BudgetPrefs {
   fastTrack: boolean;
+  tossAnimation: boolean;
 }
 
 // An EveryDollar-style on/off switch with its label
@@ -41,7 +43,9 @@ export default function BudgetSettings() {
     setMsg(null);
     setBusy(true);
     try {
-      setPrefs(await api<BudgetPrefs>("PUT", "/api/settings/budget", changes));
+      const saved = await api<BudgetPrefs>("PUT", "/api/settings/budget", changes);
+      setPrefs(saved);
+      setTossEnabled(saved.tossAnimation);
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     } finally {
@@ -49,18 +53,23 @@ export default function BudgetSettings() {
     }
   }
 
-  return (
-    <section aria-label="Fast Track" className="rounded-2xl bg-white p-6">
+  const setting = (id: string, title: string, text: string, on: boolean | undefined, change: (v: boolean) => void) => (
+    <section aria-label={title} className="rounded-2xl bg-white p-6">
       <div className="flex items-start justify-between gap-6">
         <div>
-          <h2 className="text-xl font-bold">Fast Track</h2>
-          <p className="mt-2 max-w-md text-subtle">Track new transactions directly to a suggested budget item based on past spending.</p>
+          <h2 className="text-xl font-bold">{title}</h2>
+          <p className="mt-2 max-w-md text-subtle">{text}</p>
         </div>
-        {prefs && <Toggle label="Fast Track" checked={prefs.fastTrack} disabled={busy} onChange={(fastTrack) => update({ fastTrack })} />}
-      </div>
-      <div className="mt-2">
-        <Notice msg={msg} />
+        {on !== undefined && <Toggle label={title} checked={on} disabled={busy} onChange={change} />}
       </div>
     </section>
+  );
+
+  return (
+    <>
+      {setting("fast-track", "Fast Track", "Track new transactions directly to a suggested budget item based on past spending.", prefs?.fastTrack, (fastTrack) => update({ fastTrack }))}
+      {setting("toss", "Toss animation", "When you accept a suggestion, the transaction is tossed in an arc into its budget item. Turn it off and accepted transactions move to Tracked without the animation.", prefs?.tossAnimation, (tossAnimation) => update({ tossAnimation }))}
+      <Notice msg={msg} />
+    </>
   );
 }

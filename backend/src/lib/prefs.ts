@@ -5,9 +5,10 @@ import { appSettings } from "../db/schema.js";
 // Budget preferences from Settings > Budget, saved in app_settings under "budget"
 export interface BudgetPrefs {
   fastTrack: boolean; // suggest budget items for new transactions based on past spending
+  tossAnimation: boolean; // accepting a suggestion tosses the transaction into its budget item
 }
 
-export const DEFAULT_BUDGET_PREFS: BudgetPrefs = { fastTrack: true };
+export const DEFAULT_BUDGET_PREFS: BudgetPrefs = { fastTrack: true, tossAnimation: true };
 
 export async function getBudgetPrefs(db: Db): Promise<BudgetPrefs> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.key, "budget"));

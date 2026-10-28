@@ -68,10 +68,17 @@ export default function BudgetPage() {
   // On narrow screens the panel sits below the budget, so bring it into view when it changes
   const showView = (v: PanelView) => {
     setView(v);
-    if (v.kind !== "summary" && window.innerWidth < 1100) {
+    if (v.kind !== "summary" && v.kind !== "form" && window.innerWidth < 1100) {
       requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
   };
+  // "+" next to a budget item: the Add popup with that item already picked
+  const addTxTo = (kind: "income" | "line", id: number) =>
+    setView((v) => ({
+      kind: "form",
+      preset: { type: kind === "income" ? "income" : "expense", target: `${kind === "income" ? "i" : "l"}:${id}` },
+      back: v.kind === "form" ? v.back : v,
+    }));
   const selectedLine = view.kind === "item" && view.item.type === "line" ? view.item.id : null;
   const selectedIncome = view.kind === "item" && view.item.type === "income" ? view.item.id : null;
 
@@ -242,6 +249,7 @@ export default function BudgetPage() {
               onSelect={(id) => showView({ kind: "item", item: { type: "income", id } })}
               canDropTx={dropTarget("income")}
               onDropTx={(id) => dropTx("income", id)}
+              onAddTx={(id) => addTxTo("income", id)}
             />
 
             {/* Favorites: starred items from any group (they stay in their own groups too) */}
@@ -261,6 +269,7 @@ export default function BudgetPage() {
                 onSelect={(id) => showView({ kind: "item", item: { type: "line", id } })}
                 canDropTx={dropTarget("expense")}
                 onDropTx={(id) => dropTx("line", id)}
+                onAddTx={(id) => addTxTo("line", id)}
               />
             )}
 
@@ -286,6 +295,7 @@ export default function BudgetPage() {
                 onSelect={(id) => showView({ kind: "item", item: { type: "line", id } })}
                 canDropTx={dropTarget("expense")}
                 onDropTx={(id) => dropTx("line", id)}
+                onAddTx={(id) => addTxTo("line", id)}
               />
             ))}
             </SortableContext>

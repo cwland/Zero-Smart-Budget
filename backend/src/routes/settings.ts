@@ -199,7 +199,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   app.put("/api/settings/budget", async (req) => {
     requireLogin(req);
-    const body = z.object({ fastTrack: z.boolean().optional() }).strict().parse(req.body);
+    const body = z.object({ fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional() }).strict().parse(req.body);
     return saveBudgetPrefs(db, body);
   });
 

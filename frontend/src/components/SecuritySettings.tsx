@@ -70,7 +70,7 @@ export function ChangePassword() {
 
   return (
     <Card title="Change password">
-      <form onSubmit={submit} className="grid gap-3 sm:grid-cols-3">
+      <form data-password-form onSubmit={submit} className="grid gap-3 sm:grid-cols-3">
         <label className="text-sm font-medium text-subtle">
           Current password
           <input type="password" autoComplete="current-password" aria-label="Current password" value={current} onChange={(e) => setCurrent(e.target.value)} className={field} required />

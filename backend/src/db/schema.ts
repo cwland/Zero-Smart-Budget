@@ -143,6 +143,8 @@ export const transactions = pgTable(
     amountCents: integer("amount_cents").notNull(), // always positive; type gives direction
     type: transactionType("type").notNull().default("expense"),
     note: text("note"),
+    checkNumber: text("check_number"),
+    originalDescription: text("original_description"), // the bank's full wording, e.g. "ACH Credit 114-ACUMEN ... PAYROLL"
     // Imported from a bank through Plaid (null = typed in by hand)
     plaidTransactionId: text("plaid_transaction_id").unique(),
     plaidAccountId: text("plaid_account_id"),

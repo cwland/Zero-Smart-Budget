@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { api, setToken } from "../api";
 import { ResetIcon } from "./Icons";
+import { useLockBodyScroll } from "../scrollLock";
 
 type Scope = "transactions" | "budget" | "everything";
 
@@ -22,6 +23,7 @@ export function DevResetDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState<string | null>(null);
+  useLockBodyScroll();
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();

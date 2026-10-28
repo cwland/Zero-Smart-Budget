@@ -101,7 +101,7 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
 
   return (
     <AuthFrame>
-      <form onSubmit={submit}>
+      <form data-password-form onSubmit={submit}>
         <h1 className="text-lg font-semibold">{setup ? "Create your account" : "Sign in"}</h1>
         {setup && <p className="mt-1 text-sm text-subtle">First time here. This will be the only login for this app.</p>}
 

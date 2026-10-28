@@ -34,7 +34,7 @@ export default function ResetPasswordScreen({ token, onDone, onCancel }: Props) 
   const input = "mt-1 w-full rounded border border-muted/60 bg-white px-3 py-2.5 outline-none focus:border-action focus:ring-2 focus:ring-action/20";
   return (
     <AuthFrame>
-      <form onSubmit={submit}>
+      <form data-password-form onSubmit={submit}>
         <h1 className="text-lg font-semibold">Choose a new password</h1>
         <p className="mt-1 text-sm text-subtle">This signs out every other device.</p>
         <label className="mt-5 block text-sm font-medium text-subtle">

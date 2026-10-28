@@ -124,6 +124,9 @@ export interface Transaction {
   suggestion?: Suggestion | null;
   // The AI's guess, only when history has none (shown in purple)
   aiSuggestion?: (Suggestion & { reason?: string; model: string }) | null;
+  checkNumber?: string | null;
+  originalDescription?: string | null; // the bank's own wording, shown under the merchant
+  plaidAccountId?: string | null;
   // In the Deleted tab (can be restored)
   deletedAt?: string | null;
   // Imported from a bank through Plaid
@@ -144,6 +147,8 @@ export interface TransactionInput {
   amountCents: number;
   type: "expense" | "income";
   note?: string | null;
+  checkNumber?: string | null;
+  plaidAccountId?: string | null;
   splits: { lineItemId?: number; incomeItemId?: number; amountCents: number }[];
 }
 

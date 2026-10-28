@@ -168,7 +168,8 @@ export default function AiSettings() {
           <span className="relative mt-1 block">
             <input
               aria-label="API key"
-              type={showKey ? "text" : "password"}
+              type="text"
+              style={showKey ? undefined : { WebkitTextSecurity: "disc" } as React.CSSProperties} // dots without being a password box
               autoComplete="off"
               spellCheck={false}
               placeholder={provider === "local" ? "Only if your server needs one" : "Paste your API key"}

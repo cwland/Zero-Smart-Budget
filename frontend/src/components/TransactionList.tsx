@@ -4,6 +4,7 @@ import { MONTH_NAMES, addMonths, monthBounds, shortDate, type YearMonth } from "
 import { formatCents } from "../money";
 import { isUnassigned } from "./budgetLookup";
 import { setDraggedTransaction } from "../txDrag";
+import { flash, setTossEnabled, targetOf as tossTarget, toss, tossOn } from "../toss";
 
 // The transactions tab, laid out like EveryDollar's: the month you're viewing first, then the month
 // before, then "Load <month> transactions" to reach further back. Search looks through everything.
@@ -79,6 +80,7 @@ export function TransactionRow({
     <li
       className={`relative rounded-lg hover:bg-pressed ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
       draggable={draggable}
+      data-tx-row={t.id}
       title={draggable ? "Drag onto a budget item to assign it" : undefined}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", t.merchant);
@@ -304,6 +306,12 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
   }, [query, transactions]);
 
   useEffect(() => {
+    api<{ tossAnimation: boolean }>("GET", "/api/settings/budget")
+      .then((p) => setTossEnabled(p.tossAnimation))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     api<{ enabled: boolean }>("GET", "/api/ai/status")
       .then((r) => setAiOn(r.enabled))
       .catch(() => setAiOn(false));
@@ -360,6 +368,36 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
       setBusy(false);
     }
   };
+
+  // Accept suggestions (history first, else the AI's), tossing each into its budget item.
+  // Up to 6 are animated one after another (each scrolled into view first); the rest just land.
+  async function accept(list: Transaction[]) {
+    if (!list.length) return;
+    setBusy(true);
+    setError("");
+    const targets: string[] = [];
+    try {
+      const saving = list.length === 1 ? api("POST", `/api/transactions/${list[0].id}/accept-suggestion`) : api("POST", "/api/transactions/accept-suggestions", { ids: list.map((t) => t.id) });
+      if (tossOn()) {
+        for (const t of list.slice(0, 6)) {
+          const s = t.suggestion ?? t.aiSuggestion;
+          if (!s) continue;
+          const target = tossTarget(s);
+          targets.push(target);
+          await toss(document.querySelector<HTMLElement>(`[data-tx-row="${t.id}"]`), target, { ai: !t.suggestion });
+        }
+      }
+      await saving;
+      setSelected(new Set());
+      await onChanged();
+      targets.forEach(flash); // the catch, on the refreshed rows
+    } catch (e) {
+      setError((e as Error).message);
+      await onChanged().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Ask the AI about specific transactions (asks again even if it looked before)
   async function askAi(ids: number[]) {
@@ -473,7 +511,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
               {selectedWithSuggestion.length > 0 && (
                 <button
                   disabled={busy}
-                  onClick={() => run(async () => { await api("POST", "/api/transactions/accept-suggestions", { ids: selectedWithSuggestion.map((t) => t.id) }); setSelected(new Set()); })}
+                  onClick={() => accept(selectedWithSuggestion)}
                   className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-pressed disabled:opacity-50"
                 >
                   Accept ({selectedWithSuggestion.length})
@@ -493,7 +531,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
               {withSuggestion.length > 1 && (
                 <button
                   disabled={busy}
-                  onClick={() => run(() => api("POST", "/api/transactions/accept-suggestions", { ids: withSuggestion.map((t) => t.id) }))}
+                  onClick={() => accept(withSuggestion)}
                   className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-pressed disabled:opacity-50"
                 >
                   Accept all suggestions ({withSuggestion.length})
@@ -563,7 +601,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
                       busy={busy}
                       draggable={inThisMonth(t)}
                       onOpen={() => onOpen(t)}
-                      onAccept={() => run(() => api("POST", `/api/transactions/${t.id}/accept-suggestion`))}
+                      onAccept={() => accept([t])}
                       onAskAi={aiOn ? () => askAi([t.id]) : undefined}
                       selected={selected.has(t.id)}
                       onToggle={() => toggle(t.id)}
