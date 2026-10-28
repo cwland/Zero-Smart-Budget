@@ -16,6 +16,7 @@ const OPTIONS: { id: Scope; title: string; detail: string }[] = [
 export function DevResetDialog({ onClose }: { onClose: () => void }) {
   const [scope, setScope] = useState<Scope>("transactions");
   const [confirm, setConfirm] = useState("");
+  const [reimportBank, setReimportBank] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export function DevResetDialog({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError("");
     try {
-      const res = await api<{ backup: string }>("POST", "/api/dev/reset", { scope, confirm });
+      const res = await api<{ backup: string }>("POST", "/api/dev/reset", { scope, confirm, reimportBank });
       setDone(res.backup);
       if (scope === "everything") setToken(null);
       setTimeout(() => {
@@ -68,6 +69,13 @@ export function DevResetDialog({ onClose }: { onClose: () => void }) {
                 </label>
               ))}
             </div>
+            <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+              <input type="checkbox" checked={reimportBank} onChange={(e) => setReimportBank(e.target.checked)} className="mt-0.5" />
+              <span>
+                Re-import bank transactions on the next sync
+                <span className="block text-subtle">Leave unticked to keep imported bank transactions gone.</span>
+              </span>
+            </label>
             <p className="mt-3 text-sm text-subtle">A backup is saved automatically before anything is deleted.</p>
             <label className="mt-4 block text-sm font-medium text-subtle">
               Type <strong className="font-mono text-ink">RESET</strong> to confirm

@@ -16,7 +16,12 @@ export default async function devResetRoutes(app: FastifyInstance) {
   app.post("/api/dev/reset", async (req) => {
     if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
     const body = z
-      .object({ scope: z.enum(["transactions", "budget", "everything"]), confirm: z.string() })
+      .object({
+        scope: z.enum(["transactions", "budget", "everything"]),
+        confirm: z.string(),
+        // true: the next bank sync imports everything again; false: bank transactions stay gone
+        reimportBank: z.boolean().default(false),
+      })
       .parse(req.body);
     if (body.confirm !== "RESET") throw new HttpError(400, 'Type RESET to confirm');
 
@@ -25,14 +30,15 @@ export default async function devResetRoutes(app: FastifyInstance) {
       if (body.scope === "transactions") {
         await tx.execute(sql`delete from transactions`); // also removes splits and fund spending entries
         await tx.execute(sql`select setval(pg_get_serial_sequence('transactions', 'id'), 1, false)`);
-        await tx.execute(sql`update plaid_items set cursor = null`); // next bank sync imports them again
+
       } else if (body.scope === "budget") {
         await tx.execute(sql.raw(`truncate ${BUDGET_TABLES} restart identity cascade`));
-        await tx.execute(sql`update plaid_items set cursor = null`);
       } else {
         await tx.execute(sql.raw(`truncate ${BUDGET_TABLES}, ${ACCOUNT_TABLES} restart identity cascade`));
-        await tx.execute(sql`update plaid_items set cursor = null`);
       }
+      // Plaid only sends what's new since its saved position, so deleted bank transactions stay
+      // gone unless we rewind it
+      if (body.reimportBank) await tx.execute(sql`update plaid_items set cursor = null`);
     });
     req.log.warn(`Testing reset: ${body.scope} (backup ${backup.name})`);
     return { ok: true, scope: body.scope, backup: backup.name };

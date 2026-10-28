@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import fs from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
@@ -57,5 +58,13 @@ describe("testing reset", () => {
     const data = JSON.parse(fs.readFileSync(`${t.backupDir}/${res.body.backup}`, "utf8"));
     expect((await t.api("POST", "/api/import?confirm=replace", data)).status).toBe(200);
     expect((await t.api("GET", "/api/transactions")).body).toHaveLength(1);
+  });
+
+  it("bank transactions stay gone unless re-import is ticked", async () => {
+    await t.db.execute(sql`insert into plaid_items (item_id, access_token_enc, env, institution_name, cursor, import_from) values ('it', 'x', 'sandbox', 'Bank', 'cur-9', '2026-10-01')`);
+    await t.api("POST", "/api/dev/reset", { scope: "transactions", confirm: "RESET" });
+    expect((await t.db.execute(sql`select cursor from plaid_items`)).rows[0]).toEqual({ cursor: "cur-9" });
+    await t.api("POST", "/api/dev/reset", { scope: "transactions", confirm: "RESET", reimportBank: true });
+    expect((await t.db.execute(sql`select cursor from plaid_items`)).rows[0]).toEqual({ cursor: null });
   });
 });
