@@ -19,6 +19,7 @@ import plaidRoutes from "./routes/plaid.js";
 import devResetRoutes from "./routes/devReset.js"; // TEMPORARY testing tool
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
 import { PlaidService, type PlaidFetch } from "./lib/plaid.js";
+import { AiService, type AiFetch } from "./lib/ai.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -28,6 +29,7 @@ declare module "fastify" {
     backupKeep: number;
     mail: MailService;
     plaid: PlaidService;
+    ai: AiService;
   }
   interface FastifyRequest {
     auth?: { method: "token"; userId: number } | { method: "apiKey"; keyId: number };
@@ -43,6 +45,7 @@ export interface AppOptions {
   emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
   mailTransport?: TransportFactory; // tests swap in a fake
   plaidFetch?: PlaidFetch; // tests swap in a fake Plaid
+  aiFetch?: AiFetch; // tests swap in a fake AI
 }
 
 // Backups go in <repo>/backups unless BACKUP_DIR says otherwise
@@ -58,7 +61,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/reset",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport, plaidFetch }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport, plaidFetch, aiFetch }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -70,6 +73,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.decorate("backupKeep", backupKeep);
   app.decorate("mail", new MailService(db, jwtSecret, emailEnv, mailTransport));
   app.decorate("plaid", new PlaidService(db, jwtSecret, plaidFetch));
+  app.decorate("ai", new AiService(db, jwtSecret, aiFetch));
 
   // Every /api route needs a login token or an API key, except the public ones
   app.addHook("onRequest", async (req) => {

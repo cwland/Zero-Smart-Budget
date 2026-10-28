@@ -9,6 +9,7 @@ import { buildApp } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
 import type { EmailConfig, MailMessage } from "../src/lib/mail.js";
 import type { PlaidFetch } from "../src/lib/plaid.js";
+import type { AiFetch } from "../src/lib/ai.js";
 
 // Tests use their own database so they never touch your real budget.
 // Create it once with: createdb corysdollar_test
@@ -42,7 +43,21 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
     const r = plaid.respond(new URL(url).pathname, body);
     return { ok: r.status < 300, status: r.status, json: async () => r.json };
   };
+  // Fake AI: records calls; answer with ai.respond(url, body, headers) -> { status, json }
+  const ai = {
+    calls: [] as { url: string; method: string; headers: Record<string, string>; body: any }[],
+    respond: (_url: string, _body: any, _headers: Record<string, string>): { status: number; json: unknown } => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } }),
+    down: false,
+  };
+  const aiFetch: AiFetch = async (url, init) => {
+    if (ai.down) throw new Error("ECONNREFUSED");
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    ai.calls.push({ url, method: init.method, headers: init.headers, body });
+    const r = ai.respond(url, body, init.headers);
+    return { ok: r.status < 300, status: r.status, json: async () => r.json };
+  };
   const app = buildApp({
+    aiFetch,
     plaidFetch,
     db,
     jwtSecret: "test-secret-that-is-long-enough",
@@ -82,10 +97,14 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
     sent,
     failNext,
     plaid,
+    ai,
     async reset() {
       sent.length = 0;
       failNext.value = "";
       plaid.calls.length = 0;
+      ai.calls.length = 0;
+      ai.down = false;
+      ai.respond = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
       await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);

@@ -6,6 +6,7 @@ import { HttpError } from "../lib/errors.js";
 import type { EmailConfig } from "../lib/mail.js";
 import { getBudgetPrefs, saveBudgetPrefs } from "../lib/prefs.js";
 import { PlaidError, explainPlaidError, type PlaidKeys } from "../lib/plaid.js";
+import { AI_PROVIDERS, AiError, type AiConfig } from "../lib/ai.js";
 
 function requireLogin(req: FastifyRequest): number {
   if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
@@ -126,6 +127,71 @@ export default async function settingsRoutes(app: FastifyInstance) {
     }
     const env = keys?.env ?? (await app.plaid.keys())?.env;
     return { ok: true, message: `Plaid accepted your ${env === "production" ? "Production" : "Sandbox"} keys.` };
+  });
+
+  // ---------- AI provider ----------
+  const aiSettings = z
+    .object({
+      enabled: z.boolean(),
+      provider: z.enum(AI_PROVIDERS),
+      model: z.string().trim().max(200).default(""),
+      baseUrl: optionalText(500),
+      apiKey: z.string().trim().max(500).nullable().optional(), // undefined = keep saved, "" = remove
+      mode: z.enum(["auto", "manual"]).default("auto"),
+      maxPerRun: z.coerce.number().int().min(1).max(500).default(50),
+    })
+    .superRefine((v, ctx) => {
+      if (v.baseUrl && !/^https?:\/\/[^\s/]+/.test(v.baseUrl)) ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "Address should start with http:// or https://" });
+      if (v.enabled && v.provider === "local" && !v.baseUrl) ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "Enter your AI server's address" });
+      if (v.enabled && !v.model) ctx.addIssue({ code: "custom", path: ["model"], message: "Choose a model" });
+    });
+
+  // The config to test or list models with: typed values, with a blank key falling back to the saved one
+  const aiConfigFrom = async (body: unknown): Promise<AiConfig> => {
+    const b = aiSettings.safeParse({ enabled: false, ...(body as object) });
+    if (!b.success) throw b.error;
+    const v = b.data;
+    const apiKey = v.apiKey === undefined || v.apiKey === null || v.apiKey === "" ? (await app.ai.savedKey()).key : v.apiKey;
+    return { provider: v.provider, model: v.model, baseUrl: v.baseUrl, apiKey };
+  };
+  const aiErrors = async <T>(fn: () => Promise<T>) => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof AiError) throw new HttpError(400, e.message);
+      throw e;
+    }
+  };
+
+  app.get("/api/settings/ai", async (req) => {
+    requireLogin(req);
+    return { settings: await app.ai.summary() };
+  });
+
+  app.put("/api/settings/ai", async (req) => {
+    requireLogin(req);
+    const { apiKey, ...rest } = aiSettings.parse(req.body);
+    await app.ai.save({ ...rest, baseUrl: rest.baseUrl ? rest.baseUrl.replace(/\/+$/, "") : null, apiKey: apiKey === null ? "" : apiKey });
+    return { settings: await app.ai.summary() };
+  });
+
+  app.delete("/api/settings/ai", async (req, reply) => {
+    requireLogin(req);
+    await app.ai.clear();
+    return reply.status(204).send();
+  });
+
+  app.post("/api/settings/ai/test", async (req) => {
+    requireLogin(req);
+    const c = await aiConfigFrom(req.body);
+    await aiErrors(() => app.ai.test(c));
+    return { ok: true, message: `${c.model} answered correctly.` };
+  });
+
+  app.post("/api/settings/ai/models", async (req) => {
+    requireLogin(req);
+    const c = await aiConfigFrom(req.body);
+    return { models: await aiErrors(() => app.ai.models(c)) };
   });
 
   // Budget preferences (Fast Track)
