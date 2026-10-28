@@ -41,6 +41,26 @@ describe("suggestions", () => {
     expect(row.suggestion).toEqual({ lineItemId: find(nov, "Groceries").id, itemName: "Groceries", groupName: "Food" });
   });
 
+  it("Fast Track off: no suggestions, no auto-assign; back on restores them", async () => {
+    expect((await t.api("GET", "/api/settings/budget")).body).toEqual({ fastTrack: true });
+    const { oct, find } = await twoMonths();
+    await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Trader Joe's", amountCents: 5000, splits: [{ lineItemId: find(oct, "Groceries").id, amountCents: 5000 }] });
+    const created = (await t.api("POST", "/api/transactions", { date: "2026-11-03", merchant: "Trader Joe's", amountCents: 6100 })).body;
+
+    expect((await t.api("PUT", "/api/settings/budget", { fastTrack: false })).body).toEqual({ fastTrack: false });
+    expect((await t.api("PUT", "/api/settings/budget", { bogus: 1 })).status).toBe(400);
+    const row = () => t.api("GET", "/api/transactions?year=2026&month=11").then((r) => r.body.find((x: any) => x.id === created.id));
+    expect((await row()).suggestion).toBeNull();
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=Trader%20Joe's&date=2026-11-04")).body.suggestion).toBeNull();
+    const auto = (await t.api("POST", "/api/transactions", { date: "2026-11-04", merchant: "Trader Joe's", amountCents: 700, autoAssign: true })).body;
+    expect(auto.autoAssigned).toBe(false);
+    expect(auto.splits).toEqual([]);
+    expect((await t.api("POST", `/api/transactions/${created.id}/accept-suggestion`)).status).toBe(400);
+
+    await t.api("PUT", "/api/settings/budget", { fastTrack: true });
+    expect((await row()).suggestion).toMatchObject({ itemName: "Groceries" });
+  });
+
   it("income: suggests Paycheck 2 for the repeat deposit", async () => {
     const { octPay2, novPay2 } = await twoMonths();
     await t.api("POST", "/api/transactions", { date: "2026-10-13", merchant: "ACH CREDIT HOMEDEPOT PAYROLL *4986 10/13", type: "income", amountCents: 332881, splits: [{ incomeItemId: octPay2.id, amountCents: 332881 }] });

@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 import type { EmailConfig } from "../lib/mail.js";
+import { getBudgetPrefs, saveBudgetPrefs } from "../lib/prefs.js";
 
 function requireLogin(req: FastifyRequest): number {
   if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
@@ -77,6 +78,15 @@ export default async function settingsRoutes(app: FastifyInstance) {
       env: { available: mail.envAvailable, host: mail.envHost },
       accountEmail: await accountEmail(userId),
     };
+  });
+
+  // Budget preferences (Fast Track)
+  app.get("/api/settings/budget", async () => getBudgetPrefs(db));
+
+  app.put("/api/settings/budget", async (req) => {
+    requireLogin(req);
+    const body = z.object({ fastTrack: z.boolean().optional() }).strict().parse(req.body);
+    return saveBudgetPrefs(db, body);
   });
 
   app.put("/api/settings/email", async (req) => {

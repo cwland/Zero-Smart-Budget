@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import BudgetSettings from "./BudgetSettings";
 import DataSettings from "./DataSettings";
 import EmailSettings from "./EmailSettings";
 import ProfileSettings from "./ProfileSettings";
@@ -6,6 +7,7 @@ import { ApiKeys, ChangePassword, Devices } from "./SecuritySettings";
 
 const TABS = [
   { id: "profile", label: "Profile" },
+  { id: "budget", label: "Budget" },
   { id: "security", label: "Security" },
   { id: "api", label: "API keys" },
   { id: "email", label: "Email" },
@@ -52,6 +54,7 @@ export default function SettingsPage() {
 
       <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)!.label} className="mt-6 flex flex-col gap-6">
         {tab === "profile" && <ProfileSettings />}
+        {tab === "budget" && <BudgetSettings />}
         {tab === "security" && (
           <>
             <ChangePassword />

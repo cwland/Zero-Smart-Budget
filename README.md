@@ -105,6 +105,8 @@ Favorites carry into a copied month and show first in the Add Transaction picker
 - The Add Transaction form autocompletes past merchants and pre-picks their item.
 - API: send `"autoAssign": true` with `POST /api/transactions` to put known merchants straight on their item.
 
+Turn this off with **Settings > Budget > Fast Track**. While it's off there are no suggestion chips and nothing is auto-assigned.
+
 ## Accounts and passwords
 
 - **Account menu** (your initials, bottom-left; "Account" on phones): Profile & security, Sign out, Sign out everywhere.

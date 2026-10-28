@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { budgetMonths, categoryGroups, incomeItems, lineItems, transactions, transactionSplits } from "../db/schema.js";
 import { syncTransaction } from "./fundLedger.js";
+import { getBudgetPrefs } from "./prefs.js";
 
 // A suggested budget item for an unassigned transaction, learned from how the same merchant
 // was assigned before (most recent wins). Items are matched by name in the transaction's own
@@ -60,6 +61,7 @@ const lower = (s: string) => s.trim().toLowerCase();
 
 export async function suggestFor(db: Db, targets: Target[]): Promise<Map<number, Suggestion>> {
   const out = new Map<number, Suggestion>();
+  if (!(await getBudgetPrefs(db)).fastTrack) return out; // Fast Track turned off in Settings
   const keys = [...new Set(targets.map((t) => t.merchantKey).filter((k): k is string => !!k))];
   if (!keys.length) return out;
 
