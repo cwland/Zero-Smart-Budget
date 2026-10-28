@@ -43,6 +43,13 @@
       "when": 1793146943825,
       "tag": "0005_favorites",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793149391062,
+      "tag": "0006_plaid_items",
+      "breakpoints": true
     }
   ]
 }

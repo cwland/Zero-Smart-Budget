@@ -106,7 +106,7 @@ export default function PlaidSettings() {
 
   return (
     <Card
-      title="Plaid (bank connections)"
+      title="Plaid keys"
       description={
         <>
           Plaid imports transactions from your banks. Copy your keys from{" "}

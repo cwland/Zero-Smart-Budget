@@ -15,6 +15,7 @@ import fundRoutes from "./routes/funds.js";
 import exportRoutes from "./routes/export.js";
 import profileRoutes from "./routes/profile.js";
 import settingsRoutes from "./routes/settings.js";
+import plaidRoutes from "./routes/plaid.js";
 import devResetRoutes from "./routes/devReset.js"; // TEMPORARY testing tool
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
 import { PlaidService, type PlaidFetch } from "./lib/plaid.js";
@@ -132,6 +133,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(exportRoutes);
   app.register(profileRoutes);
   app.register(settingsRoutes);
+  app.register(plaidRoutes);
   app.register(devResetRoutes); // TEMPORARY testing tool
 
   return app;

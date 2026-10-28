@@ -88,7 +88,7 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
       plaid.calls.length = 0;
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
-      await db.execute(sql`truncate users, password_resets, app_settings, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);
+      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);
       resetLoginLockouts();
       token = "";
     },

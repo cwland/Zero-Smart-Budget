@@ -206,6 +206,46 @@ export const fundEntries = pgTable(
   ]
 );
 
+// ---------- Plaid bank connections ----------
+// One row per bank login ("Item" in Plaid terms). The access token is encrypted.
+export const plaidItemStatus = pgEnum("plaid_item_status", ["ok", "login_required", "error"]);
+
+export const plaidItems = pgTable("plaid_items", {
+  id: serial("id").primaryKey(),
+  itemId: text("item_id").notNull().unique(),
+  accessTokenEnc: text("access_token_enc").notNull(),
+  env: text("env").notNull(), // "sandbox" | "production": tokens only work in the environment they came from
+  institutionId: text("institution_id"),
+  institutionName: text("institution_name").notNull(),
+  status: plaidItemStatus("status").notNull().default("ok"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  cursor: text("cursor"), // where /transactions/sync left off
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Accounts inside a bank login (checking, savings, credit card, ...)
+export const plaidAccounts = pgTable(
+  "plaid_accounts",
+  {
+    id: serial("id").primaryKey(),
+    plaidItemId: integer("plaid_item_id")
+      .notNull()
+      .references(() => plaidItems.id, { onDelete: "cascade" }),
+    accountId: text("account_id").notNull().unique(),
+    name: text("name").notNull(),
+    officialName: text("official_name"),
+    mask: text("mask"), // last 4 digits
+    type: text("type").notNull(), // depository, credit, loan, investment
+    subtype: text("subtype"),
+    importTransactions: boolean("import_transactions").notNull().default(true),
+    currentBalanceCents: integer("current_balance_cents"),
+    availableBalanceCents: integer("available_balance_cents"),
+  },
+  (t) => [index("plaid_accounts_item_idx").on(t.plaidItemId)]
+);
+
 // ---------- relations (for nested queries) ----------
 export const budgetMonthsRelations = relations(budgetMonths, ({ many }) => ({
   incomeItems: many(incomeItems),
@@ -247,4 +287,10 @@ export const transactionSplitsRelations = relations(transactionSplits, ({ one })
     fields: [transactionSplits.incomeItemId],
     references: [incomeItems.id],
   }),
+}));
+export const plaidItemsRelations = relations(plaidItems, ({ many }) => ({
+  accounts: many(plaidAccounts),
+}));
+export const plaidAccountsRelations = relations(plaidAccounts, ({ one }) => ({
+  item: one(plaidItems, { fields: [plaidAccounts.plaidItemId], references: [plaidItems.id] }),
 }));

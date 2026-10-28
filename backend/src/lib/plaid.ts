@@ -108,6 +108,25 @@ export class PlaidService {
     return this.decrypt((env === "production" ? s?.productionSecretEnc : s?.sandboxSecretEnc) ?? null).value;
   }
 
+  // Keys for a specific environment (a bank connected in Sandbox keeps using Sandbox keys)
+  async keysFor(env: PlaidEnv): Promise<PlaidKeys> {
+    const s = await this.stored();
+    const secret = await this.savedSecret(env);
+    if (!s?.clientId || !secret) {
+      throw new HttpError(400, `This bank was connected with your ${env === "production" ? "Production" : "Sandbox"} keys. Add that secret in Settings > Plaid.`);
+    }
+    return { clientId: s.clientId, secret, env };
+  }
+
+  encryptToken(token: string) {
+    return encryptSecret(token, this.secret);
+  }
+  decryptToken(enc: string) {
+    const t = decryptSecret(enc, this.secret);
+    if (!t) throw new HttpError(500, "Can't read this bank's saved access (the server's JWT_SECRET changed). Remove it and connect again.");
+    return t;
+  }
+
   // Keys for the chosen environment, or null if not set up
   async keys(): Promise<PlaidKeys | null> {
     const s = await this.stored();
