@@ -1,4 +1,4 @@
-# Cory's Dollar
+# ZeroPoint Budget
 
 A self-hosted zero-based budgeting app.
 

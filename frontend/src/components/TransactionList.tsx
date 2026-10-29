@@ -152,7 +152,7 @@ function UnassignedRow({
           <button
             onClick={onAccept}
             disabled={busy}
-            title={a ? `AI guess: ${a.groupName} › ${a.itemName}${a.reason ? ` (${a.reason})` : ""}` : `From your history: ${chip.groupName} › ${chip.itemName}`}
+            title={a ? `AI guess${a.service ? ` by ${a.service}` : ""}: ${a.groupName} › ${a.itemName}${a.reason ? ` (${a.reason})` : ""}` : `From your history: ${chip.groupName} › ${chip.itemName}`}
             aria-label={`Assign ${t.merchant} to ${chip.itemName}${a ? " (AI suggestion)" : ""}`}
             className={`block max-w-[9rem] truncate rounded-full border-2 border-dashed bg-white px-3 py-0.5 text-sm font-semibold hover:border-solid hover:bg-pressed disabled:opacity-50 ${a ? AI_CHIP : HISTORY_CHIP}`}
           >
@@ -424,11 +424,17 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
     setBusy(true);
     setError("");
     try {
-      const r = await api<{ asked: number; suggested: number; noMatch: number; skipped: { reason: string; count: number }[]; error?: string }>("POST", "/api/transactions/ai-suggest", { ids, force: true });
+      const r = await api<{ asked: number; suggested: number; noMatch: number; skipped: { reason: string; count: number }[]; error?: string; services?: Record<string, number>; warnings?: string[] }>("POST", "/api/transactions/ai-suggest", { ids, force: true });
       const parts = [r.suggested && `${r.suggested} suggested`, r.noMatch && `${r.noMatch} with no good fit`].filter(Boolean);
       const skipped = r.skipped.map((x) => `${x.count} ${x.reason}`).join("; ");
       if (r.error) setAiMsg({ ok: false, text: r.error });
-      else setAiMsg({ ok: true, text: `AI: ${parts.length ? parts.join(", ") : "nothing to ask"}${skipped ? ` (skipped ${skipped})` : ""}.` });
+      else {
+        // Which AI answered, and any that were down along the way
+        const by = Object.keys(r.services ?? {});
+        const down = (r.warnings ?? []).map((w) => w.split(":")[0]);
+        const backup = down.length ? ` ${[...new Set(down)].join(", ")} didn't answer, so ${by.join(" and ") || "the next one"} did.` : by.length ? ` (${by.join(", ")})` : "";
+        setAiMsg({ ok: true, text: `AI: ${parts.length ? parts.join(", ") : "nothing to ask"}${skipped ? ` (skipped ${skipped})` : ""}.${backup}` });
+      }
       setSelected(new Set());
       await onChanged();
     } catch (e) {

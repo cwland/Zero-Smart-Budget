@@ -6,6 +6,7 @@ import {
   categoryGroups,
   fundEntries,
   incomeItems,
+  manualAccounts,
   lineItems,
   sinkingFunds,
   transactions,
@@ -15,12 +16,12 @@ import { loadBudget } from "./budget.js";
 import { rebuildAllEntries } from "./fundLedger.js";
 import { backfillMerchantKeys } from "./merchant.js";
 
-export const EXPORT_VERSION = 2; // 2 added fundEntries
+export const EXPORT_VERSION = 3; // 2 added fundEntries, 3 Month Close (closed months, goals, rollovers)
 
 // Everything except the login and API keys
 export async function buildExport(db: Db) {
   return {
-    app: "Cory's Dollar",
+    app: "ZeroPoint Budget",
     exportVersion: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     months: await db.select().from(budgetMonths).orderBy(asc(budgetMonths.id)),
@@ -31,6 +32,7 @@ export async function buildExport(db: Db) {
     transactions: await db.select().from(transactions).orderBy(asc(transactions.id)),
     transactionSplits: await db.select().from(transactionSplits).orderBy(asc(transactionSplits.id)),
     fundEntries: await db.select().from(fundEntries).orderBy(asc(fundEntries.id)),
+    manualAccounts: await db.select().from(manualAccounts).orderBy(asc(manualAccounts.id)),
   };
 }
 
@@ -119,8 +121,8 @@ export async function budgetCsv(db: Db, year?: number, month?: number) {
 
 const rows = z.array(z.record(z.string(), z.unknown()));
 export const importSchema = z.object({
-  app: z.literal("Cory's Dollar"),
-  exportVersion: z.union([z.literal(1), z.literal(2)]),
+  app: z.enum(["ZeroPoint Budget", "Cory's Dollar"]), // backups made before the rename still restore
+  exportVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   months: rows,
   incomeItems: rows,
   groups: rows,
@@ -129,13 +131,14 @@ export const importSchema = z.object({
   transactions: rows,
   transactionSplits: rows,
   fundEntries: rows.optional(), // missing in version 1 files: rebuilt from links
+  manualAccounts: rows.optional(), // version 3+
 });
 export type ImportData = z.infer<typeof importSchema>;
 
 // JSON turns dates into strings; turn timestamp fields back into Dates
 function revive(row: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...row };
-  for (const key of ["createdAt", "updatedAt", "lastUsedAt", "deletedAt"]) {
+  for (const key of ["createdAt", "updatedAt", "lastUsedAt", "deletedAt", "closedAt", "balanceUpdatedAt"]) {
     if (typeof out[key] === "string") out[key] = new Date(out[key] as string);
   }
   return out;
@@ -156,6 +159,7 @@ const TABLES = [
   "transactions",
   "transaction_splits",
   "fund_entries",
+  "manual_accounts",
 ];
 
 // Replaces ALL budget data with the backup's contents (the login and API keys are kept).
@@ -171,6 +175,7 @@ export async function importData(db: Db, data: ImportData) {
     await insertChunks(tx, transactions, data.transactions);
     await insertChunks(tx, transactionSplits, data.transactionSplits);
     if (data.fundEntries) await insertChunks(tx, fundEntries, data.fundEntries);
+    if (data.manualAccounts?.length) await insertChunks(tx, manualAccounts, data.manualAccounts);
     // New rows should get ids after the restored ones
     for (const t of TABLES) {
       await tx.execute(

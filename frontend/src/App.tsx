@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, getToken, setToken } from "./api";
+import { api, ApiError, getToken, setToken } from "./api";
 import AuthScreen from "./components/AuthScreen";
 import AppShell from "./components/AppShell";
 import ResetPasswordScreen from "./components/ResetPasswordScreen";
@@ -7,6 +7,7 @@ import { SessionContext, type User } from "./session";
 
 type AuthState =
   | { status: "loading" }
+  | { status: "offline" } // the server can't be reached (e.g. restarting): keep the sign-in and retry
   | { status: "setup" }
   | { status: "login"; resetAvailable: boolean }
   | { status: "in"; user: User };
@@ -25,7 +26,14 @@ export default function App() {
       if (!getToken()) return setAuth({ status: "login", resetAvailable: status.resetAvailable });
       const me = await api<{ user?: User }>("GET", "/api/auth/me");
       setAuth(me.user ? { status: "in", user: me.user } : { status: "login", resetAvailable: status.resetAvailable });
-    } catch {
+    } catch (e) {
+      // Only a "not signed in" answer ends the session. Anything else (server restarting, network
+      // down) keeps the sign-in and tries again.
+      if (!(e instanceof ApiError) || e.status >= 500) {
+        setAuth((a) => (a.status === "in" ? a : { status: "offline" }));
+        setTimeout(() => check(), 3000);
+        return;
+      }
       setToken(null);
       const status = await api<{ resetAvailable: boolean }>("GET", "/api/auth/status").catch(() => ({ resetAvailable: false }));
       setAuth({ status: "login", resetAvailable: status.resetAvailable });
@@ -67,6 +75,16 @@ export default function App() {
   }
 
   if (auth.status === "loading") return <div className="min-h-screen bg-page" />;
+  if (auth.status === "offline") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-page p-6 text-center">
+        <div role="status" className="rounded-2xl bg-white px-8 py-6">
+          <p className="text-lg font-semibold">Can't reach ZeroPoint Budget right now</p>
+          <p className="mt-1 text-subtle">The server may be restarting. Trying again…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (auth.status === "setup" || auth.status === "login") {
     return <AuthScreen mode={auth.status} resetAvailable={auth.status === "login" && auth.resetAvailable} onDone={signedIn} />;

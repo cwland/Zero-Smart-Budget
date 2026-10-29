@@ -16,6 +16,7 @@ import exportRoutes from "./routes/export.js";
 import profileRoutes from "./routes/profile.js";
 import settingsRoutes from "./routes/settings.js";
 import plaidRoutes from "./routes/plaid.js";
+import accountRoutes from "./routes/accounts.js";
 import devResetRoutes from "./routes/devReset.js"; // TEMPORARY testing tool
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
 import { PlaidService, type PlaidFetch } from "./lib/plaid.js";
@@ -30,6 +31,7 @@ declare module "fastify" {
     mail: MailService;
     plaid: PlaidService;
     ai: AiService;
+    now: () => Date; // the clock (tests set the date)
   }
   interface FastifyRequest {
     auth?: { method: "token"; userId: number } | { method: "apiKey"; keyId: number };
@@ -46,6 +48,7 @@ export interface AppOptions {
   mailTransport?: TransportFactory; // tests swap in a fake
   plaidFetch?: PlaidFetch; // tests swap in a fake Plaid
   aiFetch?: AiFetch; // tests swap in a fake AI
+  now?: () => Date; // tests set "today"
 }
 
 // Backups go in <repo>/backups unless BACKUP_DIR says otherwise
@@ -61,7 +64,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/reset",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport, plaidFetch, aiFetch }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport, plaidFetch, aiFetch, now = () => new Date() }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -74,6 +77,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.decorate("mail", new MailService(db, jwtSecret, emailEnv, mailTransport));
   app.decorate("plaid", new PlaidService(db, jwtSecret, plaidFetch));
   app.decorate("ai", new AiService(db, jwtSecret, aiFetch));
+  app.decorate("now", now);
 
   // Every /api route needs a login token or an API key, except the public ones
   app.addHook("onRequest", async (req) => {
@@ -127,7 +131,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
     return reply.status(500).send({ error: "Something went wrong" });
   });
 
-  app.get("/api/health", async () => ({ status: "ok", app: "Cory's Dollar" }));
+  app.get("/api/health", async () => ({ status: "ok", app: "ZeroPoint Budget" }));
 
   app.register(authRoutes);
   app.register(keyRoutes);
@@ -138,6 +142,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(profileRoutes);
   app.register(settingsRoutes);
   app.register(plaidRoutes);
+  app.register(accountRoutes);
   app.register(devResetRoutes); // TEMPORARY testing tool
 
   return app;

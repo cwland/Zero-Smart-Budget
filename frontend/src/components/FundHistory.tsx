@@ -18,6 +18,7 @@ function label(e: FundEntry) {
     const [y, m] = e.date.split("-").map(Number);
     return `Budgeted · ${e.description ?? "item"} (${MONTH_NAMES[m - 1]} ${y})`;
   }
+  if (e.kind === "month_close") return `Month Close · ${e.description ?? ""}`;
   if (e.kind === "spent") return `${e.amountCents > 0 ? "Money back" : "Spent"} · ${e.description ?? "transaction"}`;
   return e.description || (e.amountCents > 0 ? "Added by hand" : "Taken out by hand");
 }
@@ -128,6 +129,7 @@ export default function FundHistory({ fundId, version, onChanged }: { fundId: nu
               <span className="block text-xs text-subtle">
                 {niceDate(e.date)}
                 {!e.live && e.kind !== "adjustment" && " · item no longer linked"}
+                {e.kind === "month_close" && " · reopen that month to change it"}
               </span>
             </span>
             <span className={`tabular shrink-0 font-medium ${e.amountCents < 0 ? "text-error" : "text-success"}`}>

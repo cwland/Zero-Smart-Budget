@@ -3,14 +3,15 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { formatCents } from "../money";
 import { InlineText, MoneyInput } from "./inputs";
-import { GripIcon, PiggyIcon, Trash } from "./Icons";
+import { GoalIcon, GripIcon, PiggyIcon, Trash } from "./Icons";
 
 export interface RowData {
   id: number;
   name: string;
   plannedCents: number;
   actualCents: number; // spent (expenses) or received (income)
-  fund?: { name: string; balanceCents: number; targetCents: number | null } | null;
+  fund?: { name: string; kind?: "sinking" | "goal"; balanceCents: number; targetCents: number | null; goalReached?: boolean } | null;
+  lockedNote?: string; // planned amount can't be changed here (e.g. a rollover); why
 }
 
 export type SecondColumn = "actual" | "remaining";
@@ -29,6 +30,7 @@ interface Props {
   onDropTx?: () => void;
   onAddTx?: () => void; // "+": add a transaction already set to this item
   itemKey?: string; // "l:12" / "i:3": where accepted transactions are tossed
+  readOnly?: boolean; // closed month: the plan can't be changed
 }
 
 export function ProgressBar({ actual, planned }: { actual: number; planned: number }) {
@@ -45,12 +47,13 @@ export function secondValue(row: { plannedCents: number; actualCents: number }, 
   return column === "actual" ? row.actualCents : row.plannedCents - row.actualCents;
 }
 
-export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId, sortable = true, canDropTx, onDropTx, onAddTx, itemKey }: Props) {
+export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, selected, onSelect, sortableId, sortable = true, canDropTx, onDropTx, onAddTx, itemKey, readOnly }: Props) {
   const amountRef = useRef<HTMLInputElement>(null);
   const [dropOver, setDropOver] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const second = secondValue(row, column);
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId, disabled: !sortable });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId, disabled: !sortable || readOnly });
+  const plannedLocked = readOnly || !!row.lockedNote;
 
   return (
     <div
@@ -78,7 +81,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
         if (!(e.target as HTMLElement).closest("input,button,select")) onSelect?.();
       }}
     >
-      {sortable && <button
+      {sortable && !readOnly && <button
         ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
@@ -90,13 +93,17 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
       <div className="flex items-center gap-2 py-3">
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-center gap-1">
-            <InlineText
-              value={row.name}
-              ariaLabel="Item name"
-              onSave={(name) => onSave({ name })}
-              onEnter={() => amountRef.current?.focus()}
-              className="min-w-0 flex-1 text-base sm:text-lg"
-            />
+            {readOnly ? (
+              <span className="min-w-0 flex-1 truncate px-1 py-1 text-base sm:text-lg">{row.name}</span>
+            ) : (
+              <InlineText
+                value={row.name}
+                ariaLabel="Item name"
+                onSave={(name) => onSave({ name })}
+                onEnter={() => amountRef.current?.focus()}
+                className="min-w-0 flex-1 text-base sm:text-lg"
+              />
+            )}
             {onAddTx && (
               <button
                 onClick={onAddTx}
@@ -111,24 +118,31 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
             )}
           </span>
           {row.fund && (
-            <span title={`Sinking fund: ${row.fund.name}`} className="tabular flex items-center gap-1 px-1 text-sm text-success">
-              <PiggyIcon className="size-4 shrink-0" />
+            <span title={`${row.fund.kind === "goal" ? "Goal" : "Sinking fund"}: ${row.fund.name}`} className="tabular flex items-center gap-1 px-1 text-sm text-success">
+              {row.fund.kind === "goal" ? <GoalIcon className="size-4 shrink-0" /> : <PiggyIcon className="size-4 shrink-0" />}
               <span className="truncate">
                 {formatCents(row.fund.balanceCents)}
                 {row.fund.targetCents ? ` of ${formatCents(row.fund.targetCents)}` : " saved"}
+                {row.fund.goalReached ? " · Goal reached 🎉" : ""}
               </span>
             </span>
           )}
         </div>
         <div className="w-24 shrink-0 sm:w-[7.5rem]">
-          <MoneyInput
-            ref={amountRef}
-            ariaLabel={`Planned for ${row.name}`}
-            cents={row.plannedCents}
-            onSave={(plannedCents) => onSave({ plannedCents })}
-            onEnter={onAmountEnter}
-            className="text-base sm:text-lg"
-          />
+          {plannedLocked ? (
+            <span title={row.lockedNote} aria-label={`Planned for ${row.name}`} className="tabular block px-1 py-1 text-right text-base text-subtle sm:text-lg">
+              {formatCents(row.plannedCents)}
+            </span>
+          ) : (
+            <MoneyInput
+              ref={amountRef}
+              ariaLabel={`Planned for ${row.name}`}
+              cents={row.plannedCents}
+              onSave={(plannedCents) => onSave({ plannedCents })}
+              onEnter={onAmountEnter}
+              className="text-base sm:text-lg"
+            />
+          )}
         </div>
         <button
           onClick={onSelect}
@@ -138,7 +152,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
         >
           {formatCents(second)}
         </button>
-        <button
+        {!plannedLocked && <button
           onClick={() => (confirming ? onDelete() : setConfirming(true))}
           onBlur={() => setConfirming(false)}
           aria-label={confirming ? `Confirm delete ${row.name}` : `Delete ${row.name}`}
@@ -149,7 +163,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
           }`}
         >
           {confirming ? "Delete" : <Trash />}
-        </button>
+        </button>}
       </div>
       <ProgressBar actual={row.actualCents} planned={row.plannedCents} />
     </div>

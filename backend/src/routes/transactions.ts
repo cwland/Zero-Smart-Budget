@@ -10,6 +10,7 @@ import {
   lineItems,
   transactions,
   transactionSplits,
+  manualAccounts,
 } from "../db/schema.js";
 import { monthDateRange } from "../lib/calc.js";
 import { syncTransaction } from "../lib/fundLedger.js";
@@ -191,6 +192,13 @@ export default async function transactionRoutes(app: FastifyInstance) {
           (await db.select({ accountId: plaidAccounts.accountId, name: plaidAccounts.name, mask: plaidAccounts.mask }).from(plaidAccounts).where(inArray(plaidAccounts.accountId, accountIds))).map((a) => [a.accountId, { name: a.name, mask: a.mask }])
         )
       : new Map<string, { name: string; mask: string | null }>();
+    // ...or an account you track by hand ("manual:<id>")
+    const manualIds = accountIds.filter((k) => k.startsWith("manual:")).map((k) => Number(k.slice(7))).filter((n) => Number.isInteger(n));
+    if (manualIds.length) {
+      for (const m of await db.select({ id: manualAccounts.id, name: manualAccounts.name }).from(manualAccounts).where(inArray(manualAccounts.id, manualIds))) {
+        accounts.set(`manual:${m.id}`, { name: m.name, mask: null });
+      }
+    }
     // AI guesses, only where history has nothing (history always wins)
     const aiTips = await aiSuggestionsFor(db, unassigned.filter((r) => !suggestions.has(r.id)));
     return rows.map((r) => ({

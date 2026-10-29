@@ -6,6 +6,7 @@ import { setTossEnabled } from "../toss";
 interface BudgetPrefs {
   fastTrack: boolean;
   tossAnimation: boolean;
+  monthCloseDays: number;
 }
 
 // An EveryDollar-style on/off switch with its label
@@ -68,6 +69,30 @@ export default function BudgetSettings() {
   return (
     <>
       {setting("fast-track", "Fast Track", "Track new transactions directly to a suggested budget item based on past spending.", prefs?.fastTrack, (fastTrack) => update({ fastTrack }))}
+      <section aria-label="Month Close" className="rounded-2xl bg-white p-6">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <h2 className="text-xl font-bold">Month Close</h2>
+            <p className="mt-2 max-w-md text-subtle">When the Month Close button shows up at the top of your budget, so you can give any leftover money a job (or cover an overspend). Past months that aren't closed always show it.</p>
+          </div>
+          {prefs && (
+            <select
+              aria-label="Show Month Close"
+              value={prefs.monthCloseDays}
+              disabled={busy}
+              onChange={(e) => update({ monthCloseDays: Number(e.target.value) })}
+              className="shrink-0 rounded border border-muted/50 bg-white px-3 py-2 outline-none focus:border-action focus:ring-2 focus:ring-action/15"
+            >
+              <option value={0}>On the last day</option>
+              {Array.from({ length: 14 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {d} day{d === 1 ? "" : "s"} before{d === 4 ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </section>
       {setting("toss", "Toss animation", "When you accept a suggestion, the transaction is tossed in an arc into its budget item. Turn it off and accepted transactions move to Tracked without the animation.", prefs?.tossAnimation, (tossAnimation) => update({ tossAnimation }))}
       <Notice msg={msg} />
     </>

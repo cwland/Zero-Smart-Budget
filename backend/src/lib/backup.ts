@@ -3,8 +3,9 @@ import path from "node:path";
 import type { Db } from "../db/index.js";
 import { buildExport } from "./dataExport.js";
 
-// corys-dollar-2026-10-27-143005.json, or with a label: corys-dollar-2026-10-27-143005-before-restore.json
-export const BACKUP_NAME = /^corys-dollar-\d{4}-\d{2}-\d{2}-\d{6}(-[a-z-]+)?\.json$/;
+// zeropoint-budget-2026-10-27-143005.json, or with a label: zeropoint-budget-2026-10-27-143005-before-restore.json
+// (backups from before the rename are named corys-dollar-...)
+export const BACKUP_NAME = /^(zeropoint-budget|corys-dollar)-\d{4}-\d{2}-\d{2}-\d{6}(-[a-z-]+)?\.json$/;
 
 const stamp = (d: Date) => {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -13,7 +14,7 @@ const stamp = (d: Date) => {
 
 export async function writeBackup(db: Db, dir: string, label?: string) {
   await fs.mkdir(dir, { recursive: true });
-  const name = `corys-dollar-${stamp(new Date())}${label ? `-${label}` : ""}.json`;
+  const name = `zeropoint-budget-${stamp(new Date())}${label ? `-${label}` : ""}.json`;
   const data = JSON.stringify(await buildExport(db), null, 2);
   const tmp = path.join(dir, `.${name}.tmp`);
   await fs.writeFile(tmp, data);

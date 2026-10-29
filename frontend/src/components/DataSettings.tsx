@@ -58,10 +58,10 @@ export default function DataSettings() {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (data?.app !== "Cory's Dollar" || !Array.isArray(data.months)) throw new Error();
+      if (!["ZeroPoint Budget", "Cory's Dollar"].includes(data?.app) || !Array.isArray(data.months)) throw new Error();
       setRestore({ name: file.name, data, exportedAt: data.exportedAt, months: data.months.length, transactions: data.transactions?.length ?? 0 });
     } catch {
-      setMessage({ kind: "error", text: "That file isn't a Cory's Dollar backup" });
+      setMessage({ kind: "error", text: "That file isn't a ZeroPoint Budget backup" });
     }
   }
 

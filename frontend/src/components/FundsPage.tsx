@@ -94,6 +94,7 @@ function FundCard({ fund, onEdit, onArchive, onChanged }: { fund: SinkingFund; o
     await onChanged();
     setVersion((v) => v + 1);
   };
+  const adjusted = fund.adjustmentsCents + (fund.monthCloseCents ?? 0);
   const pct = fund.targetCents ? Math.min(100, Math.round((fund.balanceCents / fund.targetCents) * 100)) : null;
   return (
     <article aria-label={fund.name} className={`rounded-2xl bg-white p-5 ${fund.archived ? "opacity-60" : ""}`}>
@@ -138,9 +139,10 @@ function FundCard({ fund, onEdit, onArchive, onChanged }: { fund: SinkingFund; o
         </div>
         <div className="rounded-lg bg-page px-3 py-2">
           <dt className="text-xs uppercase tracking-wide text-subtle">Adjusted</dt>
-          <dd className={fund.adjustmentsCents < 0 ? "text-error" : fund.adjustmentsCents > 0 ? "text-success" : ""}>
-            {fund.adjustmentsCents > 0 ? "+" : fund.adjustmentsCents < 0 ? "−" : ""}
-            {formatCents(Math.abs(fund.adjustmentsCents))}
+          {/* By hand, plus leftovers put in / overspends covered at Month Close */}
+          <dd className={adjusted < 0 ? "text-error" : adjusted > 0 ? "text-success" : ""}>
+            {adjusted > 0 ? "+" : adjusted < 0 ? "−" : ""}
+            {formatCents(Math.abs(adjusted))}
           </dd>
         </div>
       </dl>
@@ -185,7 +187,7 @@ export default function FundsPage() {
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
     const list = await api<SinkingFund[]>("GET", `/api/funds?includeArchived=${showArchived}`);
-    if (seq === loadSeq.current) setFunds(list); // ignore answers that arrive out of order
+    if (seq === loadSeq.current) setFunds(list.filter((f) => f.kind !== "goal")); // goals have their own page; ignore out-of-order answers
   }, [showArchived]);
 
   useEffect(() => {
@@ -211,7 +213,7 @@ export default function FundsPage() {
       </div>
 
       <p className="mt-4 text-sm text-subtle">
-        Link a budget item to a fund (click the item on your budget). What you plan for it each month is added to the fund, and spending on it comes out. Each fund keeps its history, so unlinking or deleting an item later doesn't change what's already happened.
+        Sinking funds save up for things you know are coming, like car repairs or Christmas, and can keep growing. Link a budget item to a fund (click the item on your budget): what you plan for it each month is added, and spending on it comes out. Saving toward a set amount? Use <a href="#/goals" className="font-semibold text-link hover:underline">Goals</a> instead.
       </p>
 
       {error && <p role="alert" className="mt-4 rounded bg-error-subtle px-3 py-2 text-error">{error}</p>}

@@ -28,6 +28,7 @@ interface Props {
   canDropTx?: boolean; // a dragged transaction can land on this card's items
   onDropTx?: (rowId: number) => void;
   onAddTx?: (rowId: number) => void; // "+" on a row: add a transaction set to that item
+  readOnly?: boolean; // closed month
 }
 
 export default function GroupCard(props: Props) {
@@ -41,7 +42,7 @@ export default function GroupCard(props: Props) {
   const secondTotal = rows.reduce((t, r) => t + secondValue(r, column), 0);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: props.sortableId ?? "income-card",
-    disabled: !props.sortableId,
+    disabled: !props.sortableId || props.readOnly,
   });
 
   return (
@@ -54,7 +55,7 @@ export default function GroupCard(props: Props) {
     >
       {/* Header */}
       <header className={`relative flex items-center gap-2 px-4 pt-6 sm:px-6 ${props.compact ? "pb-6" : "pb-2"}`}>
-        {props.sortableId && (
+        {props.sortableId && !props.readOnly && (
           <button
             ref={setActivatorNodeRef}
             {...attributes}
@@ -66,7 +67,7 @@ export default function GroupCard(props: Props) {
           </button>
         )}
         <div className="flex min-w-0 flex-1 items-center gap-1">
-          {props.onRename ? (
+          {props.onRename && !props.readOnly ? (
             <InlineText
               value={title}
               ariaLabel="Group name"
@@ -84,7 +85,7 @@ export default function GroupCard(props: Props) {
           >
             {collapsed ? <ChevronDown /> : <ChevronUp />}
           </button>
-          {props.onDelete && (
+          {props.onDelete && !props.readOnly && (
             <button
               onClick={() => (confirmDelete ? props.onDelete!() : setConfirmDelete(true))}
               onBlur={() => setConfirmDelete(false)}
@@ -133,19 +134,21 @@ export default function GroupCard(props: Props) {
               onDropTx={() => props.onDropTx?.(row.id)}
               onAddTx={props.onAddTx ? () => props.onAddTx!(row.id) : undefined}
               itemKey={props.favorites ? undefined : `${kind === "income" ? "i" : "l"}:${row.id}`}
+              readOnly={props.readOnly}
             />
           ))}
           </SortableContext>
-          {drafting && <DraftRow onCreate={props.onAddItem} onClose={() => setDrafting(false)} />}
+          {drafting && !props.readOnly && <DraftRow onCreate={props.onAddItem} onClose={() => setDrafting(false)} />}
 
           {/* Footer (the Favorites card has none, like EveryDollar) */}
           {props.favorites ? <div className="pb-4" /> : <footer className="flex items-center gap-2 px-4 pb-6 pt-4 sm:px-6">
-            <button
-              onClick={() => setDrafting(true)}
-              className="flex-1 whitespace-nowrap text-left text-link hover:underline"
-            >
-              {kind === "income" ? "Add Income" : "Add Item"}
-            </button>
+            {props.readOnly ? (
+              <span className="flex-1" />
+            ) : (
+              <button onClick={() => setDrafting(true)} className="flex-1 whitespace-nowrap text-left text-link hover:underline">
+                {kind === "income" ? "Add Income" : "Add Item"}
+              </button>
+            )}
             <div className="tabular w-24 shrink-0 sm:w-[7.5rem] pr-1 text-right text-subtle">{formatCents(plannedTotal)}</div>
             <div className={`tabular w-[5.5rem] shrink-0 sm:w-[6.5rem] text-right ${secondTotal < 0 ? "text-error" : "text-subtle"}`}>
               {formatCents(secondTotal)}

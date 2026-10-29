@@ -65,7 +65,7 @@ describe("backups", () => {
     await sampleData();
     const made = await t.api("POST", "/api/backups");
     expect(made.status).toBe(201);
-    expect(made.body.name).toMatch(/^corys-dollar-\d{4}-\d{2}-\d{2}-\d{6}\.json$/);
+    expect(made.body.name).toMatch(/^zeropoint-budget-\d{4}-\d{2}-\d{2}-\d{6}\.json$/);
 
     const list = await t.api("GET", "/api/backups");
     expect(list.body.backups).toHaveLength(1);
@@ -76,11 +76,11 @@ describe("backups", () => {
     expect(JSON.parse(dl.body).transactions).toHaveLength(3);
 
     // keep = 3: older files are removed
-    for (let i = 0; i < 4; i++) fs.writeFileSync(`${t.backupDir}/corys-dollar-2020-01-0${i + 1}-000000.json`, "{}");
+    for (let i = 0; i < 4; i++) fs.writeFileSync(`${t.backupDir}/zeropoint-budget-2020-01-0${i + 1}-000000.json`, "{}");
     await t.api("POST", "/api/backups");
     const after = (await t.api("GET", "/api/backups")).body.backups.map((b: { name: string }) => b.name);
     expect(after).toHaveLength(3);
-    expect(after.some((n: string) => n.startsWith("corys-dollar-2020-01-01"))).toBe(false);
+    expect(after.some((n: string) => n.startsWith("zeropoint-budget-2020-01-01"))).toBe(false);
   });
 
   it("won't serve files outside the backup folder", async () => {

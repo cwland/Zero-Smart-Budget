@@ -3,7 +3,6 @@ import BudgetSettings from "./BudgetSettings";
 import DataSettings from "./DataSettings";
 import EmailSettings from "./EmailSettings";
 import AiSettings from "./AiSettings";
-import BankConnections from "./BankConnections";
 import PlaidSettings from "./PlaidSettings";
 import ProfileSettings from "./ProfileSettings";
 import { ApiKeys, ChangePassword, Devices } from "./SecuritySettings";
@@ -71,7 +70,9 @@ export default function SettingsPage() {
         {tab === "plaid" && (
           <>
             <PlaidSettings />
-            <BankConnections />
+            <p className="px-1 text-subtle">
+              Connect banks and see their balances on the <a href="#/accounts" className="font-semibold text-link hover:underline">Accounts</a> page.
+            </p>
           </>
         )}
         {tab === "ai" && <AiSettings />}

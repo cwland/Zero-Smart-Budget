@@ -46,17 +46,21 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
   // Fake AI: records calls; answer with ai.respond(url, body, headers) -> { status, json }
   const ai = {
     calls: [] as { url: string; method: string; headers: Record<string, string>; body: any }[],
-    respond: (_url: string, _body: any, _headers: Record<string, string>): { status: number; json: unknown } => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } }),
+    // (may return a promise, e.g. one that never settles to act like a server that hangs)
+    respond: (_url: string, _body: any, _headers: Record<string, string>): { status: number; json: unknown } | Promise<{ status: number; json: unknown }> => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } }),
     down: false,
   };
   const aiFetch: AiFetch = async (url, init) => {
     if (ai.down) throw new Error("ECONNREFUSED");
     const body = init.body ? JSON.parse(init.body) : undefined;
     ai.calls.push({ url, method: init.method, headers: init.headers, body });
-    const r = ai.respond(url, body, init.headers);
+    const r = await ai.respond(url, body, init.headers);
     return { ok: r.status < 300, status: r.status, json: async () => r.json };
   };
+  // The app's clock ("today"); tests can set clock.date
+  const clock = { date: null as Date | null };
   const app = buildApp({
+    now: () => clock.date ?? new Date(),
     aiFetch,
     plaidFetch,
     db,
@@ -98,7 +102,9 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
     failNext,
     plaid,
     ai,
+    clock,
     async reset() {
+      clock.date = null;
       sent.length = 0;
       failNext.value = "";
       plaid.calls.length = 0;
@@ -107,7 +113,7 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
       ai.respond = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
-      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions restart identity cascade`);
+      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts restart identity cascade`);
       resetLoginLockouts();
       token = "";
     },

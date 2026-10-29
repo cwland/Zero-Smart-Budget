@@ -2,7 +2,7 @@
 
 Reference: the EveryDollar web app budget screen (everydollar.com/app/budget), Oct 2026,
 measured from its live styles. Goal: same look, feel and density.
-Cory's Dollar keeps its own name and logo, and doesn't copy theirs.
+ZeroPoint Budget keeps its own name and logo, and doesn't copy theirs.
 
 ## Font
 

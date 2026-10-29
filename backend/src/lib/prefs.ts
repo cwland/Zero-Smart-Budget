@@ -6,9 +6,10 @@ import { appSettings } from "../db/schema.js";
 export interface BudgetPrefs {
   fastTrack: boolean; // suggest budget items for new transactions based on past spending
   tossAnimation: boolean; // accepting a suggestion tosses the transaction into its budget item
+  monthCloseDays: number; // the Month Close button shows this many days before the month's last day
 }
 
-export const DEFAULT_BUDGET_PREFS: BudgetPrefs = { fastTrack: true, tossAnimation: true };
+export const DEFAULT_BUDGET_PREFS: BudgetPrefs = { fastTrack: true, tossAnimation: true, monthCloseDays: 4 };
 
 export async function getBudgetPrefs(db: Db): Promise<BudgetPrefs> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.key, "budget"));

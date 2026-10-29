@@ -137,7 +137,7 @@ export default async function authRoutes(app: FastifyInstance) {
       try {
         await app.mail.send({
           to: user.email,
-          subject: "Reset your Cory's Dollar password",
+          subject: "Reset your ZeroPoint Budget password",
           text: `Someone (hopefully you) asked to reset the password for "${user.username}".\n\nReset it here (this link works once, for 1 hour):\n${link}\n\nIf this wasn't you, you can ignore this email. Your password won't change.`,
           html: `<p>Someone (hopefully you) asked to reset the password for <strong>${user.username.replace(/[<>&]/g, "")}</strong>.</p><p><a href="${link}">Reset your password</a> (this link works once, for 1 hour).</p><p>If this wasn't you, you can ignore this email. Your password won't change.</p>`,
         });

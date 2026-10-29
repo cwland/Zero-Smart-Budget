@@ -7,6 +7,7 @@ import { startBackupSchedule } from "./lib/backup.js";
 import { emailConfigFromEnv } from "./lib/mail.js";
 import { syncAll } from "./lib/plaidSync.js";
 import { autoSuggest } from "./lib/aiSuggest.js";
+import { autoCloseOldMonths } from "./lib/monthClose.js";
 
 const { db } = createDb(process.env.DATABASE_URL!);
 await runMigrations(db);
@@ -47,6 +48,14 @@ if (syncHours > 0) {
   setTimeout(run, 60 * 1000); // a minute after starting
   setInterval(run, syncHours * 60 * 60 * 1000);
 }
+
+// Month Close: months two or more months old close themselves (checked at start and every 6 hours)
+const autoClose = () =>
+  autoCloseOldMonths(db)
+    .then((n) => n && app.log.info(`Closed ${n} old month(s) automatically`))
+    .catch((err) => app.log.error(err));
+autoClose();
+setInterval(autoClose, 6 * 60 * 60 * 1000);
 
 const port = Number(process.env.PORT ?? 4000);
 

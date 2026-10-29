@@ -5,7 +5,7 @@ import { PiggyIcon } from "./Icons";
 
 interface Props {
   lineItemId: number;
-  fund: { id: number; name: string; targetCents: number | null; balanceCents: number } | null;
+  fund: { id: number; name: string; kind?: "sinking" | "goal"; targetCents: number | null; balanceCents: number; goalReached?: boolean } | null;
   onChanged: () => Promise<void>;
 }
 
@@ -56,13 +56,14 @@ export default function FundLink({ lineItemId, fund, onChanged }: Props) {
     <div className="mt-4 rounded-lg bg-brand-subtle p-3">
       <div className="flex items-center gap-2 text-sm font-semibold text-success">
         <PiggyIcon className="size-5" />
-        Sinking fund
+        {fund?.kind === "goal" ? "Goal" : "Sinking fund"}
       </div>
 
       {fund && (
         <div className="tabular mt-1 text-sm">
           <strong>{fund.name}</strong>: {formatCents(fund.balanceCents)}
           {fund.targetCents ? ` of ${formatCents(fund.targetCents)}` : ""}
+          {fund.goalReached && <span className="ml-1 font-semibold">· Goal reached 🎉</span>}
         </div>
       )}
 
@@ -77,10 +78,11 @@ export default function FundLink({ lineItemId, fund, onChanged }: Props) {
           }}
           className={`${field} mt-2 text-sm`}
         >
-          <option value="">Not a sinking fund</option>
+          <option value="">Not a fund or goal</option>
           {choices.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
+              {"kind" in f && f.kind === "goal" ? " (goal)" : ""}
             </option>
           ))}
           <option value="new">+ New fund…</option>

@@ -43,12 +43,17 @@ export async function loadFunds(
     const contributedCents = get(f.id, "budgeted");
     const spentCents = -get(f.id, "spent");
     const adjustmentsCents = get(f.id, "adjustment");
+    const monthCloseCents = get(f.id, "month_close"); // leftovers put in / overspends covered at Month Close
+    const balanceCents = fundBalance(f.startingBalanceCents, contributedCents, spentCents) + adjustmentsCents + monthCloseCents;
     return {
       ...f,
       contributedCents,
       spentCents,
       adjustmentsCents,
-      balanceCents: fundBalance(f.startingBalanceCents, contributedCents, spentCents) + adjustmentsCents,
+      monthCloseCents,
+      balanceCents,
+      // Goals stop at their target
+      goalReached: f.kind === "goal" && f.targetCents !== null && balanceCents >= f.targetCents,
     };
   });
 }
@@ -110,7 +115,9 @@ export async function loadBudget(db: Db, monthId: number) {
     name: i.name,
     sortOrder: i.sortOrder,
     plannedCents: i.plannedCents,
-    receivedCents: receivedBy.get(i.id) ?? 0,
+    // A rollover from last month's Month Close is money you already have
+    receivedCents: i.rolloverFromMonthId ? i.plannedCents + (receivedBy.get(i.id) ?? 0) : receivedBy.get(i.id) ?? 0,
+    rolloverFrom: i.rolloverFromMonthId,
   }));
 
   const groupsOut = groups.map((g) => {
@@ -128,7 +135,7 @@ export async function loadBudget(db: Db, monthId: number) {
           remainingCents: remaining({ plannedCents: i.plannedCents, spentCents }),
           favorite: i.favorite,
           sinkingFund: fund
-            ? { id: fund.id, name: fund.name, targetCents: fund.targetCents, balanceCents: fund.balanceCents }
+            ? { id: fund.id, name: fund.name, kind: fund.kind, targetCents: fund.targetCents, balanceCents: fund.balanceCents, goalReached: fund.goalReached }
             : null,
         };
       });

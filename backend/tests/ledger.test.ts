@@ -146,7 +146,7 @@ describe("export / restore with history", () => {
     await t.api("POST", `/api/funds/${fund.id}/entries`, { date: "2026-10-15", amountCents: 1234 });
     const login = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" });
     const exported = (await t.app.inject({ method: "GET", url: "/api/export", headers: { authorization: `Bearer ${login.body.token}` } })).json();
-    expect(exported.exportVersion).toBe(2);
+    expect(exported.exportVersion).toBe(3);
     expect(exported.fundEntries).toHaveLength(3);
 
     await t.api("DELETE", `/api/funds/${fund.id}`);

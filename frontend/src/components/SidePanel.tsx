@@ -222,14 +222,20 @@ export default function SidePanel({ budget, transactions, unassignedCount, view,
     <aside aria-label="Budget side panel" className="rounded-2xl bg-white p-4">
       <div className="flex rounded-lg bg-page p-1">
         <button onClick={() => onView({ kind: "summary" })} aria-label="Summary chart" className={tabClass(shown.kind === "summary")}>
-          <PieIcon className="size-5" />
+          <PieIcon className="size-6" />
         </button>
-        <button onClick={() => onView({ kind: "transactions" })} aria-label="Transactions" className={`${tabClass(shown.kind === "transactions")} text-lg font-semibold`}>
-          $
-          {unassignedCount > 0 && (
-            <span aria-label={`${unassignedCount} unassigned`} className="absolute right-3 top-1.5 rounded-full bg-warning px-1.5 text-xs font-semibold leading-5 text-white">
-              {unassignedCount}
+        {/* Like EveryDollar: the count of new transactions takes the place of the $ */}
+        <button
+          onClick={() => onView({ kind: "transactions" })}
+          aria-label={unassignedCount > 0 ? `Transactions, ${unassignedCount} new` : "Transactions"}
+          className={`${tabClass(shown.kind === "transactions")} items-center text-lg font-semibold`}
+        >
+          {unassignedCount > 0 ? (
+            <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-primary px-2 text-sm font-bold tabular-nums text-white">
+              {unassignedCount > 99 ? "99+" : unassignedCount}
             </span>
+          ) : (
+            "$"
           )}
         </button>
       </div>

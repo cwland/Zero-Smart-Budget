@@ -27,18 +27,38 @@ export const LogoutIcon = ({ className = "size-5" }: P) => (
   <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10" /></svg>
 );
 export const PieIcon = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2.2}><path d="M12 3a9 9 0 109 9h-9z" /><path d="M15 3.5A9 9 0 0120.5 9H15z" /></svg>
-);
-
-// Cory's Dollar mark: green rounded square with a "C" and a dollar stroke
-export const Logo = ({ className = "size-8" }: P) => (
-  <svg viewBox="0 0 32 32" className={className} aria-label="Cory's Dollar">
-    <rect width="32" height="32" rx="8" fill="#35bd59" />
-    <path d="M21.5 11.2A7 7 0 1 0 21.5 20.8" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" />
-    <path d="M16 7.5v17" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
+  // A thick donut chart in uneven slices with small gaps (like EveryDollar's)
+  <svg viewBox="0 0 24 24" className={`${base} ${className}`}>
+    <circle cx="12" cy="12" r="7" strokeWidth={5} strokeDasharray="15.2 1.9 11 1.9 8.6 1.9 3.5 1.9" transform="rotate(-80 12 12)" />
   </svg>
 );
 
+// ZeroPoint Budget mark: green rounded square with a "0" ring and a dot in the middle (the zero point)
+export const Logo = ({ className = "size-8" }: P) => (
+  <svg viewBox="0 0 32 32" className={className} role="img" aria-label="ZeroPoint Budget">
+    <rect width="32" height="32" rx="8" fill="#35bd59" />
+    <ellipse cx="16" cy="16" rx="7" ry="9" fill="none" stroke="#fff" strokeWidth="3.2" />
+    <circle cx="16" cy="16" r="2.4" fill="#fff" />
+  </svg>
+);
+
+// A bank building (Accounts)
+export const BankIcon = ({ className = "size-5" }: P) => (
+  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9.5L12 4l9 5.5M4.5 10v8M9 10v8M15 10v8M19.5 10v8M3 20.5h18" />
+  </svg>
+);
+// A target (Goals)
+export const GoalIcon = ({ className = "size-5" }: P) => (
+  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.9}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="4.8" />
+    <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+  </svg>
+);
+export const PlusIcon = ({ className = "size-5" }: P) => (
+  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+);
 export const PiggyIcon = ({ className = "size-5" }: P) => (
   <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
     <path d="M5 11a7 6 0 0112.6-3.5H20v3l-1.2.8A6 6 0 0117 15.5V19h-3v-2h-3v2H8v-3.2A6 6 0 015 11z" />

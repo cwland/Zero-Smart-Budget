@@ -14,6 +14,8 @@ export interface AiRunResult {
   noMatch: number; // the AI found no good fit
   skipped: { reason: string; count: number }[];
   error?: string;
+  services?: Record<string, number>; // which AI answered, and for how many
+  warnings?: string[]; // services that were down (a later one answered instead)
 }
 
 const BATCH = 25; // transactions per request
@@ -103,46 +105,76 @@ export async function runAiSuggestions(db: Db, ai: AiService, opts: { ids?: numb
 
     for (let i = 0; i < txs.length; i += BATCH) {
       const batch = txs.slice(i, i + BATCH);
-      const txList = batch
-        .map((t) => {
-          const acct = t.plaidAccountId ? accounts.get(t.plaidAccountId) : null;
-          return JSON.stringify({
-            id: t.id,
-            date: t.date,
-            merchant: t.merchant,
-            amount: (t.amountCents / 100).toFixed(2),
-            direction: t.type === "income" ? "money in" : "money out",
-            ...(acct ? { account: `${acct.name}${acct.subtype ? ` (${acct.subtype})` : ""}` } : {}),
-            ...(t.note ? { note: t.note.slice(0, 200) } : {}),
-          });
-        })
-        .join("\n");
-      const user = `Budget items for ${key}:\n${itemList}\n\nTransactions:\n${txList}`;
-
-      let reply: string;
-      try {
-        reply = await ai.chat(config, SYSTEM, user, 150 + batch.length * 60);
-      } catch (e) {
-        result.error = (e as Error).message;
-        return result; // stop: the next run tries again (nothing was saved for these)
-      }
-      result.asked += batch.length;
-      const parsed = parseJsonReply(reply) as { results?: { id: number; item: string | null; reason?: string }[] } | { id: number }[] | null;
-      const answers = Array.isArray(parsed) ? (parsed as { id: number; item: string | null; reason?: string }[]) : parsed?.results ?? [];
+      // Ask the services in order. Whatever the one that answers can't place (and anything it
+      // skipped) goes to the services after it when "ask the next AI" is on.
+      let pending = batch;
+      let from = 0;
       const now = new Date().toISOString();
-      for (const t of batch) {
-        const a = answers.find((x) => Number(x.id) === t.id);
-        if (!a) continue; // not answered: ask again next time
-        const code = typeof a.item === "string" ? a.item.trim().toUpperCase() : null;
-        const reason = typeof a.reason === "string" ? a.reason.slice(0, 160) : undefined;
-        // Expenses can't go on income items; only codes from this month count
-        const ok = code && valid.has(code) && !(t.type === "expense" && code.startsWith("I"));
-        const value = ok
-          ? { ...(code!.startsWith("L") ? { lineItemId: Number(code!.slice(1)) } : { incomeItemId: Number(code!.slice(1)) }), reason, model: config.model, at: now }
-          : { none: true, reason: reason ?? "No good fit", model: config.model, at: now };
-        await db.update(transactions).set({ aiSuggestion: value }).where(eq(transactions.id, t.id));
-        if (ok) result.suggested++;
-        else result.noMatch++;
+      while (pending.length && from < config.services.length) {
+        const txList = pending
+          .map((t) => {
+            const acct = t.plaidAccountId ? accounts.get(t.plaidAccountId) : null;
+            return JSON.stringify({
+              id: t.id,
+              date: t.date,
+              merchant: t.merchant,
+              amount: (t.amountCents / 100).toFixed(2),
+              direction: t.type === "income" ? "money in" : "money out",
+              ...(acct ? { account: `${acct.name}${acct.subtype ? ` (${acct.subtype})` : ""}` } : {}),
+              ...(t.note ? { note: t.note.slice(0, 200) } : {}),
+            });
+          })
+          .join("\n");
+        const user = `Budget items for ${key}:\n${itemList}\n\nTransactions:\n${txList}`;
+        let answer;
+        try {
+          answer = await ai.chatWithFailover(config.services.slice(from), SYSTEM, user, 150 + pending.length * 60, config.timeoutSec * 1000);
+        } catch (e) {
+          // Nobody (left) answered. If an earlier service already looked, its "no fit" stands.
+          if (from === 0) {
+            result.error = (e as Error).message;
+            return result; // stop: the next run tries again (nothing was saved for these)
+          }
+          break;
+        }
+        if (answer.failures.length) result.warnings = [...(result.warnings ?? []), ...answer.failures];
+        const sv = answer.service;
+        const usedIndex = from + answer.index;
+        const isLast = usedIndex === config.services.length - 1;
+        if (from === 0) result.asked += pending.length;
+        const parsed = parseJsonReply(answer.text) as { results?: { id: number; item: string | null; reason?: string }[] } | { id: number }[] | null;
+        const answers = Array.isArray(parsed) ? (parsed as { id: number; item: string | null; reason?: string }[]) : parsed?.results ?? [];
+        const left: Tx[] = [];
+        for (const t of pending) {
+          const a = answers.find((x) => Number(x.id) === t.id);
+          if (!a) {
+            if (config.askNextOnNoMatch && !isLast) left.push(t);
+            continue; // not answered: ask again next time
+          }
+          const code = typeof a.item === "string" ? a.item.trim().toUpperCase() : null;
+          const reason = typeof a.reason === "string" ? a.reason.slice(0, 160) : undefined;
+          // Expenses can't go on income items; only codes from this month count
+          const ok = code && valid.has(code) && !(t.type === "expense" && code.startsWith("I"));
+          if (!ok && config.askNextOnNoMatch && !isLast) {
+            left.push(t); // let the next AI have a look
+            continue;
+          }
+          const by = { model: sv.model, service: sv.name };
+          const value = ok
+            ? { ...(code!.startsWith("L") ? { lineItemId: Number(code!.slice(1)) } : { incomeItemId: Number(code!.slice(1)) }), reason, ...by, at: now }
+            : { none: true, reason: reason ?? "No good fit", ...by, at: now };
+          await db.update(transactions).set({ aiSuggestion: value }).where(eq(transactions.id, t.id));
+          result.services = { ...result.services, [sv.name]: (result.services?.[sv.name] ?? 0) + 1 };
+          if (ok) result.suggested++;
+          else result.noMatch++;
+        }
+        pending = left;
+        from = usedIndex + 1;
+      }
+      // Passed along but no later service could answer: they had no fit from the earlier one
+      for (const t of pending) {
+        await db.update(transactions).set({ aiSuggestion: { none: true, reason: "No good fit", model: "", at: now } }).where(eq(transactions.id, t.id));
+        result.noMatch++;
       }
     }
   }
@@ -152,7 +184,7 @@ export async function runAiSuggestions(db: Db, ai: AiService, opts: { ids?: numb
 // For lists: the AI's suggestion as a chip, when it still applies (still unassigned, no history
 // suggestion, item still exists). Returns item names.
 export async function aiSuggestionsFor(db: Db, rows: { id: number; aiSuggestion: Tx["aiSuggestion"] }[]) {
-  const out = new Map<number, Suggestion & { reason?: string; model: string }>();
+  const out = new Map<number, Suggestion & { reason?: string; model: string; service?: string }>();
   const lineIds = rows.flatMap((r) => (r.aiSuggestion?.lineItemId ? [r.aiSuggestion.lineItemId] : []));
   const incomeIds = rows.flatMap((r) => (r.aiSuggestion?.incomeItemId ? [r.aiSuggestion.incomeItemId] : []));
   const lineNames = lineIds.length
@@ -164,9 +196,9 @@ export async function aiSuggestionsFor(db: Db, rows: { id: number; aiSuggestion:
     if (!s || s.none) continue;
     if (s.lineItemId && lineNames.has(s.lineItemId)) {
       const l = lineNames.get(s.lineItemId);
-      out.set(r.id, { lineItemId: l.id, itemName: l.name, groupName: l.group, reason: s.reason, model: s.model });
+      out.set(r.id, { lineItemId: l.id, itemName: l.name, groupName: l.group, reason: s.reason, model: s.model, service: s.service });
     } else if (s.incomeItemId && incomeNames.has(s.incomeItemId)) {
-      out.set(r.id, { incomeItemId: s.incomeItemId, itemName: incomeNames.get(s.incomeItemId).name, groupName: "Income", reason: s.reason, model: s.model });
+      out.set(r.id, { incomeItemId: s.incomeItemId, itemName: incomeNames.get(s.incomeItemId).name, groupName: "Income", reason: s.reason, model: s.model, service: s.service });
     }
   }
   return out;

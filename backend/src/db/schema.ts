@@ -1,4 +1,4 @@
-// Cory's Dollar database schema (Drizzle ORM)
+// ZeroPoint Budget database schema (Drizzle ORM)
 // All money values are stored as integer cents ($10.50 = 1050).
 // After changing this file run: npm run db:generate
 import {
@@ -15,6 +15,15 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+
+// What a Month Close did with the month's money (stored on budget_months.close_result)
+export interface MonthCloseResult {
+  totalCents: number; // + under budget (money left over), - over budget
+  // Leftover: put in one fund or goal, rolled over to next month, or kept in the month
+  leftover?: { to: "fund" | "rollover" | "keep"; fundId?: number; fundName?: string; amountCents: number; keptCents: number };
+  // Overspend: covered from one fund or goal, or left as is
+  overspent?: { to: "fund" | "keep"; fundId?: number; fundName?: string; amountCents: number; uncoveredCents: number };
+}
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -63,6 +72,12 @@ export const budgetMonths = pgTable(
     id: serial("id").primaryKey(),
     year: integer("year").notNull(),
     month: integer("month").notNull(), // 1-12
+    // Month Close: set when the month is closed (by you, or automatically two months later).
+    // A closed month's plan is read-only until it's reopened.
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: text("closed_by").$type<"you" | "auto">(),
+    // What happened at the close (kept after reopening so closing again starts from it)
+    closeResult: jsonb("close_result").$type<MonthCloseResult>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("budget_months_year_month_idx").on(t.year, t.month)]
@@ -79,6 +94,9 @@ export const incomeItems = pgTable(
     name: text("name").notNull(),
     plannedCents: integer("planned_cents").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
+    // "Rollover from September": leftover money carried in from that month's Month Close.
+    // Counts as received; changed only by reopening and closing that month again.
+    rolloverFromMonthId: integer("rollover_from_month_id").references(() => budgetMonths.id, { onDelete: "cascade" }),
   },
   (t) => [index("income_items_month_idx").on(t.monthId)]
 );
@@ -99,10 +117,16 @@ export const categoryGroups = pgTable(
 
 // Sinking funds persist across months.
 // Balance = starting balance + planned on linked line items (up to this month) - spent on them
+//  - sinking: saving for planned expenses; can keep growing (target is just a guide)
+//  - goal:    a savings goal with a target it stops at ("Goal reached")
+export const fundKind = pgEnum("fund_kind", ["sinking", "goal"]);
+
 export const sinkingFunds = pgTable("sinking_funds", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  kind: fundKind("kind").notNull().default("sinking"),
   targetCents: integer("target_cents"),
+  targetDate: date("target_date", { mode: "string" }), // goals: the month you want to reach it by (YYYY-MM-01)
   startingBalanceCents: integer("starting_balance_cents").notNull().default(0),
   archived: boolean("archived").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -154,7 +178,7 @@ export const transactions = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     // The AI's guess for an unassigned transaction with no history (never assigned automatically).
     // none: true means the AI looked and found no good fit, so it isn't asked again.
-    aiSuggestion: jsonb("ai_suggestion").$type<{ lineItemId?: number; incomeItemId?: number; none?: boolean; reason?: string; model: string; at: string }>(),
+    aiSuggestion: jsonb("ai_suggestion").$type<{ lineItemId?: number; incomeItemId?: number; none?: boolean; reason?: string; model: string; service?: string; at: string }>(),
     deletedSplits: jsonb("deleted_splits").$type<{ lineItemId: number | null; incomeItemId: number | null; amountCents: number }[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -193,9 +217,10 @@ export const transactionSplits = pgTable(
 //  - budgeted:   one per linked line item (planned amount), dated the 1st of its month
 //  - spent:      one per (transaction, linked line item), negative, dated like the transaction
 //  - adjustment: added by hand
+//  - month_close: leftover money put in (or an overspend covered) at a month's Month Close
 // While an item is linked, its entries are kept in sync. If the item is unlinked or deleted,
 // its entries stay as they were (history is never rewritten).
-export const fundEntryKind = pgEnum("fund_entry_kind", ["budgeted", "spent", "adjustment"]);
+export const fundEntryKind = pgEnum("fund_entry_kind", ["budgeted", "spent", "adjustment", "month_close"]);
 
 export const fundEntries = pgTable(
   "fund_entries",
@@ -210,6 +235,7 @@ export const fundEntries = pgTable(
     description: text("description"),
     lineItemId: integer("line_item_id").references(() => lineItems.id, { onDelete: "set null" }),
     transactionId: integer("transaction_id").references(() => transactions.id, { onDelete: "cascade" }),
+    closeMonthId: integer("close_month_id").references(() => budgetMonths.id, { onDelete: "cascade" }), // month_close entries
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -259,6 +285,18 @@ export const plaidAccounts = pgTable(
   },
   (t) => [index("plaid_accounts_item_idx").on(t.plaidItemId)]
 );
+
+// Accounts you keep track of by hand (no bank link): you type the balance yourself.
+// Debt types (credit, loan) hold the amount owed as a positive number.
+export const manualAccounts = pgTable("manual_accounts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull().$type<"checking" | "savings" | "cash" | "credit" | "loan" | "investment" | "other">(),
+  balanceCents: integer("balance_cents").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  balanceUpdatedAt: timestamp("balance_updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------- relations (for nested queries) ----------
 export const budgetMonthsRelations = relations(budgetMonths, ({ many }) => ({

@@ -103,8 +103,13 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
 
   // Connected bank accounts for the account box
   useEffect(() => {
-    api<{ institutionName: string; accounts: { accountId: string; name: string; mask: string | null }[] }[]>("GET", "/api/plaid/items")
-      .then((items) => setAccounts(items.flatMap((i) => i.accounts.map((a) => ({ accountId: a.accountId, label: `${a.name}${a.mask ? ` *${a.mask}` : ""}` })))))
+    api<{ institutions: { accounts: { accountId: string; name: string; mask: string | null }[] }[]; manual: { key: string; name: string }[] }>("GET", "/api/accounts")
+      .then((d) =>
+        setAccounts([
+          ...d.institutions.flatMap((i) => i.accounts.map((a) => ({ accountId: a.accountId, label: `${a.name}${a.mask ? ` *${a.mask}` : ""}` }))),
+          ...d.manual.map((m) => ({ accountId: m.key, label: m.name })),
+        ])
+      )
       .catch(() => setAccounts([]));
   }, []);
 

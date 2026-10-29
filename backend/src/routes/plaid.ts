@@ -83,7 +83,7 @@ export default async function plaidRoutes(app: FastifyInstance) {
   app.post("/api/plaid/link-token", async (req) => {
     requireLogin(req);
     const { itemId } = z.object({ itemId: z.number().int().positive().optional() }).parse(req.body ?? {});
-    const base = { client_name: "Cory's Dollar", user: { client_user_id: "cory" }, country_codes: ["US"], language: "en" };
+    const base = { client_name: "ZeroPoint Budget", user: { client_user_id: "cory" }, country_codes: ["US"], language: "en" };
     try {
       if (itemId) {
         const item = await loadItem(itemId);

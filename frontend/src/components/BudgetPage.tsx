@@ -28,6 +28,8 @@ import type { SecondColumn } from "./ItemRow";
 import MonthHeader from "./MonthHeader";
 import SummaryBanner from "./SummaryBanner";
 import SidePanel, { type PanelView } from "./SidePanel";
+import { MonthCloseBanner, MonthCloseDialog } from "./MonthClose";
+import { MONTH_NAMES } from "../dates";
 
 export default function BudgetPage() {
   const [ym, setYm] = useState<YearMonth>(currentYearMonth);
@@ -97,6 +99,8 @@ export default function BudgetPage() {
   );
 
   const budget = data?.exists ? (data as Budget) : null;
+  const closed = !!budget?.close?.closed; // the plan is read-only until it's reopened
+  const [closing, setClosing] = useState(false);
 
   // ---------- drag a transaction onto an item ----------
   const draggedTx = useDraggedTransaction();
@@ -208,6 +212,15 @@ export default function BudgetPage() {
           )}
         </div>
 
+        {budget && (
+          <MonthCloseBanner
+            budget={budget}
+            onOpen={() => setClosing(true)}
+            onReopen={() => change(() => api("POST", `/api/months/${budget.id}/reopen`))}
+          />
+        )}
+        {closing && budget && <MonthCloseDialog monthId={budget.id} onClose={() => setClosing(false)} onDone={() => load()} />}
+
         {error && (
           <div role="alert" className="mb-4 flex items-start justify-between gap-3 rounded-lg bg-error-subtle px-4 py-3 text-error">
             <span>{error}</span>
@@ -239,7 +252,14 @@ export default function BudgetPage() {
               kind="income"
               rowPrefix="income"
               title="Income"
-              rows={budget.income.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.receivedCents }))}
+              rows={budget.income.map((i) => ({
+                id: i.id,
+                name: i.name,
+                plannedCents: i.plannedCents,
+                actualCents: i.receivedCents,
+                lockedNote: i.rolloverFrom ? `Left over from ${MONTH_NAMES[(budget.month + 10) % 12]}. Reopen that month and close it again to change it.` : undefined,
+              }))}
+              readOnly={closed}
               column={column}
               onColumnChange={setColumn}
               onAddItem={(name, plannedCents) => change(() => api("POST", `/api/months/${budget.id}/income`, { name, plannedCents }))}
@@ -260,6 +280,7 @@ export default function BudgetPage() {
                 title="Favorites"
                 rowPrefix="fav"
                 rows={favoriteItems.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund }))}
+                readOnly={closed}
                 column={column}
                 onColumnChange={setColumn}
                 onAddItem={async () => {}}
@@ -284,6 +305,7 @@ export default function BudgetPage() {
                 title={g.name}
                 startWithDraft={g.id === newGroupId}
                 rows={g.items.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund }))}
+                readOnly={closed}
                 column={column}
                 onColumnChange={setColumn}
                 onRename={(name) => change(() => api("PATCH", `/api/groups/${g.id}`, { name }))}
@@ -309,14 +331,14 @@ export default function BudgetPage() {
               )}
             </DragOverlay>
 
-            <AddGroup
+            {!closed && <AddGroup
               onAdd={(name) =>
                 change(async () => {
                   const g = await api<{ id: number }>("POST", `/api/months/${budget.id}/groups`, { name });
                   setNewGroupId(g.id);
                 })
               }
-            />
+            />}
           </DndContext>
         )}
       </div>

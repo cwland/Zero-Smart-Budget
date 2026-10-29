@@ -22,14 +22,35 @@ const DEFAULT_BASE: Record<AiProvider, string> = {
   local: "",
 };
 
-export interface StoredAi {
+// One AI service in the list (tried in order: the first, then the next if it's down)
+export interface StoredService {
+  id: string;
+  name: string; // "Home AI", "OpenAI backup" ...
   enabled: boolean;
   provider: AiProvider;
   model: string;
   baseUrl: string | null; // local (required) or an override
   apiKeyEnc: string | null;
+}
+
+export interface StoredAi {
+  enabled: boolean;
   mode: "auto" | "manual"; // auto: ask after bank syncs and new transactions; manual: only on "Ask AI"
   maxPerRun: number; // most transactions sent in one go (keeps costs predictable)
+  timeoutSec: number; // give up on a service after this long and try the next one
+  askNextOnNoMatch: boolean; // when one service finds no good fit, ask the next one too
+  services: StoredService[];
+}
+
+// Settings saved before backup services existed: one provider at the top level
+interface LegacyAi {
+  enabled: boolean;
+  provider: AiProvider;
+  model: string;
+  baseUrl: string | null;
+  apiKeyEnc: string | null;
+  mode: "auto" | "manual";
+  maxPerRun: number;
 }
 
 export interface AiConfig {
@@ -38,9 +59,30 @@ export interface AiConfig {
   baseUrl: string | null;
   apiKey: string | null;
 }
+export type ActiveService = AiConfig & { id: string; name: string };
+
+export const PROVIDER_NAMES: Record<AiProvider, string> = { openai: "OpenAI", anthropic: "Claude", gemini: "Gemini", openrouter: "OpenRouter", local: "Home AI" };
+
+export interface ServiceInput {
+  id?: string;
+  name?: string;
+  enabled?: boolean;
+  provider: AiProvider;
+  model: string;
+  baseUrl: string | null;
+  apiKey?: string | null; // undefined = keep the saved one, "" or null = remove it
+}
+export interface SaveInput {
+  enabled: boolean;
+  mode: StoredAi["mode"];
+  maxPerRun: number;
+  timeoutSec?: number;
+  askNextOnNoMatch?: boolean;
+  services: ServiceInput[];
+}
 
 // Tests swap in a fake
-export type AiFetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
+export type AiFetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
@@ -49,6 +91,20 @@ export type AiFetch = (url: string, init: { method: string; headers: Record<stri
 export class AiError extends Error {}
 
 const trimSlash = (s: string) => s.replace(/\/+$/, "");
+const newId = () => Math.random().toString(36).slice(2, 10);
+
+function normalize(v: StoredAi | LegacyAi): StoredAi {
+  if ("services" in v && Array.isArray(v.services)) return { ...v, timeoutSec: v.timeoutSec ?? 15, askNextOnNoMatch: v.askNextOnNoMatch ?? false };
+  const l = v as LegacyAi;
+  return {
+    enabled: l.enabled,
+    mode: l.mode,
+    maxPerRun: l.maxPerRun,
+    timeoutSec: 15,
+    askNextOnNoMatch: false,
+    services: [{ id: "first", name: PROVIDER_NAMES[l.provider] ?? "AI", enabled: true, provider: l.provider, model: l.model, baseUrl: l.baseUrl, apiKeyEnc: l.apiKeyEnc }],
+  };
+}
 
 export class AiService {
   constructor(
@@ -59,15 +115,32 @@ export class AiService {
 
   async stored(): Promise<StoredAi | null> {
     const [row] = await this.db.select().from(appSettings).where(eq(appSettings.key, "ai"));
-    return (row?.value as StoredAi) ?? null;
+    return row?.value ? normalize(row.value as StoredAi | LegacyAi) : null;
   }
 
-  // apiKey: undefined = keep the saved one, "" or null = remove it
-  async save(input: Omit<StoredAi, "apiKeyEnc"> & { apiKey?: string | null }) {
+  async save(input: SaveInput) {
     const current = await this.stored();
-    const { apiKey, ...rest } = input;
-    const apiKeyEnc = apiKey === undefined ? current?.apiKeyEnc ?? null : apiKey ? encryptSecret(apiKey, this.secret) : null;
-    const value: StoredAi = { ...rest, apiKeyEnc };
+    const services: StoredService[] = input.services.map((sv) => {
+      const prev = sv.id ? current?.services.find((c) => c.id === sv.id) : undefined;
+      const apiKeyEnc = sv.apiKey === undefined ? prev?.apiKeyEnc ?? null : sv.apiKey ? encryptSecret(sv.apiKey, this.secret) : null;
+      return {
+        id: prev?.id ?? sv.id ?? newId(),
+        name: sv.name?.trim() || PROVIDER_NAMES[sv.provider],
+        enabled: sv.enabled ?? true,
+        provider: sv.provider,
+        model: sv.model,
+        baseUrl: sv.baseUrl,
+        apiKeyEnc,
+      };
+    });
+    const value: StoredAi = {
+      enabled: input.enabled,
+      mode: input.mode,
+      maxPerRun: input.maxPerRun,
+      timeoutSec: input.timeoutSec ?? current?.timeoutSec ?? 15,
+      askNextOnNoMatch: input.askNextOnNoMatch ?? current?.askNextOnNoMatch ?? false,
+      services,
+    };
     await this.db
       .insert(appSettings)
       .values({ key: "ai", value })
@@ -78,28 +151,67 @@ export class AiService {
     await this.db.delete(appSettings).where(eq(appSettings.key, "ai"));
   }
 
-  async savedKey() {
+  // A saved service's key (the first service when no id is given)
+  async savedKey(id?: string) {
     const s = await this.stored();
-    if (!s?.apiKeyEnc) return { key: null, unreadable: false };
-    const key = decryptSecret(s.apiKeyEnc, this.secret);
+    const sv = id ? s?.services.find((x) => x.id === id) : s?.services[0];
+    if (!sv?.apiKeyEnc) return { key: null, unreadable: false };
+    const key = decryptSecret(sv.apiKeyEnc, this.secret);
     return { key, unreadable: key === null };
   }
 
-  // What the Settings page shows (the key included, for the eye button; signed-in page only)
+  // What the Settings page shows (keys included, for the eye button; signed-in page only).
+  // The first service is also repeated at the top level (older screens read it there).
   async summary() {
     const s = await this.stored();
     if (!s) return null;
-    const { key, unreadable } = await this.savedKey();
-    const { apiKeyEnc: _e, ...rest } = s;
-    return { ...rest, apiKey: key, apiKeyUnreadable: unreadable };
+    const services = s.services.map(({ apiKeyEnc, ...sv }) => {
+      const key = apiKeyEnc ? decryptSecret(apiKeyEnc, this.secret) : null;
+      return { ...sv, apiKey: key, apiKeyUnreadable: !!apiKeyEnc && key === null };
+    });
+    const first = services[0];
+    return {
+      enabled: s.enabled,
+      mode: s.mode,
+      maxPerRun: s.maxPerRun,
+      timeoutSec: s.timeoutSec,
+      askNextOnNoMatch: s.askNextOnNoMatch,
+      services,
+      provider: first?.provider ?? null,
+      model: first?.model ?? "",
+      baseUrl: first?.baseUrl ?? null,
+      apiKey: first?.apiKey ?? null,
+      apiKeyUnreadable: first?.apiKeyUnreadable ?? false,
+    };
   }
 
-  // The config in use, or null when AI is off or not set up
-  async active(): Promise<(AiConfig & { mode: StoredAi["mode"]; maxPerRun: number }) | null> {
+  // What's in use, or null when AI is off or no service is ready. Services in their order.
+  async active(): Promise<{ mode: StoredAi["mode"]; maxPerRun: number; timeoutSec: number; askNextOnNoMatch: boolean; services: ActiveService[] } | null> {
     const s = await this.stored();
-    if (!s?.enabled || !s.model) return null;
-    const { key } = await this.savedKey();
-    return { provider: s.provider, model: s.model, baseUrl: s.baseUrl, apiKey: key, mode: s.mode, maxPerRun: s.maxPerRun };
+    if (!s?.enabled) return null;
+    const services = s.services
+      .filter((sv) => sv.enabled && sv.model && (sv.provider !== "local" || sv.baseUrl))
+      .map((sv) => ({ id: sv.id, name: sv.name, provider: sv.provider, model: sv.model, baseUrl: sv.baseUrl, apiKey: sv.apiKeyEnc ? decryptSecret(sv.apiKeyEnc, this.secret) : null }));
+    if (!services.length) return null;
+    return { mode: s.mode, maxPerRun: s.maxPerRun, timeoutSec: s.timeoutSec, askNextOnNoMatch: s.askNextOnNoMatch, services };
+  }
+
+  /**
+   * Try the services in order until one answers. A service that can't be reached, times out, or
+   * returns an error is skipped. Throws only when every one failed.
+   */
+  async chatWithFailover(services: ActiveService[], system: string, user: string, maxTokens: number, timeoutMs: number) {
+    const failures: string[] = [];
+    for (const [index, sv] of services.entries()) {
+      try {
+        const text = await this.chat(sv, system, user, maxTokens, timeoutMs);
+        return { text, service: sv, index, failures };
+      } catch (e) {
+        if (!(e instanceof AiError) && !(e instanceof HttpError)) throw e;
+        failures.push(`${sv.name}: ${(e as Error).message}`);
+      }
+    }
+    throw new AiError(services.length === 1 ? failures[0].slice(services[0].name.length + 2) : `None of your AI services answered. ${failures.join(" ")}`);
   }
 
   private base(c: AiConfig) {
@@ -108,12 +220,26 @@ export class AiService {
     return trimSlash(b);
   }
 
-  private async request(url: string, headers: Record<string, string>, body?: unknown, method = "POST") {
+  private async request(url: string, headers: Record<string, string>, body?: unknown, method = "POST", timeoutMs = 60000) {
     let res;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      res = await this.fetchImpl(url, { method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+      const timedOut = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          abort.abort();
+          reject(new AiError(`The AI service didn't answer within ${Math.round(timeoutMs / 1000)} seconds.`));
+        }, timeoutMs);
+      });
+      res = await Promise.race([
+        this.fetchImpl(url, { method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined, signal: abort.signal }),
+        timedOut,
+      ]);
     } catch (e) {
+      if (e instanceof AiError) throw e;
       throw new AiError(`Couldn't reach the AI service (${(e as Error).message}).`);
+    } finally {
+      clearTimeout(timer);
     }
     const json = (await res.json().catch(() => ({}))) as any;
     if (!res.ok) {
@@ -133,21 +259,21 @@ export class AiService {
       case "gemini":
         return { "x-goog-api-key": c.apiKey ?? "" };
       case "openrouter":
-        return { authorization: `Bearer ${c.apiKey ?? ""}`, "x-title": "Cory's Dollar" };
+        return { authorization: `Bearer ${c.apiKey ?? ""}`, "x-title": "ZeroPoint Budget" };
       default:
         return c.apiKey ? { authorization: `Bearer ${c.apiKey}` } : {};
     }
   }
 
   // Send one prompt, get the reply text. Asks for JSON where the provider supports it.
-  async chat(c: AiConfig, system: string, user: string, maxTokens = 2000): Promise<string> {
+  async chat(c: AiConfig, system: string, user: string, maxTokens = 2000, timeoutMs = 60000): Promise<string> {
     if (c.provider !== "local" && !c.apiKey) throw new HttpError(400, "Enter an API key first");
     if (!c.model) throw new HttpError(400, "Choose a model first");
     const base = this.base(c);
     const headers = this.authHeaders(c);
 
     if (c.provider === "anthropic") {
-      const r = await this.request(`${base}/messages`, headers, { model: c.model, max_tokens: maxTokens, temperature: 0, system, messages: [{ role: "user", content: user }] });
+      const r = await this.request(`${base}/messages`, headers, { model: c.model, max_tokens: maxTokens, temperature: 0, system, messages: [{ role: "user", content: user }] }, "POST", timeoutMs);
       return (r.content ?? []).filter((p: any) => p.type === "text").map((p: any) => p.text).join("");
     }
     if (c.provider === "gemini") {
@@ -155,7 +281,7 @@ export class AiService {
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: user }] }],
         generationConfig: { temperature: 0, maxOutputTokens: maxTokens, responseMimeType: "application/json" },
-      });
+      }, "POST", timeoutMs);
       return (r.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("");
     }
     // OpenAI, OpenRouter and local servers share the chat-completions format
@@ -167,7 +293,7 @@ export class AiService {
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-    });
+    }, "POST", timeoutMs);
     return r.choices?.[0]?.message?.content ?? "";
   }
 
@@ -175,7 +301,7 @@ export class AiService {
   async models(c: AiConfig): Promise<string[]> {
     if (c.provider !== "local" && !c.apiKey) throw new HttpError(400, "Enter an API key first");
     const base = this.base(c);
-    const r = await this.request(c.provider === "gemini" ? `${base}/models?pageSize=200` : `${base}/models`, this.authHeaders(c), undefined, "GET");
+    const r = await this.request(c.provider === "gemini" ? `${base}/models?pageSize=200` : `${base}/models`, this.authHeaders(c), undefined, "GET", 20000);
     const list: string[] =
       c.provider === "gemini"
         ? (r.models ?? []).filter((m: any) => (m.supportedGenerationMethods ?? ["generateContent"]).includes("generateContent")).map((m: any) => String(m.name).replace(/^models\//, ""))
@@ -184,8 +310,8 @@ export class AiService {
   }
 
   // A tiny round trip to prove the key, address and model work
-  async test(c: AiConfig) {
-    const text = await this.chat(c, "You reply with JSON only.", 'Reply with exactly this JSON: {"ok": true}', 50);
+  async test(c: AiConfig, timeoutMs = 60000) {
+    const text = await this.chat(c, "You reply with JSON only.", 'Reply with exactly this JSON: {"ok": true}', 50, timeoutMs);
     const parsed = parseJsonReply(text);
     if (!parsed || (parsed as any).ok !== true) throw new AiError(`The model answered, but not with the expected JSON. It said: ${text.slice(0, 120)}`);
   }

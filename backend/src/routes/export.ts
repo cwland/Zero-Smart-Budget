@@ -20,14 +20,14 @@ export default async function exportRoutes(app: FastifyInstance) {
 
   app.get("/api/export", async (_req, reply) => {
     const data = await buildExport(db);
-    return reply.header("Content-Disposition", `attachment; filename="corys-dollar-${today()}.json"`).send(data);
+    return reply.header("Content-Disposition", `attachment; filename="zeropoint-budget-${today()}.json"`).send(data);
   });
 
   app.get("/api/export/transactions.csv", async (req, reply) => {
     const q = z.object({ from: isoDate.optional(), to: isoDate.optional() }).parse(req.query);
     return reply
       .type("text/csv; charset=utf-8")
-      .header("Content-Disposition", `attachment; filename="corys-dollar-transactions-${today()}.csv"`)
+      .header("Content-Disposition", `attachment; filename="zeropoint-budget-transactions-${today()}.csv"`)
       .send(await transactionsCsv(db, q.from, q.to));
   });
 
@@ -37,7 +37,7 @@ export default async function exportRoutes(app: FastifyInstance) {
       .parse(req.query);
     return reply
       .type("text/csv; charset=utf-8")
-      .header("Content-Disposition", `attachment; filename="corys-dollar-budget-${today()}.csv"`)
+      .header("Content-Disposition", `attachment; filename="zeropoint-budget-budget-${today()}.csv"`)
       .send(await budgetCsv(db, q.year, q.month));
   });
 
@@ -75,7 +75,7 @@ export default async function exportRoutes(app: FastifyInstance) {
     if (confirm !== "replace") throw new HttpError(400, "Add ?confirm=replace to restore (this replaces all budget data)");
 
     const parsed = importSchema.safeParse(req.body);
-    if (!parsed.success) throw new HttpError(400, "That file isn't a Cory's Dollar backup");
+    if (!parsed.success) throw new HttpError(400, "That file isn't a ZeroPoint Budget backup");
 
     const safety = await writeBackup(db, app.backupDir, "before-restore");
     try {

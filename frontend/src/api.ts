@@ -52,6 +52,7 @@ export interface IncomeLine {
   sortOrder: number;
   plannedCents: number;
   receivedCents: number;
+  rolloverFrom?: number | null; // "Rollover from September": set by that month's Month Close
 }
 
 export interface BudgetLine {
@@ -61,7 +62,7 @@ export interface BudgetLine {
   plannedCents: number;
   spentCents: number;
   remainingCents: number;
-  sinkingFund: { id: number; name: string; targetCents: number | null; balanceCents: number } | null;
+  sinkingFund: { id: number; name: string; kind: "sinking" | "goal"; targetCents: number | null; balanceCents: number; goalReached: boolean } | null;
   favorite: boolean;
 }
 
@@ -92,7 +93,59 @@ export interface Budget {
   income: IncomeLine[];
   groups: BudgetGroup[];
   totals: BudgetTotals;
+  close: MonthCloseState;
 }
+
+// ---------- Month Close ----------
+
+export interface MonthCloseResult {
+  totalCents: number; // + under budget, - over
+  leftover?: { to: "fund" | "rollover" | "keep"; fundId?: number; fundName?: string; amountCents: number; keptCents: number };
+  overspent?: { to: "fund" | "keep"; fundId?: number; fundName?: string; amountCents: number; uncoveredCents: number };
+}
+
+export interface MonthCloseState {
+  closed: boolean;
+  closedAt: string | null;
+  closedBy: "you" | "auto" | null;
+  available: boolean; // show the Month Close banner
+  result: MonthCloseResult | null;
+  changedSinceClose: boolean;
+}
+
+export interface CloseLine {
+  id: number;
+  name: string;
+  group: string;
+  plannedCents: number;
+  spentCents: number;
+  remainingCents: number;
+}
+
+export interface MonthClosePreview {
+  id: number;
+  year: number;
+  month: number;
+  name: string; // "September 2026"
+  nextName: string;
+  nextExists: boolean;
+  closed: boolean;
+  closedBy: "you" | "auto" | null;
+  result: MonthCloseResult | null;
+  uncategorized: number;
+  moneyLeft: CloseLine[];
+  overspent: CloseLine[];
+  fundItems: { id: number; name: string; fundName: string; remainingCents: number }[];
+  income: { plannedCents: number; receivedCents: number };
+  leftToBudgetCents: number;
+  totalCents: number;
+  funds: { id: number; name: string; kind: "sinking" | "goal"; targetCents: number | null; balanceCents: number; goalReached: boolean; roomCents: number | null }[];
+}
+
+export type CloseChoice = {
+  leftover?: { to: "fund"; fundId: number } | { to: "rollover" } | { to: "keep" };
+  overspent?: { to: "fund"; fundId: number } | { to: "keep" };
+};
 
 export interface MissingMonth {
   exists: false;
@@ -123,7 +176,7 @@ export interface Transaction {
   // For unassigned transactions: the item this merchant went to last time (if any)
   suggestion?: Suggestion | null;
   // The AI's guess, only when history has none (shown in purple)
-  aiSuggestion?: (Suggestion & { reason?: string; model: string }) | null;
+  aiSuggestion?: (Suggestion & { reason?: string; model: string; service?: string }) | null;
   checkNumber?: string | null;
   originalDescription?: string | null; // the bank's own wording, shown under the merchant
   plaidAccountId?: string | null;
@@ -152,21 +205,33 @@ export interface TransactionInput {
   splits: { lineItemId?: number; incomeItemId?: number; amountCents: number }[];
 }
 
+export interface GoalPlan {
+  neededCents: number;
+  monthsLeft: number | null;
+  monthlyCents: number | null; // to reach it by its date
+  overdue: boolean;
+}
+
 export interface SinkingFund {
   id: number;
   name: string;
+  kind: "sinking" | "goal"; // a goal stops at its target
   targetCents: number | null;
+  targetDate: string | null; // goals: YYYY-MM-01
   startingBalanceCents: number;
   archived: boolean;
   contributedCents: number;
   spentCents: number;
   adjustmentsCents: number;
+  monthCloseCents: number; // put in / taken out at Month Close
   balanceCents: number;
+  goalReached: boolean;
+  plan: GoalPlan | null;
 }
 
 export interface FundEntry {
   id: number;
-  kind: "budgeted" | "spent" | "adjustment";
+  kind: "budgeted" | "spent" | "adjustment" | "month_close";
   date: string;
   amountCents: number;
   description: string | null;

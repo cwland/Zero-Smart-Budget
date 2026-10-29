@@ -129,30 +129,48 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return { ok: true, message: `Plaid accepted your ${env === "production" ? "Production" : "Sandbox"} keys.` };
   });
 
-  // ---------- AI provider ----------
-  const aiSettings = z
+  // ---------- AI services (tried in order; the next one is a backup) ----------
+  const service = z
     .object({
-      enabled: z.boolean(),
+      id: z.string().max(40).optional(),
+      name: z.string().trim().max(60).optional(),
+      enabled: z.boolean().default(true),
       provider: z.enum(AI_PROVIDERS),
       model: z.string().trim().max(200).default(""),
       baseUrl: optionalText(500),
       apiKey: z.string().trim().max(500).nullable().optional(), // undefined = keep saved, "" = remove
-      mode: z.enum(["auto", "manual"]).default("auto"),
-      maxPerRun: z.coerce.number().int().min(1).max(500).default(50),
     })
     .superRefine((v, ctx) => {
       if (v.baseUrl && !/^https?:\/\/[^\s/]+/.test(v.baseUrl)) ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "Address should start with http:// or https://" });
-      if (v.enabled && v.provider === "local" && !v.baseUrl) ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "Enter your AI server's address" });
-      if (v.enabled && !v.model) ctx.addIssue({ code: "custom", path: ["model"], message: "Choose a model" });
     });
+  const common = {
+    enabled: z.boolean(),
+    mode: z.enum(["auto", "manual"]).default("auto"),
+    maxPerRun: z.coerce.number().int().min(1).max(500).default(50),
+    timeoutSec: z.coerce.number().int().min(3).max(300).optional(),
+    askNextOnNoMatch: z.boolean().optional(),
+  };
+  // Each service that's turned on needs a model (and a local one its address)
+  const checkReady = (enabled: boolean, list: z.infer<typeof service>[], ctx: z.RefinementCtx, prefix: (i: number) => (string | number)[]) => {
+    if (!enabled) return;
+    list.forEach((v, i) => {
+      if (!v.enabled) return;
+      const who = list.length > 1 ? `${v.name || `Service ${i + 1}`}: ` : "";
+      if (v.provider === "local" && !v.baseUrl) ctx.addIssue({ code: "custom", path: [...prefix(i), "baseUrl"], message: `${who}Enter your AI server's address` });
+      if (!v.model) ctx.addIssue({ code: "custom", path: [...prefix(i), "model"], message: `${who}Choose a model` });
+    });
+  };
+  const aiSettings = z.union([
+    z.object({ ...common, services: z.array(service).max(10) }).superRefine((v, ctx) => checkReady(v.enabled, v.services, ctx, (i) => ["services", i])),
+    // The single-provider shape from before backup services (updates the first service)
+    service.and(z.object(common)).superRefine((v, ctx) => checkReady(v.enabled, [v], ctx, () => [])),
+  ]);
 
-  // The config to test or list models with: typed values, with a blank key falling back to the saved one
+  // The service to test or list models with: typed values, with a blank key falling back to the saved one
   const aiConfigFrom = async (body: unknown): Promise<AiConfig> => {
-    const b = aiSettings.safeParse({ ...(body as object), enabled: false }); // testing/listing: the save-time checks (like "choose a model") don't apply
-    if (!b.success) throw b.error;
-    const v = b.data;
-    const apiKey = v.apiKey === undefined || v.apiKey === null || v.apiKey === "" ? (await app.ai.savedKey()).key : v.apiKey;
-    return { provider: v.provider, model: v.model, baseUrl: v.baseUrl, apiKey };
+    const v = service.parse(body);
+    const apiKey = v.apiKey === undefined || v.apiKey === null || v.apiKey === "" ? (await app.ai.savedKey(v.id)).key : v.apiKey;
+    return { provider: v.provider, model: v.model, baseUrl: v.baseUrl ? v.baseUrl.replace(/\/+$/, "") : null, apiKey };
   };
   const aiErrors = async <T>(fn: () => Promise<T>) => {
     try {
@@ -170,8 +188,17 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   app.put("/api/settings/ai", async (req) => {
     requireLogin(req);
-    const { apiKey, ...rest } = aiSettings.parse(req.body);
-    await app.ai.save({ ...rest, baseUrl: rest.baseUrl ? rest.baseUrl.replace(/\/+$/, "") : null, apiKey: apiKey === null ? "" : apiKey });
+    const v = aiSettings.parse(req.body);
+    const clean = (sv: z.infer<typeof service>) => ({ ...sv, baseUrl: sv.baseUrl ? sv.baseUrl.replace(/\/+$/, "") : null, apiKey: sv.apiKey === null ? "" : sv.apiKey });
+    if ("services" in v) {
+      await app.ai.save({ ...v, services: v.services.map(clean) });
+    } else {
+      // Old shape: becomes (or replaces) the first service, keeping any backups after it
+      const current = await app.ai.stored();
+      const { enabled, mode, maxPerRun, timeoutSec, askNextOnNoMatch, ...first } = v;
+      const rest = (current?.services.slice(1) ?? []).map((sv) => ({ ...sv, apiKey: undefined }));
+      await app.ai.save({ enabled, mode, maxPerRun, timeoutSec, askNextOnNoMatch, services: [{ ...clean({ ...first, enabled: true }), id: current?.services[0]?.id }, ...rest] });
+    }
     return { settings: await app.ai.summary() };
   });
 
@@ -184,7 +211,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
   app.post("/api/settings/ai/test", async (req) => {
     requireLogin(req);
     const c = await aiConfigFrom(req.body);
-    await aiErrors(() => app.ai.test(c));
+    const timeoutSec = (await app.ai.stored())?.timeoutSec ?? 15;
+    await aiErrors(() => app.ai.test(c, Math.max(timeoutSec, 30) * 1000));
     return { ok: true, message: `${c.model} answered correctly.` };
   });
 
@@ -199,7 +227,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   app.put("/api/settings/budget", async (req) => {
     requireLogin(req);
-    const body = z.object({ fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional() }).strict().parse(req.body);
+    const body = z.object({ fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional(), monthCloseDays: z.number().int().min(0).max(27).optional() }).strict().parse(req.body);
     return saveBudgetPrefs(db, body);
   });
 
@@ -245,8 +273,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
       await mail.send(
         {
           to,
-          subject: "Cory's Dollar test email",
-          text: "Email from Cory's Dollar is working. Password reset links will arrive like this one.",
+          subject: "ZeroPoint Budget test email",
+          text: "Email from ZeroPoint Budget is working. Password reset links will arrive like this one.",
         },
         config
       );

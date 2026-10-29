@@ -1,20 +1,24 @@
 import { useEffect, useState } from "react";
 import BudgetPage from "./BudgetPage";
 import FundsPage from "./FundsPage";
+import GoalsPage from "./GoalsPage";
+import AccountsPage from "./AccountsPage";
 import SettingsPage from "./SettingsPage";
 import AccountMenu from "./AccountMenu";
 import DevResetButton from "./DevReset"; // TEMPORARY testing tool
-import { BudgetIcon, GearIcon, Logo, PiggyIcon } from "./Icons";
+import { BankIcon, BudgetIcon, GearIcon, GoalIcon, Logo, PiggyIcon } from "./Icons";
 
-type Page = "budget" | "funds" | "settings";
+type Page = "budget" | "accounts" | "funds" | "goals" | "settings";
 const pageFromHash = (): Page => {
   const h = window.location.hash.replace("#/", "").split("/")[0];
-  return h === "funds" || h === "settings" ? h : "budget";
+  return h === "accounts" || h === "funds" || h === "goals" || h === "settings" ? h : "budget";
 };
 
 const PAGES: { id: Page; label: string; icon: JSX.Element }[] = [
   { id: "budget", label: "Budget", icon: <BudgetIcon /> },
+  { id: "accounts", label: "Accounts", icon: <BankIcon /> },
   { id: "funds", label: "Funds", icon: <PiggyIcon /> },
+  { id: "goals", label: "Goals", icon: <GoalIcon /> },
   { id: "settings", label: "Settings", icon: <GearIcon /> },
 ];
 
@@ -52,7 +56,7 @@ export default function AppShell() {
       </nav>
 
       <main className="min-w-0 flex-1 pb-16 sm:pb-0">
-        {page === "funds" ? <FundsPage /> : page === "settings" ? <SettingsPage /> : <BudgetPage />}
+        {page === "accounts" ? <AccountsPage /> : page === "funds" ? <FundsPage /> : page === "goals" ? <GoalsPage /> : page === "settings" ? <SettingsPage /> : <BudgetPage />}
       </main>
 
       {/* Bottom bar on phones */}

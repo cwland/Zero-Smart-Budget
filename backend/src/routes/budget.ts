@@ -3,12 +3,14 @@ import { z } from "zod";
 import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { budgetMonths, categoryGroups, incomeItems, lineItems, sinkingFunds } from "../db/schema.js";
-import { loadBudget, nextSortOrder } from "../lib/budget.js";
+import { loadBudget, loadFunds, nextSortOrder } from "../lib/budget.js";
 import { STARTER_GROUPS, STARTER_INCOME } from "../lib/template.js";
 import { syncLineItem } from "../lib/fundLedger.js";
 import { monthsWaiting } from "../lib/plaidSync.js";
-import { monthIndex } from "../lib/calc.js";
+import { monthIndex, previousMonth } from "../lib/calc.js";
 import { badRequest, HttpError, notFound } from "../lib/errors.js";
+import { getBudgetPrefs } from "../lib/prefs.js";
+import { applyRollover, assertOpen, closeMonth, closePreview, closeState, reopenMonth } from "../lib/monthClose.js";
 import { cents, idList, idParam, name, yearMonthParams } from "../lib/validation.js";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -37,6 +39,19 @@ async function requireFund(db: Db, id: number | null | undefined) {
   if (id === null || id === undefined) return;
   const [row] = await db.select({ id: sinkingFunds.id }).from(sinkingFunds).where(eq(sinkingFunds.id, id));
   if (!row) throw badRequest("Sinking fund not found");
+}
+
+// Which month a group / line item / income item belongs to (for the closed-month check)
+async function monthOfGroup(db: Db, groupId: number) {
+  const [g] = await db.select({ monthId: categoryGroups.monthId }).from(categoryGroups).where(eq(categoryGroups.id, groupId));
+  return g?.monthId;
+}
+async function monthOfItem(db: Db, itemId: number) {
+  const [i] = await db.select({ groupId: lineItems.groupId }).from(lineItems).where(eq(lineItems.id, itemId));
+  return i ? monthOfGroup(db, i.groupId) : undefined;
+}
+async function openCheck(db: Db, monthId: number | undefined) {
+  if (monthId !== undefined) await assertOpen(db, monthId);
 }
 
 // Most recent month that exists before the given one
@@ -91,7 +106,39 @@ export default async function budgetRoutes(app: FastifyInstance) {
         waitingTransactions: (await monthsWaiting(db)).find((w) => w.year === year && w.month === month)?.count ?? 0,
       };
     }
-    return { exists: true, ...(await loadBudget(db, row.id)) };
+    const budget = (await loadBudget(db, row.id))!;
+    return { exists: true, ...budget, close: closeState(row, budget, app.now(), (await getBudgetPrefs(db)).monthCloseDays) };
+  });
+
+  // ---------- Month Close ----------
+
+  app.get("/api/months/:id/close", async (req) => {
+    const { id } = idParam.parse(req.params);
+    return closePreview(db, id);
+  });
+
+  // Close a month: leftover to ONE fund or goal, rolled over, or kept; overspend covered from ONE fund or goal
+  app.post("/api/months/:id/close", async (req) => {
+    const { id } = idParam.parse(req.params);
+    const fundId = z.number().int().positive();
+    const body = z
+      .object({
+        leftover: z
+          .discriminatedUnion("to", [z.object({ to: z.literal("fund"), fundId }), z.object({ to: z.literal("rollover") }), z.object({ to: z.literal("keep") })])
+          .optional(),
+        overspent: z.discriminatedUnion("to", [z.object({ to: z.literal("fund"), fundId }), z.object({ to: z.literal("keep") })]).optional(),
+      })
+      .parse(req.body ?? {});
+    await requireMonth(db, id);
+    const result = await closeMonth(db, id, body);
+    return { result, preview: await closePreview(db, id) };
+  });
+
+  app.post("/api/months/:id/reopen", async (req) => {
+    const { id } = idParam.parse(req.params);
+    await requireMonth(db, id);
+    await reopenMonth(db, id);
+    return { ok: true };
   });
 
   // Create a month: blank, suggested starter categories ("template"), or a copy of the most recent earlier month
@@ -115,7 +162,8 @@ export default async function budgetRoutes(app: FastifyInstance) {
       }
       if (!source) return created.id;
 
-      const income = await tx.select().from(incomeItems).where(eq(incomeItems.monthId, source.id));
+      // (a "Rollover from ..." item belongs to its month only)
+      const income = (await tx.select().from(incomeItems).where(eq(incomeItems.monthId, source.id))).filter((i) => !i.rolloverFromMonthId);
       if (income.length) {
         await tx.insert(incomeItems).values(
           income.map((i) => ({ monthId: created.id, name: i.name, plannedCents: i.plannedCents, sortOrder: i.sortOrder }))
@@ -144,17 +192,34 @@ export default async function budgetRoutes(app: FastifyInstance) {
       return created.id;
     });
 
-    // Copied items that are linked to sinking funds add this month's money to them
+    // Copied items that are linked to sinking funds add this month's money to them.
+    // A goal only gets what it still needs (nothing once it's reached).
     if (mode === "copy") {
       const linked = await db
-        .select({ id: lineItems.id })
+        .select({ id: lineItems.id, plannedCents: lineItems.plannedCents, fundId: lineItems.sinkingFundId })
         .from(lineItems)
         .innerJoin(categoryGroups, eq(lineItems.groupId, categoryGroups.id))
         .where(and(eq(categoryGroups.monthId, newId), sql`${lineItems.sinkingFundId} is not null`));
+      const before = previousMonth(year, month);
+      const goals = (await loadFunds(db, before, { fundIds: [...new Set(linked.map((l) => l.fundId!))] })).filter((f) => f.kind === "goal" && f.targetCents !== null);
+      for (const g of goals) {
+        let room = Math.max(0, g.targetCents! - g.balanceCents);
+        for (const l of linked.filter((x) => x.fundId === g.id)) {
+          const planned = Math.min(l.plannedCents, room);
+          room -= planned;
+          if (planned !== l.plannedCents) await db.update(lineItems).set({ plannedCents: planned }).where(eq(lineItems.id, l.id));
+        }
+      }
       for (const l of linked) await syncLineItem(db, l.id);
     }
+    // Leftover rolled over from last month's Month Close
+    const prev = previousMonth(year, month);
+    const prevRow = await findMonth(db, prev.year, prev.month);
+    if (prevRow?.closedAt) await applyRollover(db, prevRow);
 
-    return reply.status(201).send({ exists: true, ...(await loadBudget(db, newId)) });
+    const created = await findMonth(db, year, month);
+    const budget = (await loadBudget(db, newId))!;
+    return reply.status(201).send({ exists: true, ...budget, close: closeState(created, budget, app.now(), (await getBudgetPrefs(db)).monthCloseDays) });
   });
 
   app.delete("/api/months/:id", async (req, reply) => {
@@ -170,6 +235,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const body = z.object({ name, plannedCents: cents.default(0) }).parse(req.body);
     await requireMonth(db, id);
+    await assertOpen(db, id);
     const sortOrder = await nextSortOrder(db, incomeItems, eq(incomeItems.monthId, id));
     const [row] = await db.insert(incomeItems).values({ monthId: id, ...body, sortOrder }).returning();
     return reply.status(201).send(row);
@@ -178,15 +244,23 @@ export default async function budgetRoutes(app: FastifyInstance) {
   app.patch("/api/income/:id", async (req) => {
     const { id } = idParam.parse(req.params);
     const body = z.object({ name: name.optional(), plannedCents: cents.optional() }).parse(req.body);
+    const [item] = await db.select().from(incomeItems).where(eq(incomeItems.id, id));
+    if (!item) throw notFound("Income item");
+    await assertOpen(db, item.monthId);
+    if (item.rolloverFromMonthId && body.plannedCents !== undefined && body.plannedCents !== item.plannedCents) {
+      throw badRequest("This is last month's rollover. Reopen that month and close it again to change it.");
+    }
     const [row] = await db.update(incomeItems).set(body).where(eq(incomeItems.id, id)).returning();
-    if (!row) throw notFound("Income item");
     return row;
   });
 
   app.delete("/api/income/:id", async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    const deleted = await db.delete(incomeItems).where(eq(incomeItems.id, id)).returning({ id: incomeItems.id });
-    if (!deleted.length) throw notFound("Income item");
+    const [item] = await db.select().from(incomeItems).where(eq(incomeItems.id, id));
+    if (!item) throw notFound("Income item");
+    await assertOpen(db, item.monthId);
+    if (item.rolloverFromMonthId) throw badRequest("This is last month's rollover. Reopen that month and close it again to change it.");
+    await db.delete(incomeItems).where(eq(incomeItems.id, id));
     return reply.status(204).send();
   });
 
@@ -194,6 +268,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const { ids } = idList.parse(req.body);
     await requireMonth(db, id);
+    await assertOpen(db, id);
     await db.transaction(async (tx) => {
       const current = await tx.select({ id: incomeItems.id }).from(incomeItems).where(eq(incomeItems.monthId, id));
       await applyOrder(tx, incomeItems, current.map((r) => r.id), ids);
@@ -207,6 +282,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const body = z.object({ name }).parse(req.body);
     await requireMonth(db, id);
+    await assertOpen(db, id);
     const sortOrder = await nextSortOrder(db, categoryGroups, eq(categoryGroups.monthId, id));
     const [row] = await db.insert(categoryGroups).values({ monthId: id, name: body.name, sortOrder }).returning();
     return reply.status(201).send(row);
@@ -215,6 +291,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
   app.patch("/api/groups/:id", async (req) => {
     const { id } = idParam.parse(req.params);
     const body = z.object({ name }).parse(req.body);
+    await openCheck(db, await monthOfGroup(db, id));
     const [row] = await db.update(categoryGroups).set(body).where(eq(categoryGroups.id, id)).returning();
     if (!row) throw notFound("Group");
     return row;
@@ -222,6 +299,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
 
   app.delete("/api/groups/:id", async (req, reply) => {
     const { id } = idParam.parse(req.params);
+    await openCheck(db, await monthOfGroup(db, id));
     const deleted = await db
       .delete(categoryGroups)
       .where(eq(categoryGroups.id, id))
@@ -234,6 +312,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const { ids } = idList.parse(req.body);
     await requireMonth(db, id);
+    await assertOpen(db, id);
     await db.transaction(async (tx) => {
       const current = await tx
         .select({ id: categoryGroups.id })
@@ -251,7 +330,8 @@ export default async function budgetRoutes(app: FastifyInstance) {
     const body = z
       .object({ name, plannedCents: cents.default(0), sinkingFundId: z.number().int().positive().nullable().optional() })
       .parse(req.body);
-    await requireGroup(db, id);
+    const group = await requireGroup(db, id);
+    await assertOpen(db, group.monthId);
     await requireFund(db, body.sinkingFundId);
     const sortOrder = await nextSortOrder(db, lineItems, eq(lineItems.groupId, id));
     const [row] = await db
@@ -277,6 +357,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
 
     const [item] = await db.select().from(lineItems).where(eq(lineItems.id, id));
     if (!item) throw notFound("Line item");
+    await openCheck(db, await monthOfGroup(db, item.groupId));
     await requireFund(db, body.sinkingFundId);
 
     const changes: Partial<typeof lineItems.$inferInsert> = {
@@ -298,6 +379,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
 
   app.delete("/api/items/:id", async (req, reply) => {
     const { id } = idParam.parse(req.params);
+    await openCheck(db, await monthOfItem(db, id));
     const deleted = await db.delete(lineItems).where(eq(lineItems.id, id)).returning({ id: lineItems.id });
     if (!deleted.length) throw notFound("Line item");
     return reply.status(204).send();
@@ -306,7 +388,8 @@ export default async function budgetRoutes(app: FastifyInstance) {
   app.put("/api/groups/:id/items/order", async (req) => {
     const { id } = idParam.parse(req.params);
     const { ids } = idList.parse(req.body);
-    await requireGroup(db, id);
+    const group = await requireGroup(db, id);
+    await assertOpen(db, group.monthId);
     await db.transaction(async (tx) => {
       const current = await tx.select({ id: lineItems.id }).from(lineItems).where(eq(lineItems.groupId, id));
       await applyOrder(tx, lineItems, current.map((r) => r.id), ids);

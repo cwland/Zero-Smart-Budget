@@ -18,7 +18,7 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-[0_4px_12px_rgba(31,36,38,0.06)]">
         <div className="mb-6 flex items-center gap-3">
           <Logo className="size-10" />
-          <span className="text-2xl font-semibold">Cory's Dollar</span>
+          <span className="text-2xl font-semibold">ZeroPoint Budget</span>
         </div>
         {children}
       </div>
