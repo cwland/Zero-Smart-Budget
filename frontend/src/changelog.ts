@@ -23,6 +23,7 @@ export const CHANGELOG: Release[] = [
       "AI: each service is checked when you save it; AI is turned on and off in Settings › Budget only; backup AI services take over when one is down.",
       "Email: an on/off switch, a Send test email pop-up, and notifications (Wrap-Up reminder, come-back nudge).",
       "Month Wrap-Up, savings goals with a target date, and an Accounts page with manual accounts and assets for net worth.",
+      "Accounts: click an account to open its details on the side, where you can turn importing its transactions on or off.",
       "Signing in always opens this month's budget. The version number (bottom left) shows these notes again.",
     ],
   },

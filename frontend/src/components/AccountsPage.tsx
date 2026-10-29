@@ -4,6 +4,8 @@ import { centsToInput, formatCents, parseMoney } from "../money";
 import { openPlaidLink } from "../plaidLink";
 import { PlusIcon } from "./Icons";
 import { Popup } from "./Popup";
+import { Toggle } from "./BudgetSettings";
+import { CloseIcon } from "./Icons";
 
 // The Accounts page: one card per bank (connected through Plaid) with its
 // accounts and balances, plus accounts you keep track of by hand.
@@ -84,9 +86,9 @@ const initials = (name: string) =>
     .join("");
 
 // A round badge with the bank's initials, and a check (or a warning) on the corner
-function BankBadge({ name, ok }: { name: string; ok: boolean }) {
+function BankBadge({ name, ok, small }: { name: string; ok: boolean; small?: boolean }) {
   return (
-    <span className="relative flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-lg font-bold text-white" aria-hidden>
+    <span className={`relative flex shrink-0 items-center justify-center rounded-full bg-primary font-bold text-white ${small ? "size-10 text-base" : "size-12 text-lg"}`} aria-hidden>
       {initials(name) || "🏦"}
       <span className={`absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white ${ok ? "bg-success" : "bg-error"}`}>{ok ? "✓" : "!"}</span>
     </span>
@@ -259,7 +261,7 @@ function ImportSettings({ inst, onChanged, onClose }: { inst: Institution; onCha
   );
 }
 
-function Row({ name, sub, cents, onClick }: { name: string; sub?: string; cents: number | null; onClick?: () => void }) {
+function Row({ name, sub, cents, onClick, selected }: { name: string; sub?: string; cents: number | null; onClick?: () => void; selected?: boolean }) {
   const content = (
     <>
       <span className="min-w-0 flex-1">
@@ -272,13 +274,117 @@ function Row({ name, sub, cents, onClick }: { name: string; sub?: string; cents:
   return (
     <li>
       {onClick ? (
-        <button onClick={onClick} className="-mx-6 flex w-[calc(100%+3rem)] items-center gap-4 px-6 py-5 text-left hover:bg-pressed">
+        <button
+          onClick={onClick}
+          aria-pressed={selected}
+          className={`-mx-6 flex w-[calc(100%+3rem)] items-center gap-4 px-6 py-5 text-left transition-shadow ${
+            selected ? "relative z-10 rounded-xl bg-white shadow-[0_6px_24px_rgba(31,36,38,0.16)] md:-mx-8 md:w-[calc(100%+4rem)] md:px-8" : "hover:bg-pressed"
+          }`}
+        >
           {content}
         </button>
       ) : (
         <div className="flex items-center gap-4 py-5">{content}</div>
       )}
     </li>
+  );
+}
+
+// The side panel for one account (like the detail panel in other budgeting apps): its balance,
+// and for a bank account the switch that turns importing its transactions on or off.
+function AccountPanel({
+  data,
+  selected,
+  onClose,
+  onEdit,
+  onChanged,
+  onError,
+}: {
+  data: AccountsData;
+  selected: { kind: "bank" | "manual"; id: number };
+  onClose: () => void;
+  onEdit: (a: ManualAccount) => void;
+  onChanged: () => Promise<void>;
+  onError: (text: string) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const inst = selected.kind === "bank" ? data.institutions.find((i) => i.accounts.some((a) => a.id === selected.id)) : undefined;
+  const bank = inst?.accounts.find((a) => a.id === selected.id);
+  const manual = selected.kind === "manual" ? [...data.manual, ...data.assets].find((m) => m.id === selected.id) : undefined;
+  const gone = !bank && !manual; // e.g. just deleted
+  useEffect(() => {
+    if (gone) onClose();
+  }, [gone, onClose]);
+  if (gone) return null;
+  const cents = bank ? bank.balanceCents : manual!.signedCents;
+  const isAsset = !!manual && ASSET_TYPES.includes(manual.type);
+
+  async function setImport(on: boolean) {
+    if (!bank) return;
+    setSaving(true);
+    try {
+      await api("PATCH", `/api/plaid/accounts/${bank.id}`, { importTransactions: on });
+      await onChanged();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <aside aria-label="Account details" className="w-full shrink-0 rounded-2xl bg-white p-6 md:sticky md:top-6 md:w-[360px]">
+      <div className="flex items-start gap-3">
+        {inst ? (
+          <BankBadge name={inst.institutionName} ok={inst.status === "ok"} small />
+        ) : (
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-page text-lg" aria-hidden>
+            {isAsset ? "🏠" : "✍️"}
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate pt-1.5 text-lg text-subtle">{inst ? inst.institutionName : isAsset ? "Asset" : "Manual account"}</span>
+        <button onClick={onClose} aria-label="Close" className="rounded p-1 text-subtle hover:bg-page hover:text-ink">
+          <CloseIcon className="size-6" />
+        </button>
+      </div>
+
+      <h2 className="mt-4 text-xl font-bold leading-snug">
+        {bank ? bank.officialName || bank.name : manual!.name}
+        {bank?.mask && <span className="whitespace-nowrap"> *{bank.mask}</span>}
+      </h2>
+      <div className={`tabular mt-1 text-4xl font-bold ${cents !== null && cents < 0 ? "text-error" : ""}`}>{cents === null ? "—" : `${cents < 0 ? "-" : ""}${formatCents(Math.abs(cents))}`}</div>
+      <p className="mt-1 text-sm text-subtle">
+        {bank
+          ? [bank.subtype ? bank.subtype.replace(/\b\w/g, (c) => c.toUpperCase()) : bank.type, inst!.active ? `synced ${ago(inst!.lastSyncedAt)}` : "paused"].join(" · ")
+          : `${TYPE_LABELS[manual!.type]} · updated ${ago(manual!.balanceUpdatedAt)}`}
+      </p>
+
+      {bank && (
+        <div className="mt-6 rounded-2xl bg-page p-5">
+          <Toggle
+            label="Import transactions"
+            checked={bank.importTransactions}
+            disabled={saving}
+            onChange={(on) => void setImport(on)}
+            text={<span className="font-semibold">{bank.importTransactions ? "Transaction importing is on" : "Transaction importing is off"}</span>}
+          />
+          <p className="mt-1 text-sm text-subtle">
+            {bank.importTransactions
+              ? `New transactions from this account come in through Plaid each time ${inst!.institutionName} syncs (every few hours), or right away with Sync now in the ⋯ menu.`
+              : "New transactions from this account aren't brought in. Ones already imported stay, and the balance still updates."}
+          </p>
+        </div>
+      )}
+
+      {manual && (
+        <div className="mt-6 rounded-2xl bg-page p-5">
+          <p className="text-sm text-subtle">{isAsset ? "Counts toward your net worth, never part of your budget." : "You keep this balance up to date yourself."}</p>
+          <button onClick={() => onEdit(manual)} className="mt-3 rounded bg-primary px-4 py-2.5 font-semibold text-white hover:bg-primary-pressed">
+            {isAsset ? "Edit asset" : "Update balance"}
+          </button>
+        </div>
+      )}
+    </aside>
   );
 }
 
@@ -294,6 +400,16 @@ export default function AccountsPage() {
     | { kind: "remove"; inst: Institution; force: boolean }
     | null
   >(null);
+
+  // The account open in the side panel (click a row; ✕ or Esc closes it)
+  const [selected, setSelected] = useState<{ kind: "bank" | "manual"; id: number } | null>(null);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && !popup && setSelected(null);
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [popup]);
+  const pick = (kind: "bank" | "manual", id: number) => setSelected((s) => (s?.kind === kind && s.id === id ? null : { kind, id }));
+  const isSel = (kind: "bank" | "manual", id: number) => selected?.kind === kind && selected.id === id;
 
   const load = useCallback(async () => setData(await api<AccountsData>("GET", "/api/accounts")), []);
   useEffect(() => {
@@ -412,6 +528,8 @@ export default function AccountsPage() {
                     name={a.name}
                     sub={[a.mask ? `••${a.mask}` : "", !a.importTransactions ? "Not importing transactions" : ""].filter(Boolean).join(" · ") || undefined}
                     cents={a.balanceCents}
+                    selected={isSel("bank", a.id)}
+                    onClick={() => pick("bank", a.id)}
                   />
                 ))}
               </ul>
@@ -426,12 +544,12 @@ export default function AccountsPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-2xl font-bold">Manual Accounts</h2>
-                  <p className="text-subtle">Balances you update yourself. Click one to change it.</p>
+                  <p className="text-subtle">Balances you update yourself.</p>
                 </div>
               </div>
               <ul className="divide-y divide-line">
                 {data.manual.map((m) => (
-                  <Row key={m.id} name={m.name} sub={`${TYPE_LABELS[m.type]} · updated ${ago(m.balanceUpdatedAt)}`} cents={m.signedCents} onClick={() => setPopup({ kind: "editManual", account: m })} />
+                  <Row key={m.id} name={m.name} sub={`${TYPE_LABELS[m.type]} · updated ${ago(m.balanceUpdatedAt)}`} cents={m.signedCents} selected={isSel("manual", m.id)} onClick={() => pick("manual", m.id)} />
                 ))}
               </ul>
             </section>
@@ -450,7 +568,7 @@ export default function AccountsPage() {
               </div>
               <ul className="divide-y divide-line">
                 {data.assets.map((m) => (
-                  <Row key={m.id} name={m.name} sub={`${TYPE_LABELS[m.type]} · updated ${ago(m.balanceUpdatedAt)}`} cents={m.signedCents} onClick={() => setPopup({ kind: "editManual", account: m })} />
+                  <Row key={m.id} name={m.name} sub={`${TYPE_LABELS[m.type]} · updated ${ago(m.balanceUpdatedAt)}`} cents={m.signedCents} selected={isSel("manual", m.id)} onClick={() => pick("manual", m.id)} />
                 ))}
               </ul>
             </section>
@@ -481,7 +599,16 @@ export default function AccountsPage() {
           )}
         </div>
 
-        {t && (data.institutions.length > 0 || data.manual.length > 0 || data.assets.length > 0) && (
+        {data && selected ? (
+          <AccountPanel
+            data={data}
+            selected={selected}
+            onClose={() => setSelected(null)}
+            onEdit={(account) => setPopup({ kind: "editManual", account })}
+            onChanged={load}
+            onError={(text) => setMsg({ ok: false, text })}
+          />
+        ) : t && (data.institutions.length > 0 || data.manual.length > 0 || data.assets.length > 0) && (
           <aside aria-label="Totals" className="w-full shrink-0 rounded-2xl bg-white p-5 md:sticky md:top-6 md:w-[300px]">
             <h2 className="text-lg font-semibold">Net Worth</h2>
             <div className={`tabular text-4xl font-semibold ${t.netCents < 0 ? "text-error" : "text-subtle"}`}>

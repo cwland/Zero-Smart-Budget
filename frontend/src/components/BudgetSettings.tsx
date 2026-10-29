@@ -21,7 +21,8 @@ interface AiUsage {
 }
 
 // An on/off switch with its label
-export function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
+// text: what shows beside the switch (default "On"/"Off")
+export function Toggle({ label, checked, disabled, onChange, text }: { label: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void; text?: ReactNode }) {
   return (
     <label className={`flex shrink-0 items-center gap-3 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}>
       <button
@@ -35,7 +36,7 @@ export function Toggle({ label, checked, disabled, onChange }: { label: string; 
       >
         <span className={`absolute top-1 size-5 rounded-full bg-white shadow transition-all ${checked ? "left-6" : "left-1"}`} />
       </button>
-      <span className="w-7 text-lg">{checked ? "On" : "Off"}</span>
+      {text ?? <span className="w-7 text-lg">{checked ? "On" : "Off"}</span>}
     </label>
   );
 }
