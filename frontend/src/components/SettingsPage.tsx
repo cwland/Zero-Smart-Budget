@@ -6,12 +6,14 @@ import AiSettings from "./AiSettings";
 import PlaidSettings from "./PlaidSettings";
 import ProfileSettings from "./ProfileSettings";
 import LogsSettings from "./LogsSettings";
+import SignInSettings from "./SignInSettings";
 import { ApiKeys, ChangePassword, Devices, Passkeys, SignInHistory } from "./SecuritySettings";
 
 const TABS = [
   { id: "profile", label: "Profile" },
   { id: "budget", label: "Budget" },
   { id: "security", label: "Security" },
+  { id: "signin", label: "Sign-in" },
   { id: "api", label: "API keys" },
   { id: "email", label: "Email" },
   { id: "plaid", label: "Plaid" },
@@ -69,6 +71,7 @@ export default function SettingsPage() {
             <SignInHistory />
           </>
         )}
+        {tab === "signin" && <SignInSettings />}
         {tab === "api" && <ApiKeys />}
         {tab === "email" && <EmailSettings />}
         {tab === "plaid" && (

@@ -8,6 +8,8 @@ import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
 import { resetPasskeyChallenges } from "../src/routes/passkeys.js";
+import { resetOAuthFlows } from "../src/routes/oauth.js";
+import { resetOAuthCache } from "../src/lib/oauth.js";
 import { resetActiveMark } from "../src/lib/notifications.js";
 import { resetSessionTouches } from "../src/lib/sessions.js";
 import type { EmailConfig, MailMessage } from "../src/lib/mail.js";
@@ -19,7 +21,7 @@ import type { AiFetch } from "../src/lib/ai.js";
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/corysdollar_test";
 if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a test database");
 
-export async function setupTestApp(opts: { email?: boolean; backupKey?: string; jwtSecret?: string } = {}) {
+export async function setupTestApp(opts: { email?: boolean; backupKey?: string; jwtSecret?: string; oauthFetch?: typeof fetch } = {}) {
   const { db, pool } = createDb(url);
   await db.execute(sql`drop schema if exists public cascade`);
   await db.execute(sql`drop schema if exists drizzle cascade`);
@@ -70,6 +72,7 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
     jwtSecret: opts.jwtSecret ?? "test-secret-that-is-long-enough",
     backupDir,
     backupKey: opts.backupKey ?? "",
+    oauthFetch: opts.oauthFetch,
     backupKeep: 3,
     emailEnv,
     mailTransport: (config) => ({
@@ -122,6 +125,8 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       resetActiveMark();
       resetLoginLockouts();
       resetPasskeyChallenges();
+      resetOAuthFlows();
+      resetOAuthCache();
       token = "";
     },
     async login() {

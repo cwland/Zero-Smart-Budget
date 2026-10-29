@@ -160,3 +160,25 @@ Sign in with Touch ID, Face ID, Windows Hello or a phone instead of typing the p
 - Behind a reverse proxy (nginx) nothing needs configuring: the address comes from the browser. Serve the app over HTTPS and keep nginx's default of passing the `Origin` header through.
 - Optional: `PASSKEY_ORIGINS=https://budget.example.com` (comma-separated) only allows passkeys at those addresses.
 - Passkey sign-ins show in Signed-in devices and Sign-in history. Removing a passkey in Settings stops it working here; delete it from your password manager or keychain too.
+
+## OAuth sign-in (Authentik, Keycloak, Google…)
+
+Set it up in **Settings → Sign-in**:
+
+1. At your provider, create an OAuth2/OpenID Connect app (confidential client). Add the **Redirect URI** shown in Settings (`https://<your app address>/api/auth/oauth/callback`).
+2. In Settings → Sign-in: turn it on, name the button (e.g. "Authentik"), enter the **issuer / discovery URL**, Client ID and Client secret. Save, then **Test connection**.
+   - Authentik: `https://auth.example.com/application/o/<app-slug>/` · Keycloak: `https://kc.example.com/realms/<realm>` · Google: `https://accounts.google.com`
+   - No discovery? Enter the authorize, token and user info URLs instead.
+3. **Link my account**: sign in at the provider once. (Signing in with OAuth also links automatically when the provider's *verified* email matches your profile email.) Identities that aren't linked are refused.
+4. Optional: **How you sign in → OAuth only** hides the password form, and the server refuses password sign-in and password resets. Passkeys still work. It can only be chosen after your account is linked.
+
+The client secret is stored encrypted. The flow uses PKCE, state and nonce (via `openid-client`), and the session token never appears in a URL.
+
+**Locked out?** (provider down or misconfigured) Turn password sign-in back on from the server:
+
+```
+cd backend && npm run auth:reset            # also: -- --keep-oauth to leave OAuth on
+docker compose exec api npm run auth:reset   # with Docker
+```
+
+or set `EMERGENCY_DISABLE_OAUTH=true` in `.env` and restart (remove it once you're in).

@@ -10,6 +10,7 @@ import { autoSuggest } from "./lib/aiSuggest.js";
 import { autoCloseOldMonths } from "./lib/monthClose.js";
 import { runNotifications } from "./lib/notifications.js";
 import { logEvent } from "./lib/appLog.js";
+import { emergencyResetAuth } from "./lib/oauth.js";
 
 const { db } = createDb(process.env.DATABASE_URL!);
 await runMigrations(db);
@@ -34,6 +35,13 @@ if (process.env.BACKUP_ENABLED !== "false") {
     error: (err) => app.log.error(err),
   }, app.backupSecrets());
 }
+// Emergency: EMERGENCY_DISABLE_OAUTH=true turns password sign-in back on (and OAuth off) at start
+if (process.env.EMERGENCY_DISABLE_OAUTH === "true") {
+  const r = await emergencyResetAuth(db);
+  app.log.warn(`EMERGENCY_DISABLE_OAUTH: password sign-in is on again (was ${r.was.authMode}, OAuth ${r.was.enabled ? "on" : "off"}). Remove the setting once you're back in.`);
+  await logEvent(db, { category: "api", level: "warning", source: "EMERGENCY_DISABLE_OAUTH", event: "OAuth turned off and password sign-in turned back on at start" });
+}
+
 // Remind on every start: the backup key can't be recovered
 if (app.backupKey.key) app.log.info("BACKUP_KEY is set: saved keys and passwords go into backups, encrypted. Save a copy of BACKUP_KEY somewhere safe, away from this server; restoring them needs it.");
 else if (app.backupKey.problem) app.log.warn(app.backupKey.problem);

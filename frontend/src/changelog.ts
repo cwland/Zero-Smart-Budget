@@ -16,6 +16,7 @@ export const CHANGELOG: Release[] = [
     changes: [
       "New name and look: Zero Smart Budget, AI-Powered Zero-Based Budgeting, with open-source icons and our own wording.",
       "Passkeys: sign in with Touch ID, Face ID, Windows Hello or your phone. Add one in Settings › Security; your password still works. 1Password and your browser offer it as soon as the sign-in page opens.",
+      "Sign in with OAuth / OpenID Connect (Authentik, Keycloak, Google…): set it up in Settings › Sign-in, link your account, and optionally turn password sign-in off. If you're ever locked out, npm run auth:reset turns passwords back on.",
       "Settings › Logs: emails sent, AI and bank sync problems, refused API requests and scheduled tasks (backups, bank sync, notifications) in one list, with filters.",
       "Signed-in devices with per-device sign out, and sign-in history for the last 60 days.",
       "API keys now have an access type: Read only, Add transactions, or both. No key can change your plan or settings.",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, getToken, setToken } from "./api";
 import AuthScreen from "./components/AuthScreen";
 import AppShell from "./components/AppShell";
@@ -9,8 +9,21 @@ type AuthState =
   | { status: "loading" }
   | { status: "offline" } // the server can't be reached (e.g. restarting): keep the sign-in and retry
   | { status: "setup" }
-  | { status: "login"; resetAvailable: boolean }
+  | { status: "login"; resetAvailable: boolean; oauth: { label: string } | null; passwords: boolean; oauthError?: string }
   | { status: "in"; user: User };
+
+type Status = { setupRequired: boolean; resetAvailable: boolean; oauth: { label: string } | null; passwords: boolean };
+const loginState = (s: Partial<Status>, oauthError?: string): AuthState => ({ status: "login", resetAvailable: !!s.resetAvailable, oauth: s.oauth ?? null, passwords: s.passwords ?? true, oauthError });
+
+// Back from the OAuth provider: "#/oauth?ticket=..." (signed in) or "#/?oauth_error=..." (not)
+function takeOAuthReturn() {
+  const [path, query] = window.location.hash.split("?");
+  const p = new URLSearchParams(query ?? "");
+  const ticket = path === "#/oauth" ? p.get("ticket") : null;
+  const error = !path.startsWith("#/settings") ? p.get("oauth_error") : null;
+  if (ticket || error) history.replaceState(null, "", "#/");
+  return { ticket, error };
+}
 
 // "#/reset?token=..." from a password reset email
 const resetTokenFromHash = () => (window.location.hash.startsWith("#/reset") ? new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("token") : null);
@@ -19,13 +32,20 @@ export default function App() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
   const [resetToken, setResetToken] = useState(resetTokenFromHash);
 
+  const signedInRef = useRef<(token: string, user: User) => void>(() => {});
   const check = useCallback(async () => {
     try {
-      const status = await api<{ setupRequired: boolean; resetAvailable: boolean }>("GET", "/api/auth/status");
+      const back = takeOAuthReturn();
+      if (back.ticket) {
+        const r = await api<{ token: string; user: User }>("POST", "/api/auth/oauth/finish", { ticket: back.ticket }).catch((e) => ({ error: (e as Error).message }));
+        if ("token" in r) return signedInRef.current(r.token, r.user);
+        back.error = r.error;
+      }
+      const status = await api<Status>("GET", "/api/auth/status");
       if (status.setupRequired) return setAuth({ status: "setup" });
-      if (!getToken()) return setAuth({ status: "login", resetAvailable: status.resetAvailable });
+      if (!getToken() || back.error) return setAuth(loginState(status, back.error ?? undefined));
       const me = await api<{ user?: User }>("GET", "/api/auth/me");
-      setAuth(me.user ? { status: "in", user: me.user } : { status: "login", resetAvailable: status.resetAvailable });
+      setAuth(me.user ? { status: "in", user: me.user } : loginState(status));
     } catch (e) {
       // Only a "not signed in" answer ends the session. Anything else (server restarting, network
       // down) keeps the sign-in and tries again.
@@ -35,8 +55,8 @@ export default function App() {
         return;
       }
       setToken(null);
-      const status = await api<{ resetAvailable: boolean }>("GET", "/api/auth/status").catch(() => ({ resetAvailable: false }));
-      setAuth({ status: "login", resetAvailable: status.resetAvailable });
+      const status = await api<Status>("GET", "/api/auth/status").catch(() => ({}) as Partial<Status>);
+      setAuth(loginState(status));
     }
   }, []);
 
@@ -59,6 +79,8 @@ export default function App() {
     if (window.location.hash !== "#/budget") window.location.hash = "#/budget";
     setAuth({ status: "in", user });
   };
+  signedInRef.current = signedIn;
+
 
   if (resetToken) {
     return (
@@ -90,7 +112,16 @@ export default function App() {
   }
 
   if (auth.status === "setup" || auth.status === "login") {
-    return <AuthScreen mode={auth.status} resetAvailable={auth.status === "login" && auth.resetAvailable} onDone={signedIn} />;
+    return (
+      <AuthScreen
+        mode={auth.status}
+        resetAvailable={auth.status === "login" && auth.resetAvailable}
+        oauth={auth.status === "login" ? auth.oauth : null}
+        passwords={auth.status === "login" ? auth.passwords : true}
+        initialError={auth.status === "login" ? auth.oauthError : undefined}
+        onDone={signedIn}
+      />
+    );
   }
 
   const signOut = () => {

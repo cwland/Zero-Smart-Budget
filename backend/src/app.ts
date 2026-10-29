@@ -8,6 +8,7 @@ import { apiKeys, users } from "./db/schema.js";
 import { logEvent } from "./lib/appLog.js";
 import logRoutes from "./routes/logs.js";
 import passkeyRoutes from "./routes/passkeys.js";
+import oauthRoutes from "./routes/oauth.js";
 import { backupKeyFromEnv, type BackupSecrets } from "./lib/settingsBackup.js";
 import { keyAllows, keyDenied, type KeyAccess } from "./lib/keyAccess.js";
 import { HttpError } from "./lib/errors.js";
@@ -36,6 +37,7 @@ declare module "fastify" {
     backupDir: string;
     backupKey: { key: string | null; problem: string | null };
     backupSecrets: () => BackupSecrets;
+    oauthFetch?: typeof fetch;
     backupKeep: number;
     mail: MailService;
     plaid: PlaidService;
@@ -53,6 +55,7 @@ export interface AppOptions {
   logger?: boolean;
   backupDir?: string;
   backupKey?: string; // BACKUP_KEY: encrypts saved keys and passwords inside backups
+  oauthFetch?: typeof fetch; // tests: a fake OAuth provider
   backupKeep?: number;
   emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
   mailTransport?: TransportFactory; // tests swap in a fake
@@ -74,9 +77,12 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/reset",
   "POST /api/auth/passkey/login/options",
   "POST /api/auth/passkey/login/verify",
+  "POST /api/auth/oauth/start",
+  "GET /api/auth/oauth/callback",
+  "POST /api/auth/oauth/finish",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, emailEnv = null, mailTransport, plaidFetch, aiFetch, now = () => new Date() }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, oauthFetch, emailEnv = null, mailTransport, plaidFetch, aiFetch, now = () => new Date() }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -87,6 +93,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.decorate("db", db);
   app.decorate("jwtSecret", jwtSecret);
   app.decorate("backupDir", backupDir);
+  app.decorate("oauthFetch", oauthFetch);
   const bk = backupKeyFromEnv(backupKey);
   app.decorate("backupKey", bk);
   app.decorate("backupSecrets", () => ({ jwtSecret, backupKey: bk.key }));
@@ -165,6 +172,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(keyRoutes);
   app.register(logRoutes);
   app.register(passkeyRoutes);
+  app.register(oauthRoutes);
   app.register(budgetRoutes);
   app.register(transactionRoutes);
   app.register(fundRoutes);

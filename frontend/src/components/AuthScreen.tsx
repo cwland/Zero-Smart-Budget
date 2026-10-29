@@ -1,6 +1,6 @@
 import { versionLabel } from "../version";
 import WhatsNew from "./WhatsNew";
-import { KeyRound } from "lucide-react";
+import { KeyRound, LogIn } from "lucide-react";
 import { passkeyError, passkeysAvailable, signInWithPasskey, startPasskeyAutofill } from "../passkeys";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, api } from "../api";
@@ -9,6 +9,9 @@ import type { User } from "../session";
 interface Props {
   mode: "setup" | "login";
   resetAvailable?: boolean;
+  oauth?: { label: string } | null; // "Sign in with {label}"
+  passwords?: boolean; // false: OAuth only (no password form)
+  initialError?: string; // e.g. back from the OAuth provider without signing in
   onDone: (token: string, user: User) => void;
 }
 
@@ -77,26 +80,27 @@ function ForgotPassword({ onBack }: { onBack: () => void }) {
   );
 }
 
-export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
+export default function AuthScreen({ mode, resetAvailable, oauth = null, passwords = true, initialError, onDone }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError ?? "");
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
   const setup = mode === "setup";
   const canPasskey = !setup && passkeysAvailable();
+  const showForm = setup || passwords;
   // Passkey autofill: offered as soon as the page opens (1Password and the browser show it)
   const done = useRef(onDone);
   done.current = onDone;
   useEffect(() => {
-    if (!canPasskey) return;
+    if (!canPasskey || !showForm) return; // autofill offers the passkey on the username box
     return startPasskeyAutofill(
       (res) => done.current(res.token, res.user),
       (msg) => setError(msg)
     );
-  }, [canPasskey]);
+  }, [canPasskey, showForm]);
 
   async function passkey() {
     setError("");
@@ -111,6 +115,31 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
       setBusy(false);
     }
   }
+
+  // OAuth: get the provider's sign-in address and go there (it comes back to the app)
+  async function signInWithOAuth() {
+    setError("");
+    setBusy(true);
+    try {
+      const { url } = await api<{ url: string }>("POST", "/api/auth/oauth/start", {});
+      window.location.assign(url);
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+  const oauthButton = (primary: boolean) =>
+    oauth && (
+      <button
+        type="button"
+        onClick={signInWithOAuth}
+        disabled={busy}
+        className={`flex w-full items-center justify-center gap-2 rounded py-3 font-semibold disabled:opacity-60 ${primary ? "bg-primary text-white hover:bg-primary-pressed" : "border border-primary text-primary hover:bg-pressed"}`}
+      >
+        <LogIn className="size-5" aria-hidden />
+        Sign in with {oauth.label}
+      </button>
+    );
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -141,6 +170,15 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
         <h1 className="text-lg font-semibold">{setup ? "Create your account" : "Sign in"}</h1>
         {setup && <p className="mt-1 text-sm text-subtle">First time here. This will be the only login for this app.</p>}
 
+        {!showForm && (
+          <>
+            <p className="mt-1 text-sm text-subtle">Sign in with {oauth?.label ?? "your identity provider"}{canPasskey ? " or a passkey" : ""}.</p>
+            {error && <p role="alert" className="mt-4 rounded bg-error-subtle px-3 py-2 text-sm text-error">{error}</p>}
+            <div className="mt-6">{oauthButton(true)}</div>
+          </>
+        )}
+        {showForm && (
+          <>
         <label className="mt-5 block text-sm font-medium text-subtle">
           Username
           <input className={input} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete={canPasskey ? "username webauthn" : "username"} required />
@@ -176,9 +214,21 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
         <button type="submit" disabled={busy} className="mt-6 w-full rounded bg-primary py-3 font-semibold text-white hover:bg-primary-pressed disabled:opacity-60">
           {busy ? "One moment…" : setup ? "Create account" : "Sign in"}
         </button>
-        {canPasskey && (
+          </>
+        )}
+        {showForm && !setup && oauth && (
           <>
             <div className="my-4 flex items-center gap-3 text-xs text-muted">
+              <span className="h-px flex-1 bg-line" />
+              or
+              <span className="h-px flex-1 bg-line" />
+            </div>
+            {oauthButton(false)}
+          </>
+        )}
+        {canPasskey && (
+          <>
+            <div className={`my-4 flex items-center gap-3 text-xs text-muted ${oauth && showForm ? "hidden" : ""}`}>
               <span className="h-px flex-1 bg-line" />
               or
               <span className="h-px flex-1 bg-line" />

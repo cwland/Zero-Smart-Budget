@@ -5,6 +5,7 @@ import { checkPassword, generateResetToken, hashApiKey, hashPassword } from "../
 import { describeDevice, logSignIn, pruneLoginLog, renewSession, revokeAll, startSession } from "../lib/sessions.js";
 import { loginEvents, passwordResets, sessions, users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
+import { getOAuth, oauthReady, passwordsAllowed } from "../lib/oauth.js";
 
 const password = z.string().min(8, "Password must be at least 8 characters").max(200);
 const credentials = z.object({ username: z.string().trim().min(1).max(100), password });
@@ -54,12 +55,22 @@ export default async function authRoutes(app: FastifyInstance) {
   app.get("/api/auth/status", async () => {
     const [user] = await db.select({ email: users.email }).from(users).limit(1);
     const enabled = await emailEnabled();
+    const oauth = await getOAuth(db);
+    const passwords = passwordsAllowed(oauth);
     return {
       setupRequired: !user,
       emailEnabled: enabled,
-      resetAvailable: enabled && !!user?.email,
+      resetAvailable: passwords && enabled && !!user?.email,
+      // The sign-in screen: a "Sign in with {label}" button, and the password form unless OAuth only
+      oauth: oauthReady(oauth) ? { label: oauth.providerName } : null,
+      passwords,
     };
   });
+
+  // OAuth only: password sign-in (and resetting it by email) is off. `npm run auth:reset` undoes it.
+  const requirePasswords = async () => {
+    if (!passwordsAllowed(await getOAuth(db))) throw new HttpError(403, "Password sign-in is turned off. Use the OAuth button or a passkey.");
+  };
 
   // First run only: create the single account (an email is required: password resets and notifications)
   app.post("/api/auth/setup", async (req) => {
@@ -76,6 +87,12 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.post("/api/auth/login", async (req) => {
     const body = z.object({ username: z.string(), password: z.string() }).parse(req.body);
+    try {
+      await requirePasswords();
+    } catch (e) {
+      await logSignIn(db, req, { username: body.username, success: false, reason: "Password sign-in is off (OAuth only)" });
+      throw e;
+    }
     try {
       checkLockout(req);
     } catch (e) {
@@ -197,6 +214,7 @@ export default async function authRoutes(app: FastifyInstance) {
   // Email a reset link to the account's address. Always answers the same way, so it
   // never reveals whether an address is on file.
   app.post("/api/auth/forgot", async (req) => {
+    await requirePasswords();
     const active = await app.mail.active();
     if (!active?.config.appUrl) throw new HttpError(400, "Email isn't set up on this server. Use `npm run reset-password` on the server instead.");
     const now = Date.now();
@@ -230,6 +248,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
   // Use a reset link: set a new password, sign out everywhere, and sign in here
   app.post("/api/auth/reset", async (req) => {
+    await requirePasswords();
     checkLockout(req);
     const body = z.object({ token: z.string().min(10).max(200), newPassword: password }).parse(req.body);
     const [reset] = await db
