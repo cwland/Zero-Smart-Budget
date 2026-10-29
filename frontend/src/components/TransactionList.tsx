@@ -99,7 +99,7 @@ export function TransactionRow({
             <SignedAmount t={t} amountCents={amountCents} />
           </span>
           {/* Second line; leaves room on the right for a suggestion chip */}
-          <span className={`block min-h-[1.75rem] truncate pt-1 text-sm ${toneClass} ${trailing ? "pr-[9.5rem]" : ""}`}>
+          <span className={`block min-h-[1.75rem] truncate pt-1 text-sm ${toneClass} ${trailing ? "pr-[11rem]" : ""}`}>
             {t.pending && !hidePending && <span className="mr-1.5 rounded bg-page px-1.5 py-0.5 text-xs font-semibold text-subtle">Pending</span>}
             {label}
           </span>
@@ -120,6 +120,7 @@ function UnassignedRow({
   onOpen,
   onAccept,
   onAskAi,
+  onDismissAi,
   busy,
   draggable,
   selected,
@@ -129,6 +130,7 @@ function UnassignedRow({
   onOpen: () => void;
   onAccept: () => void;
   onAskAi?: () => void; // shown when AI is on and there's no suggestion yet
+  onDismissAi?: () => void; // the × on an AI chip
   busy: boolean;
   draggable: boolean;
   selected: boolean;
@@ -146,6 +148,7 @@ function UnassignedRow({
       leading={<input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${t.merchant}`} className="size-4 cursor-pointer accent-[#0073b9]" />}
       trailing={
         chip ? (
+          <span className="flex items-center gap-0.5">
           <button
             onClick={onAccept}
             disabled={busy}
@@ -155,6 +158,20 @@ function UnassignedRow({
           >
             {a ? "✦" : "+"} {chip.itemName}
           </button>
+          {a && onDismissAi && (
+            <button
+              onClick={onDismissAi}
+              disabled={busy}
+              aria-label={`Remove AI suggestion for ${t.merchant}`}
+              title="Remove this AI suggestion"
+              className="flex size-6 shrink-0 items-center justify-center rounded-full text-[#6a3de8]/70 hover:bg-[#7c4dff]/10 hover:text-[#6a3de8] disabled:opacity-50"
+            >
+              <svg viewBox="0 0 24 24" className="size-3.5 fill-none stroke-current" strokeWidth={2.4} strokeLinecap="round" aria-hidden>
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          )}
+          </span>
         ) : onAskAi ? (
           <button onClick={onAskAi} disabled={busy} aria-label={`Ask AI about ${t.merchant}`} className="rounded-full px-2 py-0.5 text-sm font-semibold text-[#6a3de8] hover:bg-[#7c4dff]/10 disabled:opacity-50">
             ✦ Ask AI
@@ -603,6 +620,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
                       onOpen={() => onOpen(t)}
                       onAccept={() => accept([t])}
                       onAskAi={aiOn ? () => askAi([t.id]) : undefined}
+                      onDismissAi={() => run(() => api("DELETE", `/api/transactions/${t.id}/ai-suggestion`))}
                       selected={selected.has(t.id)}
                       onToggle={() => toggle(t.id)}
                     />

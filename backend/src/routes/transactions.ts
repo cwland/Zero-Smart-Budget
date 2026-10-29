@@ -275,6 +275,21 @@ export default async function transactionRoutes(app: FastifyInstance) {
     }
   });
 
+  // Remove the AI's guess (the × on a purple chip). It stays "looked at", so automatic runs don't
+  // guess again; "Ask AI" still asks fresh.
+  app.delete("/api/transactions/:id/ai-suggestion", async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const row = await loadTransaction(db, id);
+    if (!row) throw notFound("Transaction");
+    if (row.aiSuggestion) {
+      await db
+        .update(transactions)
+        .set({ aiSuggestion: { none: true, reason: "Removed", model: row.aiSuggestion.model, at: new Date().toISOString() } })
+        .where(eq(transactions.id, id));
+    }
+    return reply.status(204).send();
+  });
+
   // Whether AI suggestions are on (the transactions list shows Ask AI buttons when they are)
   app.get("/api/ai/status", async () => {
     const c = await app.ai.active();

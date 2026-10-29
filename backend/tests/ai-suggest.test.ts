@@ -161,4 +161,17 @@ describe("AI suggestions", () => {
     for (let i = 0; i < 20 && !(await list()).find((x: any) => x.id === b.id).aiSuggestion; i++) await new Promise((r) => setTimeout(r, 50));
     expect((await list()).find((x: any) => x.id === b.id).aiSuggestion).toMatchObject({ itemName: "Miscellaneous" });
   });
+
+  it("× removes an AI guess; automatic runs leave it alone, Ask AI can ask again", async () => {
+    const a = await add({ date: "2026-10-09", merchant: "Shop", amountCents: 100 });
+    rules = { Shop: "Miscellaneous" };
+    await run();
+    expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toMatchObject({ itemName: "Miscellaneous" });
+    expect((await t.api("DELETE", `/api/transactions/${a.id}/ai-suggestion`)).status).toBe(204);
+    expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toBeNull();
+    expect((await t.api("POST", `/api/transactions/${a.id}/accept-suggestion`)).status).toBe(400); // nothing to accept
+    expect((await run()).asked).toBe(0); // not guessed again automatically
+    expect((await run({ ids: [a.id], force: true })).suggested).toBe(1); // Ask AI
+    expect((await t.api("DELETE", "/api/transactions/99999/ai-suggestion")).status).toBe(404);
+  });
 });
