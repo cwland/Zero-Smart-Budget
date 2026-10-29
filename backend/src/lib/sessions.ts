@@ -84,9 +84,18 @@ export async function revokeAll(db: Db, userId: number, exceptId?: number, now =
 }
 
 /** Note a sign-in attempt. Keeps about a year of history. */
+// Sign-in history is kept for this many days
+export const LOGIN_LOG_DAYS = 60;
+export const loginLogCutoff = (now = new Date()) => new Date(now.getTime() - LOGIN_LOG_DAYS * 24 * 60 * 60 * 1000);
+
 export async function logSignIn(db: Db, req: FastifyRequest, e: { username: string | null; success: boolean; reason: string; sessionId?: number }) {
   await db.insert(loginEvents).values({ username: e.username?.slice(0, 100) ?? null, success: e.success, reason: e.reason, ip: req.ip, userAgent: ua(req), sessionId: e.sessionId ?? null });
-  if (Math.random() < 0.05) await db.delete(loginEvents).where(lt(loginEvents.at, new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)));
+  await pruneLoginLog(db);
+}
+
+// Drop sign-in history older than LOGIN_LOG_DAYS
+export async function pruneLoginLog(db: Db, now = new Date()) {
+  await db.delete(loginEvents).where(lt(loginEvents.at, loginLogCutoff(now)));
 }
 
 // "Chrome on Mac" from a browser's user agent (good enough to recognize your own devices)

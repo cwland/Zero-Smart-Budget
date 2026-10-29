@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { appSettings } from "../db/schema.js";
+import { logEvent } from "./appLog.js";
 import { decryptSecret, encryptSecret } from "./secrets.js";
 
 // starttls: plain connection upgraded to TLS (required) - usually port 587
@@ -74,6 +75,17 @@ export function emailConfigFromEnv(env: NodeJS.ProcessEnv): EmailConfig | null {
 export const fromHeader = (c: EmailConfig) =>
   c.fromName ? `"${c.fromName.replace(/["\\\\]/g, "")}" <${c.fromAddress}>` : c.fromAddress;
 
+export type EmailKind = "test" | "notification-test" | "password-reset" | "month-close" | "nudge" | "summary" | "other";
+const EMAIL_KIND_LABELS: Record<EmailKind, string> = {
+  test: "Test email",
+  "notification-test": "Notification test",
+  "password-reset": "Password reset",
+  "month-close": "Wrap-Up reminder",
+  nudge: "Come-back nudge",
+  summary: "Monthly summary",
+  other: "Email",
+};
+
 export class MailService {
   constructor(
     private db: Db,
@@ -135,10 +147,27 @@ export class MailService {
     return !!a?.config.appUrl;
   }
 
-  async send(msg: MailMessage, config?: EmailConfig) {
+  // Sends, and records it in the email log (kind says what it was; only the subject is kept)
+  async send(msg: MailMessage, config?: EmailConfig, kind: EmailKind = "other") {
     const c = config ?? (await this.active())?.config;
     if (!c) throw new Error("Email isn't set up");
-    await this.transport(c).sendMail({ from: fromHeader(c), ...msg });
+    try {
+      await this.transport(c).sendMail({ from: fromHeader(c), ...msg });
+      await this.log(kind, msg, true);
+    } catch (err) {
+      await this.log(kind, msg, false, (err as Error).message);
+      throw err;
+    }
+  }
+
+  private async log(kind: EmailKind, msg: MailMessage, success: boolean, error?: string) {
+    await logEvent(this.db, {
+      category: "email",
+      level: success ? "info" : "error",
+      source: EMAIL_KIND_LABELS[kind],
+      event: success ? `Sent "${msg.subject}" to ${msg.to}` : `Couldn't send "${msg.subject}" to ${msg.to}`,
+      detail: error ?? null,
+    });
   }
 
   // Connect and log in without sending (gives clear errors for wrong host/password)

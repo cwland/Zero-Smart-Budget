@@ -88,6 +88,8 @@ describe("backup AI services", () => {
     r = (await t.api("POST", "/api/transactions/ai-suggest", { force: true })).body;
     expect(r).toMatchObject({ suggested: 1, services: { "Cloud backup": 1 } });
     expect(r.warnings[0]).toMatch(/^Home AI: The AI service returned 503/);
+    // ...and it's in Settings > Logs
+    expect((await t.api("GET", "/api/logs?category=ai")).body[0]).toMatchObject({ level: "warning", source: "Home AI", event: "Home AI didn't answer, asking Cloud backup instead", detail: expect.stringMatching(/503/) });
     expect((await chips()).Starbucks).toBe("Restaurants by Cloud backup");
   });
 

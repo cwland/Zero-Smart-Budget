@@ -83,6 +83,23 @@ describe("backups", () => {
     expect(after.some((n: string) => n.startsWith("zero-smart-budget-2020-01-01"))).toBe(false);
   });
 
+  it("sorts and prunes by date, whatever app name a backup was made under", async () => {
+    for (const n of ["corys-dollar-2026-10-27-230340", "zeropoint-budget-2026-10-28-224252", "zero-smart-budget-2026-10-28-224941", "zeropoint-budget-2020-01-01-000000"])
+      fs.writeFileSync(`${t.backupDir}/${n}.json`, "{}");
+    expect((await t.api("GET", "/api/backups")).body.backups.map((b: { name: string }) => b.name)).toEqual([
+      "zero-smart-budget-2026-10-28-224941.json",
+      "zeropoint-budget-2026-10-28-224252.json",
+      "corys-dollar-2026-10-27-230340.json",
+      "zeropoint-budget-2020-01-01-000000.json",
+    ]);
+    // keep = 3: a new backup pushes out the oldest by date, not by name
+    await t.api("POST", "/api/backups");
+    const after = (await t.api("GET", "/api/backups")).body.backups.map((b: { name: string }) => b.name);
+    expect(after).toHaveLength(3);
+    expect(after).toContain("zero-smart-budget-2026-10-28-224941.json");
+    expect(after).not.toContain("corys-dollar-2026-10-27-230340.json");
+  });
+
   it("won't serve files outside the backup folder", async () => {
     expect((await raw("/api/backups/..%2F..%2Fpackage.json")).statusCode).toBe(404);
     expect((await raw("/api/backups/passwd")).statusCode).toBe(404);

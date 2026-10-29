@@ -4,6 +4,7 @@ import { budgetMonths, plaidAccounts, plaidItems, transactions, transactionSplit
 import { syncTransaction } from "./fundLedger.js";
 import { normalizeMerchant } from "./merchant.js";
 import { PlaidError, type PlaidEnv, type PlaidService } from "./plaid.js";
+import { logEvent } from "./appLog.js";
 
 // Imports bank transactions with Plaid's /transactions/sync. Plaid keeps a cursor per bank and
 // sends only what changed since last time: added, modified and removed transactions.
@@ -212,10 +213,16 @@ export function syncAll(db: Db, plaid: PlaidService): Promise<ItemSyncResult[]> 
           let error = (e as Error).message;
           if (e instanceof PlaidError) {
             const status = await markItemError(db, item.id, e);
-            error = status === "login_required" ? `${item.institutionName} needs you to sign in again. Reconnect it in Settings > Plaid.` : `${e.message} (${e.code})`;
+            error = status === "login_required" ? `${item.institutionName} needs you to sign in again. Reconnect it on the Accounts page.` : `${e.message} (${e.code})`;
           }
           results.push({ itemId: item.id, institutionName: item.institutionName, added: 0, updated: 0, removed: 0, error });
         }
+      }
+      // Settings > Logs: problems always; a sync that changed something
+      for (const r of results) {
+        if (r.error) await logEvent(db, { category: "bank", level: "error", source: r.institutionName, event: `Couldn't sync ${r.institutionName}`, detail: r.error });
+        else if (r.added || r.updated || r.removed)
+          await logEvent(db, { category: "bank", level: "info", source: r.institutionName, event: `Synced ${r.institutionName}`, detail: `${r.added} new, ${r.updated} updated, ${r.removed} removed` });
       }
       return results;
     } finally {

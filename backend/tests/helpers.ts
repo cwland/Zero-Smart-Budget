@@ -116,7 +116,7 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       ai.respond = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
-      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events restart identity cascade`);
+      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events, app_log restart identity cascade`);
       resetSessionTouches();
       resetActiveMark();
       resetLoginLockouts();

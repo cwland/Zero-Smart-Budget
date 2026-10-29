@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { signToken } from "../src/lib/auth.js";
@@ -90,6 +91,18 @@ describe("sign-in history", () => {
       [false, "Wrong password", "192.168.1.20", "Chrome on Mac", "Cory"],
     ]);
     expect(events.at(-1)).toMatchObject({ success: true, reason: "Account set up" });
+  });
+
+  it("keeps 60 days of history", async () => {
+    const ok = await login(IPHONE, "10.0.0.7");
+    const day = 24 * 3600 * 1000;
+    await t.db.execute(sql`insert into login_events (username, success, reason, ip, at) values
+      ('Cory', true, 'old', '1.1.1.1', ${new Date(Date.now() - 61 * day)}), ('Cory', true, 'recent', '1.1.1.2', ${new Date(Date.now() - 59 * day)})`);
+    const reasons = (await as(ok.token)("GET", "/api/auth/logins")).body.map((e: any) => e.reason);
+    expect(reasons).toContain("recent");
+    expect(reasons).not.toContain("old");
+    const left = await t.db.execute(sql`select count(*)::int as n from login_events where reason = 'old'`);
+    expect((left as any).rows?.[0]?.n ?? (left as any)[0]?.n).toBe(0); // deleted, not just hidden
   });
 
   it("logs blocked attempts after too many failures", async () => {

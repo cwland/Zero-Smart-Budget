@@ -3,6 +3,7 @@ import type { Db } from "../db/index.js";
 import { budgetMonths, categoryGroups, incomeItems, lineItems, plaidAccounts, transactions } from "../db/schema.js";
 import { AiError, parseJsonReply, type AiService } from "./ai.js";
 import { suggestFor, type Suggestion } from "./suggest.js";
+import { logEvent } from "./appLog.js";
 
 // AI suggestions: for unassigned transactions that history can't place, ask the AI to pick one of
 // that month's budget items. The answer is saved on the transaction (so it's asked only once) and
@@ -143,6 +144,8 @@ export async function runAiSuggestions(db: Db, ai: AiService, opts: { ids?: numb
         const isLast = usedIndex === config.services.length - 1;
         if (from === 0) result.asked += pending.length;
         const parsed = parseJsonReply(answer.text) as { results?: { id: number; item: string | null; reason?: string }[] } | { id: number }[] | null;
+        if (!parsed)
+          await logEvent(db, { category: "ai", level: "warning", source: sv.name, event: `${sv.name} answered, but not in a form the app could use`, detail: `It said: ${answer.text.slice(0, 300)}` });
         const answers = Array.isArray(parsed) ? (parsed as { id: number; item: string | null; reason?: string }[]) : parsed?.results ?? [];
         const left: Tx[] = [];
         for (const t of pending) {
@@ -220,8 +223,17 @@ export function autoSuggest(db: Db, ai: AiService, log?: { warn: (m: string) => 
       if (!c || c.mode !== "auto") return;
       const r = await runAiSuggestions(db, ai);
       if (r.error) log?.warn(`AI suggestions: ${r.error}`);
+      if (r.error || r.asked)
+        await logEvent(db, {
+          category: "schedule",
+          level: r.error ? "error" : "info",
+          source: "AI suggestions",
+          event: r.error ? "Automatic AI suggestions didn't run" : `AI looked at ${r.asked} new transaction${r.asked === 1 ? "" : "s"}`,
+          detail: r.error ?? `${r.suggested} suggested`,
+        });
     } catch (e) {
       log?.warn(`AI suggestions: ${(e as Error).message}`);
+      await logEvent(db, { category: "schedule", level: "error", source: "AI suggestions", event: "Automatic AI suggestions didn't run", detail: (e as Error).message });
     } finally {
       autoRunning = false;
     }

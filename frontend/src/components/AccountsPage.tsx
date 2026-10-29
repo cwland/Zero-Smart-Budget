@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { ApiError, api, waitingNote } from "../api";
 import { centsToInput, formatCents, parseMoney } from "../money";
 import { openPlaidLink } from "../plaidLink";
-import { useLockBodyScroll } from "../scrollLock";
 import { PlusIcon } from "./Icons";
+import { Popup } from "./Popup";
 
 // The Accounts page: one card per bank (connected through Plaid) with its
 // accounts and balances, plus accounts you keep track of by hand.
@@ -133,30 +132,6 @@ function Menu({ label, items }: { label: string; items: { label: string; icon?: 
         </div>
       )}
     </div>
-  );
-}
-
-// A centered popup
-export function Popup({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  useLockBodyScroll();
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
-  }, [onClose]);
-  return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="flex max-h-[94vh] w-full max-w-[28rem] flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_12px_40px_rgba(31,36,38,0.3)] sm:rounded-2xl">
-        <header className="relative flex items-center justify-center bg-page px-12 py-5">
-          <h2 className="text-xl font-bold">{title}</h2>
-          <button onClick={onClose} aria-label="Close" className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1.5 text-subtle hover:bg-white/70 hover:text-ink">
-            ✕
-          </button>
-        </header>
-        <div className="min-h-0 overflow-y-auto overscroll-contain">{children}</div>
-      </div>
-    </div>,
-    document.body
   );
 }
 

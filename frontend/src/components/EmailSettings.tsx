@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, api } from "../api";
 import { Card, field, primaryButton, secondaryButton } from "./settingsUi";
+import { Toggle } from "./BudgetSettings";
 
 type Security = "starttls" | "ssl" | "auto" | "none";
 
@@ -51,7 +52,7 @@ interface Form {
 }
 
 const emptyForm = (): Form => ({
-  enabled: true,
+  enabled: false, // off until you turn it on and fill it in
   host: "",
   port: "587",
   security: "starttls",
@@ -92,7 +93,8 @@ export default function EmailSettings() {
         appUrl: s.appUrl ?? window.location.origin,
       });
     } else {
-      setForm(emptyForm());
+      // Nothing saved here: on only when the server's .env already provides email
+      setForm({ ...emptyForm(), enabled: d.source === "env" });
     }
     setClearPassword(false);
   }
@@ -166,6 +168,30 @@ export default function EmailSettings() {
     }
   }
 
+  // The on/off switch. With settings already saved it takes effect right away; otherwise turning
+  // it on opens the form, and Save turns email on.
+  async function toggleEmail(on: boolean) {
+    setMsg(null);
+    setTestMsg(null);
+    setFieldErrors({});
+    set("enabled", on);
+    const saved = data?.settings;
+    if (!saved || (on && (!saved.host || !saved.fromAddress))) {
+      if (on) setMsg({ ok: true, text: "Fill in your email provider's details, send a test if you like, then Save." });
+      return;
+    }
+    setBusy("save");
+    try {
+      await api("PUT", "/api/settings/email", { ...body(), enabled: on });
+      await load();
+      setMsg({ ok: true, text: on ? "Email is on." : "Email is off." });
+    } catch (err) {
+      showError(err);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function test() {
     setBusy("test");
     setTestMsg(null);
@@ -209,19 +235,23 @@ export default function EmailSettings() {
           <div role="status" aria-label="Email status" className="mb-5 flex flex-wrap items-center gap-2 rounded-lg bg-page px-4 py-3 text-sm">
             <span className={`rounded-full px-2.5 py-0.5 font-semibold ${data.active ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>{data.active ? "On" : "Off"}</span>
             <span className="text-subtle">
-              {data.source === "app" && (data.active ? "Using the settings below." : "Turned off below.")}
+              {data.source === "app" && (data.active ? "Using the settings below." : "Email is turned off. Nothing is sent.")}
               {data.source === "env" && <>Using server settings from <code className="font-mono">.env</code> ({data.env.host}). Saving here will take over from them.</>}
-              {data.source === "none" && "Not set up yet. Fill in your email provider's details below."}
+              {data.source === "none" && "Not set up yet. Turn it on below to add your email provider's details."}
               {data.active && !data.linksReady && " Password reset links need the app address."}
             </span>
           </div>
         )}
 
-        <form onSubmit={save} aria-label="Email settings" className="grid gap-4 sm:grid-cols-2">
-          <label className="flex items-center gap-3 sm:col-span-2">
-            <input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} className="size-5 accent-[#003561]" />
-            <span className="font-medium">Send email from this app</span>
-          </label>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-semibold">Send email from this app</p>
+            <p className="text-sm text-subtle">Password reset links and notifications (Wrap-Up reminders, nudges).</p>
+          </div>
+          <Toggle label="Send email from this app" checked={form.enabled} disabled={!!busy || !data} onChange={toggleEmail} />
+        </div>
+
+        {form.enabled && <form onSubmit={save} aria-label="Email settings" className="mt-5 grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
 
           <label className="text-sm font-medium text-subtle sm:col-span-2">
             Provider
@@ -345,16 +375,23 @@ export default function EmailSettings() {
               </button>
             )}
           </div>
-        </form>
+        </form>}
 
         {msg && (
           <p role={msg.ok ? "status" : "alert"} className={`mt-4 rounded-lg px-4 py-3 text-sm ${msg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>
             {msg.text}
           </p>
         )}
+        <p className="mt-4 border-t border-line pt-3 text-sm text-subtle">
+          Emails sent in the last 30 days are in{" "}
+          <a href="#/settings/logs?type=email" className="font-semibold text-link hover:underline">
+            Settings › Logs
+          </a>
+          .
+        </p>
       </Card>
 
-      <Card title="Send a test email" description="Uses what's in the form above, even before you save, so you can check your settings first.">
+      {form.enabled && <Card title="Send a test email" description="Uses what's in the form above, even before you save, so you can check your settings first.">
         <div className="flex flex-wrap items-end gap-3">
           <label className="min-w-56 flex-1 text-sm font-medium text-subtle">
             Send to
@@ -372,7 +409,7 @@ export default function EmailSettings() {
         <p className="mt-3 text-sm text-subtle">
           With email on, an app address, and an email on <a href="#/settings/profile" className="font-semibold text-link hover:underline">your profile</a>, the sign-in page shows <strong>Forgot password?</strong>
         </p>
-      </Card>
+      </Card>}
 
       <Card title="Locked out without email?">
         <p className="text-subtle">Reset the password from the server itself:</p>

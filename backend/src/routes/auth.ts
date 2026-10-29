@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { checkPassword, generateResetToken, hashApiKey, hashPassword } from "../lib/auth.js";
-import { describeDevice, logSignIn, renewSession, revokeAll, startSession } from "../lib/sessions.js";
+import { describeDevice, logSignIn, pruneLoginLog, renewSession, revokeAll, startSession } from "../lib/sessions.js";
 import { loginEvents, passwordResets, sessions, users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 
@@ -177,7 +177,9 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.get("/api/auth/logins", async (req) => {
     if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
-    const rows = await db.select().from(loginEvents).orderBy(desc(loginEvents.at), desc(loginEvents.id)).limit(200);
+    // The last 60 days (older ones are deleted)
+    await pruneLoginLog(db);
+    const rows = await db.select().from(loginEvents).orderBy(desc(loginEvents.at), desc(loginEvents.id)).limit(5000);
     return rows.map((e) => ({ ...e, device: describeDevice(e.userAgent) }));
   });
 
@@ -206,7 +208,7 @@ export default async function authRoutes(app: FastifyInstance) {
           subject: "Reset your Zero Smart Budget password",
           text: `Someone (hopefully you) asked to reset the password for "${user.username}".\n\nReset it here (this link works once, for 1 hour):\n${link}\n\nIf this wasn't you, you can ignore this email. Your password won't change.`,
           html: `<p>Someone (hopefully you) asked to reset the password for <strong>${user.username.replace(/[<>&]/g, "")}</strong>.</p><p><a href="${link}">Reset your password</a> (this link works once, for 1 hour).</p><p>If this wasn't you, you can ignore this email. Your password won't change.</p>`,
-        });
+        }, undefined, "password-reset");
       } catch (err) {
         req.log.error(err);
         throw new HttpError(502, "Couldn't send the email. Check the email settings on the server.");

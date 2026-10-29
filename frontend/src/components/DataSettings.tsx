@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, downloadFile, type BackupInfo } from "../api";
+import { Popup } from "./Popup";
 
 const kb = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 const when = (iso: string) =>
@@ -54,6 +55,18 @@ export default function DataSettings() {
   const [busy, setBusy] = useState(false);
   const [restore, setRestore] = useState<RestoreFile | null>(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [allBackups, setAllBackups] = useState(false);
+  const download = (b: BackupInfo) => run(async () => `Downloaded ${await downloadFile(`/api/backups/${b.name}`)}`);
+  // Inside the popup: the message shows there, so the page behind doesn't move
+  const [popupMsg, setPopupMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const downloadInPopup = async (b: BackupInfo) => {
+    setPopupMsg(null);
+    try {
+      setPopupMsg({ ok: true, text: `Downloaded ${await downloadFile(`/api/backups/${b.name}`)}` });
+    } catch (e) {
+      setPopupMsg({ ok: false, text: (e as Error).message });
+    }
+  };
 
   const loadBackups = useCallback(async () => {
     setBackups(await api("GET", "/api/backups"));
@@ -138,21 +151,31 @@ export default function DataSettings() {
           </button>
 
           <ul aria-label="Saved backups" className="mt-4 divide-y divide-line">
-            {backups?.backups.map((b) => (
-              <li key={b.name} className="flex items-center gap-3 py-2.5">
-                <span className="min-w-0 flex-1">
-                  <span className="block">{when(b.createdAt)}</span>
-                  <span className="block truncate text-sm text-subtle">
-                    {b.name} · {kb(b.size)}
-                  </span>
-                </span>
-                <button className="text-sm font-semibold text-link hover:underline" onClick={() => run(async () => `Downloaded ${await downloadFile(`/api/backups/${b.name}`)}`)}>
-                  Download
-                </button>
-              </li>
-            ))}
+            {backups?.backups.slice(0, 5).map((b) => <BackupRow key={b.name} b={b} onDownload={() => download(b)} />)}
             {backups && backups.backups.length === 0 && <li className="py-4 text-subtle">No backups yet</li>}
           </ul>
+          {backups && backups.backups.length > 5 && (
+            <div className="mt-3 flex justify-center">
+              <button type="button" onClick={() => setAllBackups(true)} className="rounded px-4 py-2 text-sm font-semibold text-link hover:bg-pressed">
+                View all ({Math.min(backups.backups.length, 30)})
+              </button>
+            </div>
+          )}
+          {allBackups && backups && (
+            <Popup title="Backups" wide onClose={() => (setAllBackups(false), setPopupMsg(null))}>
+              <p className="px-6 pt-4 text-sm text-subtle">The newest 30 backups, newest first.</p>
+              {popupMsg && (
+                <p role={popupMsg.ok ? "status" : "alert"} className={`mx-6 mt-3 rounded-lg px-3 py-2 text-sm ${popupMsg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>
+                  {popupMsg.text}
+                </p>
+              )}
+              <ul aria-label="All backups" className="divide-y divide-line px-6 pb-6">
+                {backups.backups.slice(0, 30).map((b) => (
+                  <BackupRow key={b.name} b={b} onDownload={() => downloadInPopup(b)} />
+                ))}
+              </ul>
+            </Popup>
+          )}
         </Card>
 
         <Card title="Restore">
@@ -239,5 +262,21 @@ function SaveKeyReminder() {
     <p role="note" className="mt-2 rounded border border-error/40 bg-error-subtle px-3 py-2 font-semibold text-error">
       ⚠️ Save your BACKUP_KEY somewhere safe, away from this server (a password manager is ideal). If the server is lost, you can't restore your saved keys and passwords without it, and it can't be recovered.
     </p>
+  );
+}
+
+function BackupRow({ b, onDownload }: { b: BackupInfo; onDownload: () => void }) {
+  return (
+    <li className="flex items-center gap-3 py-2.5">
+      <span className="min-w-0 flex-1">
+        <span className="block">{when(b.createdAt)}</span>
+        <span className="block truncate text-sm text-subtle">
+          {b.name} · {kb(b.size)}
+        </span>
+      </span>
+      <button className="text-sm font-semibold text-link hover:underline" onClick={onDownload}>
+        Download
+      </button>
+    </li>
   );
 }

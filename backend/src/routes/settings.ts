@@ -281,7 +281,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         to,
         subject: "Zero Smart Budget notifications are working",
         text: "This is a test. You'll get emails like this when it's time to wrap up a month, or when transactions are waiting for you after a while away.\n\nYou can turn these emails off in Settings > Budget > Notifications.",
-      });
+      }, undefined, "notification-test");
     } catch (err) {
       throw new HttpError(502, `Couldn't send: ${(err as Error).message.replace(/\s+/g, " ").slice(0, 300)}`);
     }
@@ -350,7 +350,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
           subject: "Zero Smart Budget test email",
           text: "Email from Zero Smart Budget is working. Password reset links will arrive like this one.",
         },
-        config
+        config,
+        "test"
       );
     } catch (err) {
       req.log.warn(err);

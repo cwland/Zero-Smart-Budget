@@ -13,7 +13,7 @@ export const KEY_ACCESS_LABELS: Record<KeyAccess, string> = {
 };
 
 // Never open to a key, even to read: secrets, backups, sign-in and key management
-const OFF_LIMITS = ["/api/settings", "/api/keys", "/api/auth", "/api/export", "/api/backups", "/api/plaid", "/api/dev", "/api/profile", "/api/import"];
+const OFF_LIMITS = ["/api/settings", "/api/keys", "/api/auth", "/api/export", "/api/backups", "/api/plaid", "/api/dev", "/api/profile", "/api/import", "/api/logs"];
 
 // The only writes a key can make
 const ADD_ROUTES = new Set(["POST /api/transactions", "POST /api/plaid/sync"]);

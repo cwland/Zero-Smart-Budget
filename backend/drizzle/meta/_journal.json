@@ -120,6 +120,13 @@
       "when": 1793246019414,
       "tag": "0016_api_key_access",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793251404497,
+      "tag": "0017_app_log",
+      "breakpoints": true
     }
   ]
 }

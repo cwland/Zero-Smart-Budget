@@ -350,6 +350,23 @@ export const notificationLog = pgTable("notification_log", {
   sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Settings > Logs: emails sent, AI and bank connection problems, API errors, and scheduled task
+// runs (backups, bank sync, notifications...). Only short descriptions, never message bodies or
+// secrets. Kept for 30 days.
+export const appLog = pgTable(
+  "app_log",
+  {
+    id: serial("id").primaryKey(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    category: text("category").notNull(), // email, ai, bank, api, schedule
+    level: text("level").notNull(), // info, warning, error
+    source: text("source"), // which one: an email type, AI service, bank, task name, API key...
+    event: text("event").notNull(), // one line: what happened
+    detail: text("detail"), // the error message, counts, etc.
+  },
+  (t) => [index("app_log_at_idx").on(t.at)]
+);
+
 // ---------- relations (for nested queries) ----------
 export const budgetMonthsRelations = relations(budgetMonths, ({ many }) => ({
   incomeItems: many(incomeItems),

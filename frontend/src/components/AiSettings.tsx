@@ -5,7 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ApiError, api } from "../api";
 import { Card, Notice, field, primaryButton, secondaryButton } from "./settingsUi";
 import { ChevronDown, ChevronRight, EyeIcon, EyeOffIcon, GripIcon } from "./Icons";
-import { Popup } from "./AccountsPage";
+import { Popup } from "./Popup";
 
 // Which saved services are collapsed (remembered in this browser)
 const COLLAPSED_KEY = "zeropoint.aiCollapsed";

@@ -3,6 +3,7 @@ import type { Db } from "../db/index.js";
 import { appSettings } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./secrets.js";
 import { HttpError } from "./errors.js";
+import { logEvent } from "./appLog.js";
 
 // AI suggestions for transactions that have no history to learn from. Settings live in
 // app_settings under "ai" (the API key encrypted). Five kinds of provider:
@@ -224,6 +225,14 @@ export class AiService {
       } catch (e) {
         if (!(e instanceof AiError) && !(e instanceof HttpError)) throw e;
         failures.push(`${sv.name}: ${(e as Error).message}`);
+        const next = services[index + 1];
+        await logEvent(this.db, {
+          category: "ai",
+          level: next ? "warning" : "error",
+          source: sv.name,
+          event: next ? `${sv.name} didn't answer, asking ${next.name} instead` : services.length > 1 ? `${sv.name} didn't answer, and no AI service is left to ask` : `${sv.name} didn't answer`,
+          detail: (e as Error).message,
+        });
       }
     }
     throw new AiError(services.length === 1 ? failures[0].slice(services[0].name.length + 2) : `None of your AI services answered. ${failures.join(" ")}`);

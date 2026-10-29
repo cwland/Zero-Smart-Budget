@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { appSettings, budgetMonths, notificationLog, transactions, transactionSplits, users } from "../db/schema.js";
-import type { MailService } from "./mail.js";
+import type { EmailKind, MailService } from "./mail.js";
 import { closeAvailable, monthName } from "./monthClose.js";
 import { getBudgetPrefs } from "./prefs.js";
 import { monthIndex, previousMonth } from "./calc.js";
@@ -81,7 +81,7 @@ export async function runNotifications(db: Db, mail: MailService, now = new Date
     const claimed = await db.insert(notificationLog).values({ key, kind, sentTo: user.email!, sentAt: now }).onConflictDoNothing().returning();
     if (!claimed.length) return;
     try {
-      await mail.send({ to: user.email!, subject, text: text + footer(appUrl) });
+      await mail.send({ to: user.email!, subject, text: text + footer(appUrl) }, undefined, kind as EmailKind);
       sent.push({ key, kind, to: user.email!, subject });
     } catch (e) {
       await db.delete(notificationLog).where(eq(notificationLog.key, key)); // try again next time

@@ -2,26 +2,25 @@ import { useEffect } from "react";
 
 // While a popup is open, the page behind it shouldn't scroll. Counts open popups so closing
 // one of two doesn't unlock early, and keeps the scrollbar's space so nothing shifts sideways.
+// Only <html> (the page's scroller) is locked: hiding overflow on <body> too turns <body> into a
+// scroll box, and the left nav (position: sticky) then jumps away while a popup is open.
 let locks = 0;
-let saved = { overflow: "", htmlOverflow: "", paddingRight: "" };
+let saved = { htmlOverflow: "", paddingRight: "" };
 
 export function useLockBodyScroll(active = true) {
   useEffect(() => {
     if (!active) return;
-    const body = document.body;
-    const html = document.documentElement; // the page scrolls on <html>, so lock both
+    const html = document.documentElement;
     if (locks++ === 0) {
-      saved = { overflow: body.style.overflow, htmlOverflow: html.style.overflow, paddingRight: body.style.paddingRight };
+      saved = { htmlOverflow: html.style.overflow, paddingRight: html.style.paddingRight };
       const scrollbar = window.innerWidth - html.clientWidth;
-      body.style.overflow = "hidden";
       html.style.overflow = "hidden";
-      if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+      if (scrollbar > 0) html.style.paddingRight = `${scrollbar}px`;
     }
     return () => {
       if (--locks === 0) {
-        body.style.overflow = saved.overflow;
         html.style.overflow = saved.htmlOverflow;
-        body.style.paddingRight = saved.paddingRight;
+        html.style.paddingRight = saved.paddingRight;
       }
     };
   }, [active]);

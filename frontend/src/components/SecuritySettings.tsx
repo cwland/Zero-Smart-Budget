@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api } from "../api";
+import { Popup } from "./Popup";
 import { useSession } from "../session";
 
 interface ApiKey {
@@ -476,8 +477,8 @@ export function Devices() {
 // Every sign-in attempt, good or bad
 export function SignInHistory() {
   const [events, setEvents] = useState<SignIn[] | null>(null);
-  const [shown, setShown] = useState(15);
   const [error, setError] = useState("");
+  const [showAll, setShowAll] = useState(false);
   useEffect(() => {
     api<SignIn[]>("GET", "/api/auth/logins")
       .then(setEvents)
@@ -487,45 +488,92 @@ export function SignInHistory() {
   return (
     <Card title="Sign-in history">
       <p className="text-subtle">
-        Every attempt to sign in, including ones that failed.
+        Every sign-in attempt, including failed ones. The last 60 days are kept.
         {failed > 0 && <strong className="text-error"> {failed} failed in the last 7 days.</strong>}
       </p>
       {error && <p className="mt-2 text-error">{error}</p>}
       {events && events.length === 0 && <p className="mt-3 text-subtle">Nothing yet.</p>}
       {events && events.length > 0 && (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[36rem] text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-subtle">
-              <tr className="border-b border-line">
-                <th className="py-2 pr-3 font-semibold">When</th>
-                <th className="py-2 pr-3 font-semibold">Result</th>
-                <th className="py-2 pr-3 font-semibold">Device</th>
-                <th className="py-2 pr-3 font-semibold">IP address</th>
-                <th className="py-2 font-semibold">Username typed</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {events.slice(0, shown).map((e) => (
-                <tr key={e.id}>
-                  <td className="whitespace-nowrap py-2 pr-3">{dateTime(e.at)}</td>
-                  <td className="py-2 pr-3">
-                    <span className={`font-semibold ${e.success ? "text-success" : "text-error"}`}>{e.success ? "✓ " : "✕ "}</span>
-                    {e.reason}
-                  </td>
-                  <td className="py-2 pr-3">{e.device.label}</td>
-                  <td className="py-2 pr-3 font-mono text-xs">{e.ip ?? "unknown"}</td>
-                  <td className="py-2">{e.username ?? ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {events.length > shown && (
-            <button onClick={() => setShown((n) => n + 25)} className="mt-3 text-sm font-semibold text-link hover:underline">
-              Show more ({events.length - shown} older)
-            </button>
+        <>
+          <div className="mt-3 overflow-x-auto">
+            <SignInTable events={events.slice(0, 10)} />
+          </div>
+          {events.length > 10 && (
+            <div className="mt-3 flex justify-center">
+              <button type="button" onClick={() => setShowAll(true)} className="rounded px-4 py-2 text-sm font-semibold text-link hover:bg-pressed">
+                View all ({events.length})
+              </button>
+            </div>
           )}
-        </div>
+        </>
       )}
+      {showAll && events && <SignInLog events={events} onClose={() => setShowAll(false)} />}
     </Card>
+  );
+}
+
+// The whole log (last 60 days) in a popup, filtered to all or failed attempts
+function SignInLog({ events, onClose }: { events: SignIn[]; onClose: () => void }) {
+  const [filter, setFilter] = useState<"all" | "failed">("all");
+  const failedCount = events.filter((e) => !e.success).length;
+  const shown = filter === "failed" ? events.filter((e) => !e.success) : events;
+  return (
+    <Popup title="Sign-in history" wide onClose={onClose}>
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-white px-6 py-3">
+        <div role="radiogroup" aria-label="Show" className="inline-flex rounded-lg bg-page p-1">
+          {(
+            [
+              ["all", `All (${events.length})`],
+              ["failed", `Failed (${failedCount})`],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={filter === id}
+              onClick={() => setFilter(id)}
+              className={`rounded-md px-3 py-1.5 text-sm font-semibold ${filter === id ? "bg-white text-primary shadow-sm" : "text-subtle hover:text-ink"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="text-sm text-subtle">Last 60 days</span>
+      </div>
+      <div className="overflow-x-auto px-6 pb-6">
+        {shown.length ? <SignInTable events={shown} /> : <p className="py-6 text-center text-subtle">No failed sign-ins in the last 60 days.</p>}
+      </div>
+    </Popup>
+  );
+}
+
+function SignInTable({ events }: { events: SignIn[] }) {
+  return (
+    <table className="w-full min-w-[36rem] text-left text-sm">
+      <thead className="text-xs uppercase tracking-wide text-subtle">
+        <tr className="border-b border-line">
+          <th className="py-2 pr-3 font-semibold">When</th>
+          <th className="py-2 pr-3 font-semibold">Result</th>
+          <th className="py-2 pr-3 font-semibold">Device</th>
+          <th className="py-2 pr-3 font-semibold">IP address</th>
+          <th className="py-2 font-semibold">Username typed</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-line">
+        {events.map((e) => (
+          <tr key={e.id}>
+            <td className="whitespace-nowrap py-2 pr-3">{dateTime(e.at)}</td>
+            <td className="py-2 pr-3">
+              <span className={`font-semibold ${e.success ? "text-success" : "text-error"}`}>{e.success ? "✓ " : "✕ "}</span>
+              {e.reason}
+            </td>
+            <td className="py-2 pr-3">{e.device.label}</td>
+            <td className="py-2 pr-3 font-mono text-xs">{e.ip ?? "unknown"}</td>
+            <td className="py-2">{e.username ?? ""}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

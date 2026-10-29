@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Db } from "../db/index.js";
 import { buildExport } from "./dataExport.js";
+import { logEvent } from "./appLog.js";
 import type { BackupSecrets } from "./settingsBackup.js";
 
 // zero-smart-budget-2026-10-27-143005.json, or with a label: zero-smart-budget-2026-10-27-143005-before-restore.json
@@ -23,6 +24,9 @@ export async function writeBackup(db: Db, dir: string, secrets: BackupSecrets, l
   return { name, size: Buffer.byteLength(data) };
 }
 
+// "2026-10-27-143005" from a backup's name
+const stampOf = (name: string) => name.match(/\d{4}-\d{2}-\d{2}-\d{6}/)?.[0] ?? "";
+
 export async function listBackups(dir: string) {
   let names: string[];
   try {
@@ -38,7 +42,9 @@ export async function listBackups(dir: string) {
         return { name, size: st.size, createdAt: st.mtime.toISOString() };
       })
   );
-  return files.sort((a, b) => b.name.localeCompare(a.name)); // newest first
+  // Newest first, by the date and time in the name (names start with different app names over
+  // time, so sorting by the whole name would put an older app name's backups first)
+  return files.sort((a, b) => stampOf(b.name).localeCompare(stampOf(a.name)) || b.name.localeCompare(a.name));
 }
 
 // Keep the newest `keep` backups, delete older ones
@@ -65,8 +71,10 @@ export function startBackupSchedule(
       const { name } = await writeBackup(db, dir, secrets);
       const removed = await pruneBackups(dir, keep);
       log.info(`Backup written: ${name}${removed.length ? ` (removed ${removed.length} old)` : ""}`);
+      await logEvent(db, { category: "schedule", level: "info", source: "Daily backup", event: "Backup saved", detail: `${name}${removed.length ? ` (removed ${removed.length} old)` : ""}` });
     } catch (err) {
       log.error(err);
+      await logEvent(db, { category: "schedule", level: "error", source: "Daily backup", event: "Backup failed", detail: (err as Error).message });
     }
   };
   void check();

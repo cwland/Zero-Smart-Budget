@@ -52,8 +52,11 @@ export default function App() {
     };
   }, [check]);
 
+  // Every sign-in starts on the Budget page (which opens on the current month), not on whatever
+  // page was in the address bar when you were signed out
   const signedIn = (token: string, user: User) => {
     setToken(token);
+    if (window.location.hash !== "#/budget") window.location.hash = "#/budget";
     setAuth({ status: "in", user });
   };
 

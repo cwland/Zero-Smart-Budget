@@ -5,6 +5,7 @@ import EmailSettings from "./EmailSettings";
 import AiSettings from "./AiSettings";
 import PlaidSettings from "./PlaidSettings";
 import ProfileSettings from "./ProfileSettings";
+import LogsSettings from "./LogsSettings";
 import { ApiKeys, ChangePassword, Devices, SignInHistory } from "./SecuritySettings";
 
 const TABS = [
@@ -16,12 +17,13 @@ const TABS = [
   { id: "plaid", label: "Plaid" },
   { id: "ai", label: "AI" },
   { id: "data", label: "Data" },
+  { id: "logs", label: "Logs" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
 // "#/settings/security" -> "security"
 const tabFromHash = (): Tab => {
-  const t = window.location.hash.split("/")[2];
+  const t = window.location.hash.split("?")[0].split("/")[2];
   return (TABS.find((x) => x.id === t)?.id ?? "profile") as Tab;
 };
 
@@ -78,6 +80,7 @@ export default function SettingsPage() {
         )}
         {tab === "ai" && <AiSettings />}
         {tab === "data" && <DataSettings />}
+        {tab === "logs" && <LogsSettings />}
       </div>
     </div>
   );

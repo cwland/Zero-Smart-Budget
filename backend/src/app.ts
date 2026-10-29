@@ -5,6 +5,8 @@ import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
 import type { Db } from "./db/index.js";
 import { apiKeys, users } from "./db/schema.js";
+import { logEvent } from "./lib/appLog.js";
+import logRoutes from "./routes/logs.js";
 import { backupKeyFromEnv, type BackupSecrets } from "./lib/settingsBackup.js";
 import { keyAllows, keyDenied, type KeyAccess } from "./lib/keyAccess.js";
 import { HttpError } from "./lib/errors.js";
@@ -115,17 +117,21 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
     const key = req.headers["x-api-key"];
     if (typeof key === "string" && key) {
       const [found] = await db
-        .select({ id: apiKeys.id, access: apiKeys.access })
+        .select({ id: apiKeys.id, name: apiKeys.name, access: apiKeys.access })
         .from(apiKeys)
         .where(eq(apiKeys.keyHash, hashApiKey(key)));
       if (found) {
         const access = found.access as KeyAccess;
         const path = req.routeOptions.url ?? req.url.split("?")[0];
-        if (!keyAllows(access, req.method, path)) throw new HttpError(403, keyDenied(access, req.method));
+        if (!keyAllows(access, req.method, path)) {
+          await logEvent(db, { category: "api", level: "warning", source: `API key "${found.name}"`, event: `Refused ${req.method} ${path}: not allowed for this key`, detail: keyDenied(access, req.method) });
+          throw new HttpError(403, keyDenied(access, req.method));
+        }
         req.auth = { method: "apiKey", keyId: found.id };
         await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, found.id));
         return;
       }
+      await logEvent(db, { category: "api", level: "warning", source: req.ip, event: `Refused ${req.method} ${req.url.split("?")[0]}: unknown API key`, detail: `The key started with ${key.slice(0, 6)}…` });
     }
 
     throw new HttpError(401, "Not logged in");
@@ -146,6 +152,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
       return reply.status(status).send({ error: (err as Error).message });
     }
     req.log.error(err);
+    void logEvent(db, { category: "api", level: "error", source: `${req.method} ${req.routeOptions.url ?? req.url.split("?")[0]}`, event: "Server error", detail: (err as Error).message });
     return reply.status(500).send({ error: "Something went wrong" });
   });
 
@@ -153,6 +160,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
 
   app.register(authRoutes);
   app.register(keyRoutes);
+  app.register(logRoutes);
   app.register(budgetRoutes);
   app.register(transactionRoutes);
   app.register(fundRoutes);
