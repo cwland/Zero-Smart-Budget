@@ -117,6 +117,16 @@ describe("suggestions", () => {
     expect((await t.api("GET", "/api/transactions/suggest?merchant=WinCo%20Pharmacy&date=2026-11-28")).body.suggestion).toBeNull();
   });
 
+  it("falls back to the first word when that word alone is a merchant you've used", async () => {
+    const { oct, find } = await twoMonths();
+    await t.api("POST", "/api/transactions", { date: "2026-10-12", merchant: "Shell", amountCents: 100, splits: [{ lineItemId: find(oct, "Gas").id, amountCents: 100 }] });
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=Shell%20Oil%205541&date=2026-11-20")).body.suggestion.itemName).toBe("Gas");
+    // Too short a word to trust, or only a longer merchant shares the word: no guess
+    await t.api("POST", "/api/transactions", { date: "2026-10-12", merchant: "BP", amountCents: 100, splits: [{ lineItemId: find(oct, "Gas").id, amountCents: 100 }] });
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=BP%20Amoco&date=2026-11-20")).body.suggestion).toBeNull();
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=Shellfish%20Market&date=2026-11-20")).body.suggestion).toBeNull();
+  });
+
   it("no two-word guess when merchants sharing those words went to different items", async () => {
     const { oct, find } = await twoMonths();
     const add = (merchant: string, item: string) => t.api("POST", "/api/transactions", { date: "2026-10-30", merchant, amountCents: 100, splits: [{ lineItemId: find(oct, item).id, amountCents: 100 }] });

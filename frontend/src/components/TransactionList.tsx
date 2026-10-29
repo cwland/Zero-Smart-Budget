@@ -376,6 +376,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
+    setAiMsg(null);
     try {
       await fn();
       await onChanged();
@@ -392,6 +393,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
     if (!list.length) return;
     setBusy(true);
     setError("");
+    setAiMsg(null);
     const targets: string[] = [];
     try {
       const saving = list.length === 1 ? api("POST", `/api/transactions/${list[0].id}/accept-suggestion`) : api("POST", "/api/transactions/accept-suggestions", { ids: list.map((t) => t.id) });
@@ -418,7 +420,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
 
   // Ask the AI about specific transactions (asks again even if it looked before)
   async function askAi(ids: number[]) {
-    setAiMsg(null);
+    setAiMsg({ ok: true, text: `✦ Asking the AI about ${ids.length} transaction${ids.length === 1 ? "" : "s"}…` });
     setBusy(true);
     setError("");
     try {

@@ -74,8 +74,14 @@ export async function suggestFor(db: Db, targets: Target[], opts: { ignoreFastTr
     return words.length >= 2 ? words.slice(0, 2).join(" ") : words[0].length >= 4 ? words[0] : null;
   };
   const prefixes = [...new Set(keys.map(prefixOf).filter((p): p is string => !!p))];
+  // Last resort: the first word on its own, when that's a merchant you've used ("shell oil 5541" -> "shell")
+  const baseOf = (k: string) => {
+    const words = k.split(" ");
+    return words.length >= 2 && words[0].length >= 4 ? words[0] : null;
+  };
+  const bases = [...new Set(keys.map(baseOf).filter((p): p is string => !!p))];
   const keyMatch = or(
-    inArray(transactions.merchantKey, keys),
+    inArray(transactions.merchantKey, [...keys, ...bases]),
     ...prefixes.map((p) => sql`(${transactions.merchantKey} = ${p} or ${transactions.merchantKey} like ${p + " %"})`)
   );
   const history = await db
@@ -140,7 +146,10 @@ export async function suggestFor(db: Db, targets: Target[], opts: { ignoreFastTr
     const exact = pastBy.get(`${t.type}|${t.merchantKey}`);
     const p = prefixOf(t.merchantKey);
     const pk = `${t.type}|${p}`;
-    const pick = choose(exact?.length ? exact : p && prefixIsClear(pk) ? pastByPrefix.get(pk) ?? [] : [], t);
+    const byPrefix = p && prefixIsClear(pk) ? pastByPrefix.get(pk) ?? [] : [];
+    const base = baseOf(t.merchantKey);
+    const byBase = base ? pastBy.get(`${t.type}|${base}`) ?? [] : [];
+    const pick = choose(exact?.length ? exact : byPrefix.length ? byPrefix : byBase, t);
     if (pick) learned.set(t.id, pick);
   }
   if (!learned.size) return out;

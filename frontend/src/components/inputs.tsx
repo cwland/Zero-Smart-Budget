@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useState, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { centsToInput, formatCents, parseMoney } from "../money";
 
 // Text that looks like plain text until you click it. Saves on blur or Enter.
@@ -78,6 +78,19 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [startText, setStartText] = useState("");
+  const inner = useRef<HTMLInputElement | null>(null);
+  const typedSinceFocus = useRef(false);
+  const setRefs = (el: HTMLInputElement | null) => {
+    inner.current = el;
+    if (typeof ref === "function") ref(el);
+    else if (ref) ref.current = el;
+  };
+
+  // Select the amount as soon as editing starts (before the next key press can arrive), so typing
+  // replaces it. Fast typing used to beat a delayed select and lose the first digit.
+  useLayoutEffect(() => {
+    if (editing && !typedSinceFocus.current && document.activeElement === inner.current) inner.current?.select();
+  }, [editing]);
 
   function commit() {
     if (!editing) return;
@@ -89,22 +102,25 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
 
   return (
     <input
-      ref={ref}
+      ref={setRefs}
       inputMode="decimal"
       aria-label={ariaLabel}
       value={editing ? text : formatCents(cents)}
       onFocus={(e) => {
         const initial = centsToInput(cents);
+        typedSinceFocus.current = false;
         setEditing(true);
         setText(initial);
         setStartText(initial);
         const el = e.currentTarget;
-        // select() would pull focus back if the user already moved on, so only select while still focused
+        // A click's mouse-up can undo the selection, so select once more after it, but only if
+        // nothing has been typed yet and the box still has focus
         requestAnimationFrame(() => {
-          if (document.activeElement === el) el.select();
+          if (document.activeElement === el && !typedSinceFocus.current) el.select();
         });
       }}
       onChange={(e) => {
+        typedSinceFocus.current = true;
         setText(e.target.value);
         onChangeCents?.(parseMoney(e.target.value));
       }}
