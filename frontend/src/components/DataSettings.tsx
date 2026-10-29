@@ -148,7 +148,7 @@ export default function DataSettings() {
             </div>
           )}
           {allBackups && backups && (
-            <Popup title="Backups" wide onClose={() => (setAllBackups(false), setPopupMsg(null))}>
+            <Popup title="Backups" wide tall onClose={() => (setAllBackups(false), setPopupMsg(null))}>
               <p className="px-6 pt-4 text-sm text-subtle">The newest 30 backups, newest first.</p>
               {popupMsg && (
                 <p role={popupMsg.ok ? "status" : "alert"} className={`mx-6 mt-3 rounded-lg px-3 py-2 text-sm ${popupMsg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>

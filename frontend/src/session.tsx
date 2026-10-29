@@ -5,6 +5,7 @@ export interface User {
   username: string;
   displayName: string | null;
   email: string | null;
+  seenVersion?: string | null; // the version whose "What's new" was dismissed
 }
 
 export interface Session {

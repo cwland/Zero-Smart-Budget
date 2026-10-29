@@ -134,6 +134,13 @@
       "when": 1793253429070,
       "tag": "0018_passkeys",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793254246299,
+      "tag": "0019_seen_version",
+      "breakpoints": true
     }
   ]
 }

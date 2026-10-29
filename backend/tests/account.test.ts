@@ -149,3 +149,12 @@ describe("without email", () => {
     }
   });
 });
+
+describe("what's new", () => {
+  it("remembers which version's notes were dismissed", async () => {
+    expect((await t.api("GET", "/api/auth/me")).body.user.seenVersion).toBeNull();
+    expect((await t.api("PUT", "/api/auth/seen-version", { version: "0.2.0" })).body).toEqual({ seenVersion: "0.2.0" });
+    expect((await t.api("GET", "/api/auth/me")).body.user.seenVersion).toBe("0.2.0");
+    expect((await t.api("PUT", "/api/auth/seen-version", { version: "latest" })).status).toBe(400);
+  });
+});

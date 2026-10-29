@@ -520,7 +520,7 @@ function SignInLog({ events, onClose }: { events: SignIn[]; onClose: () => void 
   const failedCount = events.filter((e) => !e.success).length;
   const shown = filter === "failed" ? events.filter((e) => !e.success) : events;
   return (
-    <Popup title="Sign-in history" wide onClose={onClose}>
+    <Popup title="Sign-in history" wide tall onClose={onClose}>
       <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-white px-6 py-3">
         <div role="radiogroup" aria-label="Show" className="inline-flex rounded-lg bg-page p-1">
           {(

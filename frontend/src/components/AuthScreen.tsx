@@ -1,7 +1,8 @@
 import { versionLabel } from "../version";
+import WhatsNew from "./WhatsNew";
 import { KeyRound } from "lucide-react";
-import { passkeyError, passkeysAvailable, signInWithPasskey } from "../passkeys";
-import { useState, type FormEvent } from "react";
+import { passkeyError, passkeysAvailable, signInWithPasskey, startPasskeyAutofill } from "../passkeys";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api } from "../api";
 import type { User } from "../session";
 
@@ -17,6 +18,7 @@ const input =
 export const TAGLINE = "AI-Powered Zero-Based Budgeting";
 
 export function AuthFrame({ children }: { children: React.ReactNode }) {
+  const [news, setNews] = useState(false);
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-page px-4 pb-10">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-[0_4px_12px_rgba(31,36,38,0.06)]">
@@ -24,7 +26,12 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
         <img src="/brand/lockup.svg" alt={`Zero Smart Budget: ${TAGLINE}`} className="mb-7 h-auto w-full" />
         {children}
       </div>
-      <p className="absolute inset-x-0 bottom-4 text-center text-xs text-muted">Zero Smart Budget {versionLabel}</p>
+      <p className="absolute inset-x-0 bottom-4 text-center text-xs text-muted">
+        <button type="button" onClick={() => setNews(true)} className="hover:text-link hover:underline" title="What's new in this version">
+          Zero Smart Budget {versionLabel}
+        </button>
+      </p>
+      {news && <WhatsNew all onClose={() => setNews(false)} />}
     </div>
   );
 }
@@ -79,6 +86,16 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
   const [forgot, setForgot] = useState(false);
   const setup = mode === "setup";
   const canPasskey = !setup && passkeysAvailable();
+  // Passkey autofill: offered as soon as the page opens (1Password and the browser show it)
+  const done = useRef(onDone);
+  done.current = onDone;
+  useEffect(() => {
+    if (!canPasskey) return;
+    return startPasskeyAutofill(
+      (res) => done.current(res.token, res.user),
+      (msg) => setError(msg)
+    );
+  }, [canPasskey]);
 
   async function passkey() {
     setError("");
@@ -125,7 +142,7 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
 
         <label className="mt-5 block text-sm font-medium text-subtle">
           Username
-          <input className={input} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" required />
+          <input className={input} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete={canPasskey ? "username webauthn" : "username"} required />
         </label>
         <label className="mt-4 block text-sm font-medium text-subtle">
           Password

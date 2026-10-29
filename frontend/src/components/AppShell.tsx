@@ -6,7 +6,11 @@ import AccountsPage from "./AccountsPage";
 import SettingsPage from "./SettingsPage";
 import AccountMenu from "./AccountMenu";
 import DevResetButton from "./DevReset"; // TEMPORARY testing tool
-import { versionLabel } from "../version";
+import { APP_VERSION, showWhatsNew, versionLabel } from "../version";
+import { isNewer } from "../changelog";
+import { useSession } from "../session";
+import { api } from "../api";
+import WhatsNew from "./WhatsNew";
 import { BankIcon, BudgetIcon, GearIcon, GoalIcon, Logo, PiggyIcon } from "./Icons";
 
 type Page = "budget" | "accounts" | "funds" | "goals" | "settings";
@@ -25,6 +29,22 @@ const PAGES: { id: Page; label: string; icon: JSX.Element }[] = [
 
 export default function AppShell() {
   const [page, setPage] = useState<Page>(pageFromHash);
+  const { user, setUser } = useSession();
+  // "What's new": once per version after signing in (until dismissed), and from the version number
+  const [news, setNews] = useState<"new" | "all" | null>(() => (isNewer(APP_VERSION, user.seenVersion) ? "new" : null));
+  const [sinceVersion] = useState(user.seenVersion ?? null);
+  useEffect(() => {
+    const open = () => setNews("all");
+    window.addEventListener("zsb:whats-new", open);
+    return () => window.removeEventListener("zsb:whats-new", open);
+  }, []);
+  const closeNews = () => {
+    setNews(null);
+    if (isNewer(APP_VERSION, user.seenVersion)) {
+      setUser({ ...user, seenVersion: APP_VERSION });
+      void api("PUT", "/api/auth/seen-version", { version: APP_VERSION }).catch(() => {});
+    }
+  };
 
   useEffect(() => {
     const onHash = () => setPage(pageFromHash());
@@ -55,9 +75,9 @@ export default function AppShell() {
         <div className="mt-auto flex flex-col items-center gap-2">
           <DevResetButton /> {/* TEMPORARY testing tool */}
           <AccountMenu variant="rail" />
-          <span className="text-[10px] leading-none text-muted" title={`Zero Smart Budget ${versionLabel}`}>
+          <button type="button" onClick={showWhatsNew} className="rounded px-1 text-[10px] leading-none text-muted hover:text-link hover:underline" title="What's new in this version">
             {versionLabel}
-          </span>
+          </button>
         </div>
       </nav>
 
@@ -81,6 +101,7 @@ export default function AppShell() {
         ))}
         <AccountMenu variant="bar" />
       </nav>
+      {news && <WhatsNew since={sinceVersion} all={news === "all"} onClose={closeNews} />}
     </div>
   );
 }

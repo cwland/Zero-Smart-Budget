@@ -34,6 +34,7 @@ export const users = pgTable("users", {
   // Bumped to sign out every device: login tokens carry the version they were issued with
   tokenVersion: integer("token_version").notNull().default(0),
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }), // last time the app was used (for the "come back" nudge)
+  seenVersion: text("seen_version"), // the app version whose "What's new" was dismissed
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

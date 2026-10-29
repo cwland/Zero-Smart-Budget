@@ -42,6 +42,7 @@ export const publicUser = (u: typeof users.$inferSelect) => ({
   username: u.username,
   displayName: u.displayName,
   email: u.email,
+  seenVersion: u.seenVersion,
 });
 
 export default async function authRoutes(app: FastifyInstance) {
@@ -98,6 +99,14 @@ export default async function authRoutes(app: FastifyInstance) {
     const [user] = await db.select().from(users).where(eq(users.id, req.auth.userId));
     if (!user) throw new HttpError(401, "Not logged in");
     return { method: "token", user: publicUser(user) };
+  });
+
+  // "What's new" was dismissed for this version: don't show it again until the next one
+  app.put("/api/auth/seen-version", async (req) => {
+    if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
+    const { version } = z.object({ version: z.string().trim().regex(/^\d+\.\d+\.\d+$/, "Not a version") }).parse(req.body);
+    await db.update(users).set({ seenVersion: version }).where(eq(users.id, req.auth.userId));
+    return { seenVersion: version };
   });
 
   // Change password. Signs out every other device; returns a fresh token for this one.
