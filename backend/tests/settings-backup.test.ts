@@ -18,7 +18,7 @@ beforeEach(async () => {
   await t.login();
 });
 
-const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "cory@gmail.com", password: "app-password-123", fromName: "ZeroPoint Budget", fromAddress: "cory@gmail.com", appUrl: "https://budget.example.com" };
+const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "cory@gmail.com", password: "app-password-123", fromName: "Zero Smart Budget", fromAddress: "cory@gmail.com", appUrl: "https://budget.example.com" };
 const ai = { maxPerRun: 50, services: [{ name: "Cloud", provider: "openai", model: "gpt-4o-mini", apiKey: "sk-secret-123" }, { name: "Home AI", provider: "local", model: "qwen", baseUrl: "http://10.0.0.5:11434/v1", apiKey: "" }] };
 const setUp = async () => {
   await t.api("PUT", "/api/settings/email", gmail);

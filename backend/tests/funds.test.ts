@@ -66,7 +66,7 @@ describe("export", () => {
     await t.api("POST", `/api/months/${m.id}/income`, { name: "Paycheck", plannedCents: 1 });
     const res = await t.app.inject({ method: "GET", url: "/api/export", headers: { authorization: (await login()) } });
     expect(res.statusCode).toBe(200);
-    expect(res.headers["content-disposition"]).toContain("zeropoint-budget-");
+    expect(res.headers["content-disposition"]).toContain("zero-smart-budget-");
     const data = res.json();
     expect(data.months).toHaveLength(1);
     expect(data.incomeItems[0].name).toBe("Paycheck");

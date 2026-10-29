@@ -12,13 +12,18 @@ interface Props {
 const input =
   "mt-1 w-full rounded border border-muted/60 bg-white px-3 py-2.5 text-base outline-none focus:border-action focus:ring-2 focus:ring-action/20";
 
+export const TAGLINE = "AI-Powered Zero-Based Budgeting";
+
 export function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-page px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-[0_4px_12px_rgba(31,36,38,0.06)]">
         <div className="mb-6 flex items-center gap-3">
           <Logo className="size-10" />
-          <span className="text-2xl font-semibold">ZeroPoint Budget</span>
+          <span>
+            <span className="block text-2xl font-semibold leading-tight">Zero Smart Budget</span>
+            <span className="block text-sm text-subtle">{TAGLINE}</span>
+          </span>
         </div>
         {children}
       </div>

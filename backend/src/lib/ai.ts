@@ -274,7 +274,7 @@ export class AiService {
       case "gemini":
         return { "x-goog-api-key": c.apiKey ?? "" };
       case "openrouter":
-        return { authorization: `Bearer ${c.apiKey ?? ""}`, "x-title": "ZeroPoint Budget" };
+        return { authorization: `Bearer ${c.apiKey ?? ""}`, "x-title": "Zero Smart Budget" };
       default:
         return c.apiKey ? { authorization: `Bearer ${c.apiKey}` } : {};
     }

@@ -34,7 +34,9 @@ export default function AppShell() {
     <div className="flex min-h-screen bg-page">
       {/* Left icon nav */}
       <nav className="sticky top-0 z-40 hidden h-screen w-14 shrink-0 flex-col items-center bg-white py-4 sm:flex">
-        <Logo className="size-8" />
+        <span title="Zero Smart Budget: AI-Powered Zero-Based Budgeting">
+          <Logo className="size-8" />
+        </span>
         <div className="mt-8 flex flex-col gap-2">
           {PAGES.map((p) => (
             <a

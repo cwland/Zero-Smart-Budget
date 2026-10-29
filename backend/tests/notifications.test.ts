@@ -34,7 +34,7 @@ describe("notifications", () => {
   it("sends a test email", async () => {
     const r = (await t.api("POST", "/api/settings/notifications/test")).body;
     expect(r).toEqual({ ok: true, to: "cory@example.com" });
-    expect(t.sent.at(-1)).toMatchObject({ to: "cory@example.com", subject: "ZeroPoint Budget notifications are working" });
+    expect(t.sent.at(-1)).toMatchObject({ to: "cory@example.com", subject: "Zero Smart Budget notifications are working" });
   });
 
   it("reminds once when it's time to close a month, and not after it's closed", async () => {

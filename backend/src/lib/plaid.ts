@@ -166,7 +166,7 @@ export class PlaidService {
     await this.call(
       "/link/token/create",
       {
-        client_name: "ZeroPoint Budget",
+        client_name: "Zero Smart Budget",
         user: { client_user_id: "cory" },
         products: ["transactions"],
         country_codes: ["US"],

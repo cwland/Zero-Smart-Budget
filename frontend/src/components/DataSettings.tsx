@@ -82,10 +82,10 @@ export default function DataSettings() {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (!["ZeroPoint Budget", "Cory's Dollar"].includes(data?.app) || !Array.isArray(data.months)) throw new Error();
+      if (!["Zero Smart Budget", "ZeroPoint Budget", "Cory's Dollar"].includes(data?.app) || !Array.isArray(data.months)) throw new Error();
       setRestore({ name: file.name, data, exportedAt: data.exportedAt, months: data.months.length, transactions: data.transactions?.length ?? 0, settings: data.settings?.secrets ?? null });
     } catch {
-      setMessage({ kind: "error", text: "That file isn't a ZeroPoint Budget backup" });
+      setMessage({ kind: "error", text: "That file isn't a Zero Smart Budget backup" });
     }
   }
 

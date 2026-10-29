@@ -59,9 +59,9 @@ export function StarIcon({ filled, className = "size-6" }: P & { filled?: boolea
   return <Star className={className} strokeWidth={1.8} fill={filled ? "currentColor" : "none"} aria-hidden />;
 }
 
-// ZeroPoint Budget mark: green rounded square with a "0" ring and a dot in the middle (the zero point)
+// Zero Smart Budget mark: green rounded square with a "0" ring and a dot in the middle
 export const Logo = ({ className = "size-8" }: P) => (
-  <svg viewBox="0 0 32 32" className={className} role="img" aria-label="ZeroPoint Budget">
+  <svg viewBox="0 0 32 32" className={className} role="img" aria-label="Zero Smart Budget">
     <rect width="32" height="32" rx="8" fill="#35bd59" />
     <ellipse cx="16" cy="16" rx="7" ry="9" fill="none" stroke="#fff" strokeWidth="3.2" />
     <circle cx="16" cy="16" r="2.4" fill="#fff" />

@@ -58,7 +58,7 @@ async function uncategorizedCount(db: Db) {
   return n;
 }
 
-const footer = (appUrl: string | null) => (appUrl ? `\n\nOpen ZeroPoint Budget: ${appUrl}` : "") + "\n\nYou can turn these emails off in Settings > Budget > Notifications.";
+const footer = (appUrl: string | null) => (appUrl ? `\n\nOpen Zero Smart Budget: ${appUrl}` : "") + "\n\nYou can turn these emails off in Settings > Budget > Notifications.";
 
 export interface NotificationResult {
   sent: { key: string; kind: string; to: string; subject: string }[];

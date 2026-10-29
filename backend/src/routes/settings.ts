@@ -279,7 +279,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     try {
       await mail.send({
         to,
-        subject: "ZeroPoint Budget notifications are working",
+        subject: "Zero Smart Budget notifications are working",
         text: "This is a test. You'll get emails like this when it's time to wrap up a month, or when transactions are waiting for you after a while away.\n\nYou can turn these emails off in Settings > Budget > Notifications.",
       });
     } catch (err) {
@@ -347,8 +347,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
       await mail.send(
         {
           to,
-          subject: "ZeroPoint Budget test email",
-          text: "Email from ZeroPoint Budget is working. Password reset links will arrive like this one.",
+          subject: "Zero Smart Budget test email",
+          text: "Email from Zero Smart Budget is working. Password reset links will arrive like this one.",
         },
         config
       );

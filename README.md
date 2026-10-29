@@ -1,6 +1,6 @@
-# ZeroPoint Budget
+# Zero Smart Budget
 
-A self-hosted zero-based budgeting app.
+**AI-Powered Zero-Based Budgeting.** A self-hosted zero-based budgeting app.
 
 ## Run locally on a Mac (no Docker)
 

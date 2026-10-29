@@ -57,7 +57,7 @@ const emptyForm = (): Form => ({
   security: "starttls",
   username: "",
   password: "",
-  fromName: "ZeroPoint Budget",
+  fromName: "Zero Smart Budget",
   fromAddress: "",
   appUrl: window.location.origin,
 });

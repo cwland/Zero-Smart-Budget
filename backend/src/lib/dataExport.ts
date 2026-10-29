@@ -23,7 +23,7 @@ export const EXPORT_VERSION = 4; // 2 added fundEntries, 3 Month Close (closed m
 // keys and passwords only when BACKUP_KEY is set (encrypted with it; see settingsBackup.ts)
 export async function buildExport(db: Db, secrets: BackupSecrets) {
   return {
-    app: "ZeroPoint Budget",
+    app: "Zero Smart Budget",
     exportVersion: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     months: await db.select().from(budgetMonths).orderBy(asc(budgetMonths.id)),
@@ -124,7 +124,7 @@ export async function budgetCsv(db: Db, year?: number, month?: number) {
 
 const rows = z.array(z.record(z.string(), z.unknown()));
 export const importSchema = z.object({
-  app: z.enum(["ZeroPoint Budget", "Cory's Dollar"]), // backups made before the rename still restore
+  app: z.enum(["Zero Smart Budget", "ZeroPoint Budget", "Cory's Dollar"]), // backups made under earlier names still restore
   exportVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   months: rows,
   incomeItems: rows,

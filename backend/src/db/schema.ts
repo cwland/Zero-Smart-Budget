@@ -1,4 +1,4 @@
-// ZeroPoint Budget database schema (Drizzle ORM)
+// Zero Smart Budget database schema (Drizzle ORM)
 // All money values are stored as integer cents ($10.50 = 1050).
 // After changing this file run: npm run db:generate
 import {

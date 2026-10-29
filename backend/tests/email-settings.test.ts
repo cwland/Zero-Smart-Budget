@@ -18,7 +18,7 @@ const gmail = {
   security: "starttls",
   username: "cory@gmail.com",
   password: "app-password-123",
-  fromName: "ZeroPoint Budget",
+  fromName: "Zero Smart Budget",
   fromAddress: "cory@gmail.com",
   appUrl: "https://budget.example.com/",
 };
@@ -47,7 +47,7 @@ describe("email settings saved in the app", () => {
     t.setToken("");
     await t.api("POST", "/api/auth/forgot", {});
     expect(t.sent[0].config).toMatchObject({ host: "smtp.gmail.com", username: "cory@gmail.com", password: "app-password-123" });
-    expect(t.sent[0].from).toBe('"ZeroPoint Budget" <cory@gmail.com>');
+    expect(t.sent[0].from).toBe('"Zero Smart Budget" <cory@gmail.com>');
     expect(t.sent[0].text).toContain("https://budget.example.com/#/reset?token=");
   });
 

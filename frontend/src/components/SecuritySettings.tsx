@@ -133,7 +133,7 @@ function ManualReset() {
     <div role="region" aria-label="Reset the password by hand" className="mb-4 rounded-lg bg-page p-4 text-sm">
       <p className="font-semibold">Forgot your password?</p>
       <p className="mt-1 text-subtle">
-        If email is set up, use <strong>Forgot password?</strong> on the sign-in page. If not, reset it on the computer that runs ZeroPoint Budget. Open a terminal in the project folder and run one of these. It asks for the
+        If email is set up, use <strong>Forgot password?</strong> on the sign-in page. If not, reset it on the computer that runs Zero Smart Budget. Open a terminal in the project folder and run one of these. It asks for the
         new password twice (nothing shows as you type).
       </p>
       <pre className="mt-2 overflow-x-auto rounded bg-ink p-3 font-mono text-xs leading-relaxed text-white">{`# Running it with npm (development)

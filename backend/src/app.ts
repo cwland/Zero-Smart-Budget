@@ -149,7 +149,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
     return reply.status(500).send({ error: "Something went wrong" });
   });
 
-  app.get("/api/health", async () => ({ status: "ok", app: "ZeroPoint Budget" }));
+  app.get("/api/health", async () => ({ status: "ok", app: "Zero Smart Budget" }));
 
   app.register(authRoutes);
   app.register(keyRoutes);
