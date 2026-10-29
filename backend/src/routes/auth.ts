@@ -18,13 +18,13 @@ const failures = new Map<string, { count: number; until: number }>();
 // At most one reset email per minute, and 5 per hour
 let resetSends: number[] = [];
 
-function checkLockout(req: FastifyRequest) {
+export function checkLockout(req: FastifyRequest) {
   const entry = failures.get(req.ip);
   if (entry && entry.count >= MAX_FAILURES && entry.until > Date.now()) {
     throw new HttpError(429, "Too many failed attempts. Try again in 15 minutes.");
   }
 }
-function recordFailure(req: FastifyRequest) {
+export function recordFailure(req: FastifyRequest) {
   const entry = failures.get(req.ip);
   const n = entry && entry.until > Date.now() ? entry.count + 1 : 1;
   failures.set(req.ip, { count: n, until: Date.now() + LOCKOUT_MS });
@@ -35,7 +35,9 @@ export function resetLoginLockouts() {
   resetSends = [];
 }
 
-const publicUser = (u: typeof users.$inferSelect) => ({
+export const clearFailures = (req: FastifyRequest) => failures.delete(req.ip);
+
+export const publicUser = (u: typeof users.$inferSelect) => ({
   id: u.id,
   username: u.username,
   displayName: u.displayName,

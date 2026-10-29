@@ -150,3 +150,13 @@ API: `GET /api/export`, `GET /api/export/transactions.csv?from=&to=`, `GET /api/
 cp .env.example .env
 docker compose up --build
 ```
+
+## Passkeys
+
+Sign in with Touch ID, Face ID, Windows Hello or a phone instead of typing the password (the password keeps working). Add one in **Settings → Security → Passkeys** while signed in, then use **Sign in with a passkey** on the sign-in screen.
+
+- A passkey belongs to the address it was added on: one added at `https://budget.example.com` works there, one added on `localhost` works on localhost. Add one at each address you use.
+- Browsers only allow passkeys on `https://` addresses and `localhost`. A plain `http://192.168.x.x` address won't offer them.
+- Behind a reverse proxy (nginx) nothing needs configuring: the address comes from the browser. Serve the app over HTTPS and keep nginx's default of passing the `Origin` header through.
+- Optional: `PASSKEY_ORIGINS=https://budget.example.com` (comma-separated) only allows passkeys at those addresses.
+- Passkey sign-ins show in Signed-in devices and Sign-in history. Removing a passkey in Settings stops it working here; delete it from your password manager or keychain too.

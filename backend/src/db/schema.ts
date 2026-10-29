@@ -350,6 +350,25 @@ export const notificationLog = pgTable("notification_log", {
   sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Passkeys (WebAuthn): sign in with a fingerprint, face or device PIN instead of the password.
+// Each one belongs to the web address it was made on (rp_id), e.g. localhost or your domain.
+export const passkeys = pgTable("passkeys", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  credentialId: text("credential_id").notNull().unique(), // base64url
+  publicKey: text("public_key").notNull(), // base64url (COSE)
+  counter: integer("counter").notNull().default(0),
+  transports: jsonb("transports").$type<string[]>(),
+  rpId: text("rp_id").notNull(), // the address it works on (no port), e.g. budget.example.com
+  name: text("name").notNull(), // shown in Settings > Security
+  deviceType: text("device_type"), // singleDevice / multiDevice (synced, e.g. iCloud Keychain)
+  backedUp: boolean("backed_up").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+});
+
 // Settings > Logs: emails sent, AI and bank connection problems, API errors, and scheduled task
 // runs (backups, bank sync, notifications...). Only short descriptions, never message bodies or
 // secrets. Kept for 30 days.

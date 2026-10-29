@@ -7,6 +7,7 @@ import type { Db } from "./db/index.js";
 import { apiKeys, users } from "./db/schema.js";
 import { logEvent } from "./lib/appLog.js";
 import logRoutes from "./routes/logs.js";
+import passkeyRoutes from "./routes/passkeys.js";
 import { backupKeyFromEnv, type BackupSecrets } from "./lib/settingsBackup.js";
 import { keyAllows, keyDenied, type KeyAccess } from "./lib/keyAccess.js";
 import { HttpError } from "./lib/errors.js";
@@ -71,6 +72,8 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/login",
   "POST /api/auth/forgot",
   "POST /api/auth/reset",
+  "POST /api/auth/passkey/login/options",
+  "POST /api/auth/passkey/login/verify",
 ]);
 
 export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, emailEnv = null, mailTransport, plaidFetch, aiFetch, now = () => new Date() }: AppOptions): FastifyInstance {
@@ -161,6 +164,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(authRoutes);
   app.register(keyRoutes);
   app.register(logRoutes);
+  app.register(passkeyRoutes);
   app.register(budgetRoutes);
   app.register(transactionRoutes);
   app.register(fundRoutes);

@@ -7,6 +7,7 @@ import { createDb } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
+import { resetPasskeyChallenges } from "../src/routes/passkeys.js";
 import { resetActiveMark } from "../src/lib/notifications.js";
 import { resetSessionTouches } from "../src/lib/sessions.js";
 import type { EmailConfig, MailMessage } from "../src/lib/mail.js";
@@ -116,10 +117,11 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       ai.respond = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
-      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events, app_log restart identity cascade`);
+      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events, app_log, passkeys restart identity cascade`);
       resetSessionTouches();
       resetActiveMark();
       resetLoginLockouts();
+      resetPasskeyChallenges();
       token = "";
     },
     async login() {

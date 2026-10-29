@@ -1,7 +1,9 @@
+import { KeyRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api } from "../api";
 import { Popup } from "./Popup";
 import { useSession } from "../session";
+import { addPasskey, passkeyError, passkeysAvailable } from "../passkeys";
 
 interface ApiKey {
   id: number;
@@ -575,5 +577,141 @@ function SignInTable({ events }: { events: SignIn[] }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+interface PasskeyRow {
+  id: number;
+  name: string;
+  rpId: string;
+  synced: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+// Settings > Security > Passkeys: sign in with Touch ID, Face ID, Windows Hello or a phone.
+// The password keeps working too.
+export function Passkeys() {
+  const [rows, setRows] = useState<PasskeyRow[] | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<{ id: number; name: string } | null>(null);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const available = passkeysAvailable();
+  const here = window.location.hostname;
+
+  const load = useCallback(async () => setRows(await api<PasskeyRow[]>("GET", "/api/auth/passkeys")), []);
+  useEffect(() => {
+    load().catch((e) => setMsg({ ok: false, text: (e as Error).message }));
+  }, [load]);
+
+  async function add() {
+    setMsg(null);
+    setBusy(true);
+    try {
+      const added = await addPasskey();
+      await load();
+      setMsg({ ok: true, text: `Passkey added. Next time, choose "Sign in with a passkey" on ${added.rpId}.` });
+      setEditing({ id: added.id, name: added.name }); // offer to name it
+    } catch (e) {
+      const text = passkeyError(e);
+      if (text) setMsg({ ok: false, text });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rename(e: FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    try {
+      await api("PATCH", `/api/auth/passkeys/${editing.id}`, { name: editing.name });
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setMsg({ ok: false, text: (err as Error).message });
+    }
+  }
+
+  async function remove(id: number) {
+    try {
+      await api("DELETE", `/api/auth/passkeys/${id}`);
+      setConfirmId(null);
+      await load();
+      setMsg({ ok: true, text: "Passkey removed. You can also delete it from your password manager or keychain." });
+    } catch (err) {
+      setMsg({ ok: false, text: (err as Error).message });
+    }
+  }
+
+  return (
+    <Card title="Passkeys">
+      <p className="text-subtle">Sign in with Touch ID, Face ID, Windows Hello or your phone instead of typing your password. Your password still works.</p>
+      {!available && (
+        <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-sm">
+          Passkeys need a secure address. Open the app at its <strong>https://</strong> address (or on <strong>localhost</strong>) to add or use one.
+        </p>
+      )}
+
+      {rows && rows.length > 0 && (
+        <ul aria-label="Passkeys" className="mt-4 divide-y divide-line border-y border-line">
+          {rows.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-3 py-3">
+              <KeyRound className="size-5 shrink-0 text-subtle" aria-hidden />
+              <span className="min-w-0 flex-1">
+                {editing?.id === p.id ? (
+                  <form onSubmit={rename} className="flex flex-wrap items-center gap-2">
+                    <input aria-label="Passkey name" autoFocus value={editing.name} maxLength={60} onChange={(e) => setEditing({ id: p.id, name: e.target.value })} className={field + " !mt-0 max-w-64"} />
+                    <button type="submit" className="text-sm font-semibold text-link hover:underline">
+                      Save
+                    </button>
+                    <button type="button" onClick={() => setEditing(null)} className="text-sm text-subtle hover:underline">
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <span className="block font-medium">
+                    {p.name}
+                    {p.synced && <span className="ml-2 rounded-full bg-page px-2 py-0.5 text-xs font-semibold text-subtle" title="Synced between your devices (e.g. iCloud Keychain or Google Password Manager)">Synced</span>}
+                  </span>
+                )}
+                <span className="block text-sm text-subtle">
+                  {p.rpId === here ? "Works here" : <>Works on <strong>{p.rpId}</strong></>} · added {when(p.createdAt)} · {p.lastUsedAt ? `last used ${when(p.lastUsedAt)}` : "never used"}
+                </span>
+              </span>
+              {editing?.id !== p.id && (
+                <span className="flex items-center gap-1">
+                  <button type="button" onClick={() => setEditing({ id: p.id, name: p.name })} className="rounded px-2 py-1 text-sm font-semibold text-link hover:bg-pressed">
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (confirmId === p.id ? remove(p.id) : setConfirmId(p.id))}
+                    onBlur={() => setConfirmId(null)}
+                    className={`rounded px-2 py-1 text-sm font-semibold ${confirmId === p.id ? "bg-error text-white" : "text-error hover:bg-error-subtle"}`}
+                  >
+                    {confirmId === p.id ? "Remove for good?" : "Remove"}
+                  </button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows && rows.length === 0 && <p className="mt-3 text-sm text-subtle">No passkeys yet.</p>}
+
+      {available && (
+        <button type="button" onClick={add} disabled={busy} className={primary + " mt-4 inline-flex items-center gap-2"}>
+          <KeyRound className="size-4" aria-hidden />
+          {busy ? "Waiting for your device…" : "Add a passkey"}
+        </button>
+      )}
+      {msg && (
+        <p role={msg.ok ? "status" : "alert"} className={`mt-3 rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>
+          {msg.text}
+        </p>
+      )}
+      <p className="mt-3 text-xs text-subtle">A passkey works on the address it was added on ({here} right now). If you also open the app at another address, add a passkey there too.</p>
+    </Card>
   );
 }

@@ -1,4 +1,6 @@
 import { versionLabel } from "../version";
+import { KeyRound } from "lucide-react";
+import { passkeyError, passkeysAvailable, signInWithPasskey } from "../passkeys";
 import { useState, type FormEvent } from "react";
 import { api } from "../api";
 import type { User } from "../session";
@@ -76,6 +78,21 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
   const setup = mode === "setup";
+  const canPasskey = !setup && passkeysAvailable();
+
+  async function passkey() {
+    setError("");
+    setBusy(true);
+    try {
+      const res = await signInWithPasskey();
+      onDone(res.token, res.user);
+    } catch (err) {
+      const msg = passkeyError(err);
+      if (msg) setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -134,6 +151,19 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
         <button type="submit" disabled={busy} className="mt-6 w-full rounded bg-primary py-3 font-semibold text-white hover:bg-primary-pressed disabled:opacity-60">
           {busy ? "One moment…" : setup ? "Create account" : "Sign in"}
         </button>
+        {canPasskey && (
+          <>
+            <div className="my-4 flex items-center gap-3 text-xs text-muted">
+              <span className="h-px flex-1 bg-line" />
+              or
+              <span className="h-px flex-1 bg-line" />
+            </div>
+            <button type="button" onClick={passkey} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded border border-primary py-3 font-semibold text-primary hover:bg-pressed disabled:opacity-60">
+              <KeyRound className="size-5" aria-hidden />
+              Sign in with a passkey
+            </button>
+          </>
+        )}
         {!setup && resetAvailable && (
           <button type="button" onClick={() => setForgot(true)} className="mt-4 w-full text-center text-sm font-semibold text-link hover:underline">
             Forgot password?
