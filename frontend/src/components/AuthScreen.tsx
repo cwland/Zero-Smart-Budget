@@ -1,7 +1,7 @@
+import { versionLabel } from "../version";
 import { useState, type FormEvent } from "react";
 import { api } from "../api";
 import type { User } from "../session";
-import { Logo } from "./Icons";
 
 interface Props {
   mode: "setup" | "login";
@@ -16,17 +16,13 @@ export const TAGLINE = "AI-Powered Zero-Based Budgeting";
 
 export function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-page px-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-page px-4 pb-10">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-[0_4px_12px_rgba(31,36,38,0.06)]">
-        <div className="mb-6 flex items-center gap-3">
-          <Logo className="size-10" />
-          <span>
-            <span className="block text-2xl font-semibold leading-tight">Zero Smart Budget</span>
-            <span className="block text-sm text-subtle">{TAGLINE}</span>
-          </span>
-        </div>
+        {/* Logo: icon + wordmark (Figtree, outlined to shapes; all versions in public/brand) */}
+        <img src="/brand/lockup.svg" alt={`Zero Smart Budget: ${TAGLINE}`} className="mb-7 h-auto w-full" />
         {children}
       </div>
+      <p className="absolute inset-x-0 bottom-4 text-center text-xs text-muted">Zero Smart Budget {versionLabel}</p>
     </div>
   );
 }

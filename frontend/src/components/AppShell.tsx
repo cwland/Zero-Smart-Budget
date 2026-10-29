@@ -6,6 +6,7 @@ import AccountsPage from "./AccountsPage";
 import SettingsPage from "./SettingsPage";
 import AccountMenu from "./AccountMenu";
 import DevResetButton from "./DevReset"; // TEMPORARY testing tool
+import { versionLabel } from "../version";
 import { BankIcon, BudgetIcon, GearIcon, GoalIcon, Logo, PiggyIcon } from "./Icons";
 
 type Page = "budget" | "accounts" | "funds" | "goals" | "settings";
@@ -54,6 +55,9 @@ export default function AppShell() {
         <div className="mt-auto flex flex-col items-center gap-2">
           <DevResetButton /> {/* TEMPORARY testing tool */}
           <AccountMenu variant="rail" />
+          <span className="text-[10px] leading-none text-muted" title={`Zero Smart Budget ${versionLabel}`}>
+            {versionLabel}
+          </span>
         </div>
       </nav>
 

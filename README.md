@@ -1,6 +1,10 @@
+<img src="frontend/public/brand/lockup.svg" alt="Zero Smart Budget: AI-Powered Zero-Based Budgeting" width="420">
+
 # Zero Smart Budget
 
 **AI-Powered Zero-Based Budgeting.** A self-hosted zero-based budgeting app.
+
+Logo files (Figtree, outlined) are in `frontend/public/brand/`: `wordmark.svg`, `wordmark-navy.svg`, `wordmark-dark.svg`, `lockup.svg`. The app version comes from `frontend/package.json`.
 
 ## Run locally on a Mac (no Docker)
 

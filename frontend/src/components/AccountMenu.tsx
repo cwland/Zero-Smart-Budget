@@ -1,3 +1,4 @@
+import { versionLabel } from "../version";
 import { useEffect, useRef, useState } from "react";
 import { initialsOf, useSession } from "../session";
 import { LogoutIcon, ResetIcon, UserIcon } from "./Icons";
@@ -72,6 +73,8 @@ export default function AccountMenu({ variant }: { variant: "rail" | "bar" }) {
           >
             <LogoutIcon className="size-4" /> {confirmAll ? "Sign out all devices?" : "Sign out everywhere"}
           </button>
+          {/* On phones there's no left nav, so the version shows here */}
+          {variant === "bar" && <div className="px-3 pb-1 pt-2 text-xs text-muted">Zero Smart Budget {versionLabel}</div>}
           {/* TEMPORARY testing tool (phones; on larger screens it's in the left nav) */}
           {variant === "bar" && (
             <>
