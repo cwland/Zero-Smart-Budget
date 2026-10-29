@@ -100,6 +100,27 @@ export default function SignInSettings() {
     }
   }
 
+  // The switch: with details already saved it takes effect right away; otherwise it opens the
+  // form and Save turns OAuth on. Turning it off also brings passwords back (if OAuth only was on).
+  async function toggle(on: boolean) {
+    if (!form || !saved) return;
+    setMsg(null);
+    set("enabled", on);
+    const complete = !!saved.clientId && (!!saved.discoveryUrl || (!!saved.authorizeUrl && !!saved.tokenUrl && !!saved.userinfoUrl));
+    if (on && !complete) return setMsg({ ok: true, text: "Enter your provider's details, then Save." });
+    setBusy("save");
+    try {
+      await api("PUT", "/api/settings/oauth", body({ ...toForm(saved), enabled: on }, on ? saved.authMode : "PASSWORDS_AND_OAUTH"));
+      await load();
+      setMsg({ ok: true, text: on ? "OAuth sign-in is on." : saved.authMode === "OAUTH_ONLY" ? "OAuth sign-in is off, and password sign-in is back on." : "OAuth sign-in is off." });
+    } catch (err) {
+      setMsg({ ok: false, text: errorText(err) });
+      set("enabled", !on);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function test() {
     setMsg(null);
     setBusy("test");
@@ -161,8 +182,12 @@ export default function SignInSettings() {
         <form onSubmit={save} className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <span className="font-semibold">Sign in with OAuth</span>
-            <Toggle label="Sign in with OAuth" checked={form.enabled} onChange={(v) => set("enabled", v)} />
+            <Toggle label="Sign in with OAuth" checked={form.enabled} disabled={!!busy} onChange={(v) => void toggle(v)} />
           </div>
+          {!form.enabled && msg && <p role={msg.ok ? "status" : "alert"} className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>{msg.text}</p>}
+
+          {form.enabled && (
+            <>
 
           <label className="text-sm font-medium text-subtle">
             Button label
@@ -258,9 +283,13 @@ export default function SignInSettings() {
             </button>
           </div>
           {msg && <p role={msg.ok ? "status" : "alert"} className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>{msg.text}</p>}
+            </>
+          )}
         </form>
       </Card>
 
+      {form.enabled && (
+        <>
       <Card title="Your account" description="Link your account to the identity you use at the provider. You'll sign in there once to prove it.">
         {data.linked ? (
           <div className="flex flex-wrap items-center gap-3">
@@ -320,6 +349,8 @@ EMERGENCY_DISABLE_OAUTH=true`}</pre>
           <p className="mt-2 text-subtle">A passkey also gets you in while OAuth is the only option.</p>
         </details>
       </Card>
+        </>
+      )}
     </>
   );
 }
