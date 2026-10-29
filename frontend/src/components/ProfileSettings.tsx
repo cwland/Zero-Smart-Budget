@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api } from "../api";
+import { ApiError, api } from "../api";
 import { useSession, type User } from "../session";
 import { Card, Notice, field, primaryButton } from "./settingsUi";
 
@@ -22,7 +22,7 @@ export default function ProfileSettings() {
       setUser(updated);
       setMsg({ ok: true, text: "Saved" });
     } catch (err) {
-      setMsg({ ok: false, text: (err as Error).message });
+      setMsg({ ok: false, text: (err instanceof ApiError && err.details?.[0]?.message) || (err as Error).message });
     } finally {
       setBusy(false);
     }
@@ -40,8 +40,8 @@ export default function ProfileSettings() {
           <input aria-label="Display name" autoComplete="name" placeholder="e.g. Cory" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={field} />
         </label>
         <label className="text-sm font-medium text-subtle sm:col-span-2">
-          Email <span className="font-normal text-muted">(for password resets and, later, notifications)</span>
-          <input aria-label="Email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={field} />
+          Email <span className="font-normal text-muted">(required, for password resets and notifications)</span>
+          <input aria-label="Email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={field} required />
         </label>
         <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
           <button type="submit" disabled={busy || !changed} className={primaryButton}>

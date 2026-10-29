@@ -25,8 +25,25 @@ export class ApiError extends Error {
   }
 }
 
+// This browser's own random id, kept in localStorage: signing in again here reuses the same row in
+// Settings › Security › Signed-in devices instead of adding one per sign-in
+let memoryDeviceId: string | null = null;
+function deviceId() {
+  const make = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => b.toString(16).padStart(2, "0")).join("");
+  try {
+    let id = localStorage.getItem("zsb-device-id");
+    if (!id) {
+      id = make();
+      localStorage.setItem("zsb-device-id", id);
+    }
+    return id;
+  } catch {
+    return (memoryDeviceId ??= make());
+  }
+}
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
-  const headers: Record<string, string> = { ...extraHeaders };
+  const headers: Record<string, string> = { "x-device-id": deviceId(), ...extraHeaders };
   const token = getToken();
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers["content-type"] = "application/json";

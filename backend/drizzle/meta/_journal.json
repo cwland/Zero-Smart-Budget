@@ -148,6 +148,13 @@
       "when": 1793285022964,
       "tag": "0020_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793295000980,
+      "tag": "0021_session_device",
+      "breakpoints": true
     }
   ]
 }

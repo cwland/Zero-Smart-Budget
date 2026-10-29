@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 
@@ -16,8 +17,9 @@ describe("profile", () => {
     const res = await t.api("PATCH", "/api/profile", { username: "cory2", displayName: "Cory L", email: "cory@example.com" });
     expect(res.body).toMatchObject({ username: "cory2", displayName: "Cory L", email: "cory@example.com" });
     expect((await t.api("GET", "/api/auth/me")).body.user).toMatchObject({ username: "cory2", email: "cory@example.com" });
-    // empty clears
-    expect((await t.api("PATCH", "/api/profile", { email: "", displayName: "" })).body).toMatchObject({ email: null, displayName: null });
+    // empty clears the display name; the email can't be removed
+    expect((await t.api("PATCH", "/api/profile", { displayName: "" })).body).toMatchObject({ email: "cory@example.com", displayName: null });
+    for (const email of ["", null, "  "]) expect((await t.api("PATCH", "/api/profile", { email })).body.details[0].message).toMatch(/email address is required/);
   });
 
   it("validates email, and API keys can't change it", async () => {
@@ -67,7 +69,7 @@ describe("sessions", () => {
 
 describe("password reset by email", () => {
   it("status says reset is available only once there's an email on the account", async () => {
-    await t.api("PATCH", "/api/profile", { email: "" }); // (accounts start with one now; it can be removed in Profile)
+    await t.db.execute(sql`update users set email = null`); // (accounts made before email was required)
     expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ emailEnabled: true, resetAvailable: false });
     await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
     expect((await t.api("GET", "/api/auth/status")).body.resetAvailable).toBe(true);
@@ -118,7 +120,7 @@ describe("password reset by email", () => {
   });
 
   it("doesn't send anything (but answers the same) when there's no email on file", async () => {
-    await t.api("PATCH", "/api/profile", { email: "" });
+    await t.db.execute(sql`update users set email = null`);
     t.setToken("");
     const res = await t.api("POST", "/api/auth/forgot", {});
     expect(res.status).toBe(200);
@@ -126,7 +128,7 @@ describe("password reset by email", () => {
   });
 
   it("test email goes to the account address", async () => {
-    await t.api("PATCH", "/api/profile", { email: "" });
+    await t.db.execute(sql`update users set email = null`);
     expect((await t.api("POST", "/api/settings/email/test", {})).status).toBe(400); // no address yet
     await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
     const res = await t.api("POST", "/api/settings/email/test", {});

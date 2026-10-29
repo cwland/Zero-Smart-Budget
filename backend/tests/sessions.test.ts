@@ -14,8 +14,8 @@ beforeEach(async () => {
 const MAC_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 
-const login = async (userAgent: string, ip: string, password = "password123") => {
-  const res = await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Cory", password }, headers: { "user-agent": userAgent, "x-forwarded-for": ip } });
+const login = async (userAgent: string, ip: string, password = "password123", deviceId?: string) => {
+  const res = await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Cory", password }, headers: { "user-agent": userAgent, "x-forwarded-for": ip, ...(deviceId ? { "x-device-id": deviceId } : {}) } });
   return { status: res.statusCode, token: res.json().token as string };
 };
 const as = (token: string) => (method: string, url: string, payload?: object) =>
@@ -31,6 +31,34 @@ describe("signed-in devices", () => {
     expect(byDevice["Chrome on Mac"]).toMatchObject({ current: true, status: "active", how: "password", ip: "192.168.1.20" });
     expect(byDevice["Safari on iPhone"]).toMatchObject({ current: false, status: "active", ip: "10.0.0.7" });
     expect(new Date(byDevice["Chrome on Mac"].expiresAt).getTime() - new Date(byDevice["Chrome on Mac"].createdAt).getTime()).toBe(30 * 24 * 3600 * 1000);
+  });
+
+  it("one row per browser: signing in again in the same browser reuses its row", async () => {
+    const MAC = "mac-browser-0123456789";
+    const first = await login(MAC_CHROME, "192.168.1.20", "password123", MAC);
+    const id = (await as(first.token)("GET", "/api/auth/sessions")).body.find((s: any) => s.current).id;
+    expect((await as(first.token)("DELETE", `/api/auth/sessions/${id}`)).status).toBe(204); // signed out there
+    const second = await login(MAC_CHROME, "192.168.1.21", "password123", MAC);
+    const third = await login(MAC_CHROME, "192.168.1.21", "password123", MAC);
+    await login(IPHONE, "10.0.0.7", "password123", "phone-browser-0123456789");
+    const list = (await as(third.token)("GET", "/api/auth/sessions")).body;
+    expect(list.map((s: any) => [s.device.label, s.status, s.current]).sort()).toEqual([
+      ["Chrome on Mac", "active", true],
+      ["Safari on iPhone", "active", false],
+      ["Unknown browser", "active", false], // the set-up session (no browser id)
+    ]);
+    expect(list.find((s: any) => s.current).id).toBe(id);
+    expect((await as(second.token)("GET", "/api/months")).status).toBe(401); // the earlier token there stopped working
+    expect((await as(first.token)("GET", "/api/months")).status).toBe(401);
+  });
+
+  it("an older session takes its browser's id the next time it's used", async () => {
+    const old = await login(MAC_CHROME, "192.168.1.20");
+    const use = (token: string, deviceId: string) => t.app.inject({ method: "GET", url: "/api/months", headers: { authorization: `Bearer ${token}`, "x-device-id": deviceId } });
+    await use(old.token, "mac-browser-0123456789");
+    const again = await login(MAC_CHROME, "192.168.1.20", "password123", "mac-browser-0123456789");
+    expect((await as(again.token)("GET", "/api/auth/sessions")).body).toHaveLength(2); // set up + this Mac
+    expect((await use("nope", "bad id!")).statusCode).toBe(401);
   });
 
   it("signs out one device; its token stops working, the others keep going", async () => {

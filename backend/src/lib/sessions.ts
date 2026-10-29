@@ -9,13 +9,32 @@ import { TOKEN_LIFETIME_MS, hashApiKey, signToken } from "./auth.js";
 
 const ua = (req: FastifyRequest) => (req.headers["user-agent"] ?? "").slice(0, 400) || null;
 
-/** Start a session for a sign-in and return its login token. */
+// The browser's own id (the X-Device-Id header; the page keeps a random one in localStorage)
+export function deviceIdOf(req: FastifyRequest) {
+  const v = req.headers["x-device-id"];
+  return typeof v === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(v) ? v : null;
+}
+
+/**
+ * Start a session for a sign-in and return its login token. Signing in again in the same browser
+ * reuses that browser's row (with a new token; the old one stops working), so Signed-in devices
+ * shows one row per browser.
+ */
 export async function startSession(db: Db, secret: string, req: FastifyRequest, user: { id: number; tokenVersion: number }, how: string, now = new Date()) {
   const tokenId = crypto.randomBytes(16).toString("base64url");
-  const [row] = await db
-    .insert(sessions)
-    .values({ userId: user.id, tokenId, tokenVersion: user.tokenVersion, how, userAgent: ua(req), ip: req.ip, lastIp: req.ip, createdAt: now, lastSeenAt: now, expiresAt: new Date(now.getTime() + TOKEN_LIFETIME_MS) })
-    .returning();
+  const deviceId = deviceIdOf(req);
+  const values = { tokenId, tokenVersion: user.tokenVersion, how, userAgent: ua(req), ip: req.ip, lastIp: req.ip, createdAt: now, lastSeenAt: now, expiresAt: new Date(now.getTime() + TOKEN_LIFETIME_MS), revokedAt: null };
+  const [row] = deviceId
+    ? await db
+        .insert(sessions)
+        .values({ userId: user.id, deviceId, ...values })
+        .onConflictDoUpdate({ target: [sessions.userId, sessions.deviceId], set: values })
+        .returning()
+    : await db
+        .insert(sessions)
+        .values({ userId: user.id, ...values })
+        .returning();
+  touched.delete(row.id);
   return { token: signToken(user.id, user.tokenVersion, secret, tokenId), session: row };
 }
 
@@ -67,6 +86,15 @@ export async function sessionForToken(
     if (!row) [row] = await db.select().from(sessions).where(eq(sessions.tokenId, tokenId));
   }
   if (row.revokedAt) return null;
+  // A session from before browsers had an id: take this browser's id, unless it already has a row
+  const deviceId = deviceIdOf(req);
+  if (deviceId && !row.deviceId) {
+    const [other] = await db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.userId, row.userId), eq(sessions.deviceId, deviceId)));
+    if (!other) {
+      await db.update(sessions).set({ deviceId }).where(eq(sessions.id, row.id));
+      row.deviceId = deviceId;
+    }
+  }
   const last = touched.get(row.id) ?? 0;
   if (Math.abs(now.getTime() - last) > 60 * 1000 || row.lastIp !== req.ip) {
     touched.set(row.id, now.getTime());

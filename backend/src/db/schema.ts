@@ -326,8 +326,11 @@ export const sessions = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }), // signed out
+    // A random id the browser keeps (localStorage), so signing in again in the same browser reuses
+    // its row: one row per browser in Signed-in devices. Null for sessions from before this.
+    deviceId: text("device_id"),
   },
-  (t) => [index("sessions_user_idx").on(t.userId)]
+  (t) => [index("sessions_user_idx").on(t.userId), uniqueIndex("sessions_user_device_idx").on(t.userId, t.deviceId)]
 );
 
 // Every sign-in attempt, good or bad (Settings > Security)

@@ -12,14 +12,21 @@ function requireLogin(req: FastifyRequest): number {
 export default async function profileRoutes(app: FastifyInstance) {
   const { db } = app;
 
-  // Update username, display name and email (empty string clears display name / email)
+  // Update username, display name and email (empty string clears the display name; the email is
+  // required: password reset links and notifications go there)
   app.patch("/api/profile", async (req) => {
     const userId = requireLogin(req);
     const body = z
       .object({
         username: z.string().trim().min(1).max(100).optional(),
         displayName: z.string().trim().max(100).nullable().optional(),
-        email: z.union([z.string().trim().email("That doesn't look like an email address").max(200), z.literal("")]).nullable().optional(),
+        email: z
+          .string({ error: "Your email address is required (for password resets and notifications)" })
+          .trim()
+          .min(1, "Your email address is required (for password resets and notifications)")
+          .email("That doesn't look like an email address")
+          .max(200)
+          .optional(),
       })
       .parse(req.body);
 
@@ -32,7 +39,7 @@ export default async function profileRoutes(app: FastifyInstance) {
       .set({
         username: body.username,
         displayName: body.displayName === undefined ? undefined : body.displayName || null,
-        email: body.email === undefined ? undefined : body.email || null,
+        email: body.email,
       })
       .where(eq(users.id, userId))
       .returning();

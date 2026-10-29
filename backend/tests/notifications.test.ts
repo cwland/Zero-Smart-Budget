@@ -24,7 +24,7 @@ describe("notifications", () => {
       to: "cory@example.com",
     });
     expect((await run(new Date(2026, 9, 28))).skipped).toBe("notifications are off");
-    await t.api("PATCH", "/api/profile", { email: null });
+    await t.db.execute(sql`update users set email = null`);
     expect((await t.api("PUT", "/api/settings/notifications", { enabled: true })).body.error).toMatch(/Add your email address/);
     await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
     expect((await t.api("PUT", "/api/settings/notifications", { enabled: true, nudgeDays: 5 })).body.settings).toMatchObject({ enabled: true, nudgeDays: 5 });
