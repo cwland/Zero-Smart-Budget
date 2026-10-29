@@ -42,6 +42,7 @@ interface ManualAccount {
   balanceUpdatedAt: string;
 }
 interface AccountsData {
+  plaidOn: boolean; // Settings > Plaid switched on
   plaidReady: boolean;
   institutions: Institution[];
   manual: ManualAccount[];
@@ -510,9 +511,9 @@ export default function AccountsPage() {
                     {inst.institutionName}
                     {inst.env === "sandbox" && <span className="ml-2 rounded bg-page px-2 py-0.5 align-middle text-xs font-semibold text-subtle">Sandbox</span>}
                   </h2>
-                  {inst.status === "ok" ? (
+                  {inst.status === "ok" || !data.plaidOn ? (
                     <p className="text-subtle">
-                      {inst.active ? `Synced through Plaid ${ago(inst.lastSyncedAt)}` : "Paused: your Plaid keys are set to the other environment"}
+                      {inst.active ? `Synced through Plaid ${ago(inst.lastSyncedAt)}` : !data.plaidOn ? "Paused: Plaid is turned off in Settings" : "Paused: your Plaid keys are set to the other environment"}
                     </p>
                   ) : (
                     <p role="alert" className="text-error">
@@ -527,7 +528,7 @@ export default function AccountsPage() {
                   label={`${inst.institutionName} options`}
                   items={[
                     ...(inst.active ? [{ label: busy === "sync" ? "Syncing…" : "Sync now", icon: "↻", onClick: update }] : []),
-                    { label: "Reconnect", icon: "🔑", onClick: () => reconnect(inst) },
+                    ...(data.plaidOn ? [{ label: "Reconnect", icon: "🔑", onClick: () => reconnect(inst) }] : []),
                     { label: "Import Settings", icon: "⚙", onClick: () => setPopup({ kind: "import", inst }) },
                     { label: "Disconnect bank", icon: "🗑", danger: true, onClick: () => setPopup({ kind: "remove", inst, force: false }) },
                   ]}
@@ -606,7 +607,8 @@ export default function AccountsPage() {
           )}
           {data && !data.plaidReady && (
             <p className="px-6 text-sm text-subtle">
-              To connect a bank, add your Plaid keys in <a href="#/settings/plaid" className="font-semibold text-link hover:underline">Settings › Plaid</a>.
+              {data.plaidOn ? "To connect a bank, add your Plaid keys in " : "Bank syncing is turned off. To connect or sync banks, turn it on in "}
+              <a href="#/settings/plaid" className="font-semibold text-link hover:underline">Settings › Plaid</a>.
             </p>
           )}
         </div>

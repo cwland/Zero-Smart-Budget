@@ -69,7 +69,7 @@ describe("OAuth sign-in", () => {
   it("Link my account (signed in) links any identity from the provider", async () => {
     await t.api("PUT", "/api/settings/oauth", settings());
     const { params, to } = await oauth({ sub: "ak-999", email: "work@company.com" }, "/api/auth/oauth/link/start", t.getToken());
-    expect(to.hash).toMatch(/^#\/settings\/signin\?/);
+    expect(to.hash).toMatch(/^#\/settings\/security\?/);
     expect(params.get("oauth")).toBe("linked");
     expect((await oauth({ sub: "ak-999" })).params.get("ticket")).toBeTruthy();
   });

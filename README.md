@@ -151,6 +151,18 @@ cp .env.example .env
 docker compose up --build
 ```
 
+## Turning Plaid, AI and API keys on or off
+
+Each of the Settings tabs **Plaid**, **AI** and **API keys** starts with an on/off switch (saved right away).
+Off hides that tab's settings and stops the feature, but keeps what you saved:
+
+- **Plaid off:** no bank syncing (scheduled or Sync now) and no connecting or reconnecting banks. Connected banks and their transactions stay, shown as paused on the Accounts page.
+- **AI off:** AI is never used, and AI categorization in Settings › Budget is greyed out. Your AI services are kept.
+- **API keys off:** every request made with an API key is refused (and recorded in Settings › Logs). Your keys are kept.
+
+Until you flip a switch, it follows what's set up: on if you've saved Plaid keys, AI services or API keys.
+The API: `GET`/`PUT /api/settings/features` with `{ "plaid": true, "ai": false, "apiKeys": true }` (signed in only).
+
 ## Passkeys
 
 Sign in with Touch ID, Face ID, Windows Hello or a phone instead of typing the password (the password keeps working). Add one in **Settings → Security → Passkeys** while signed in, then use **Sign in with a passkey** on the sign-in screen.
@@ -163,10 +175,10 @@ Sign in with Touch ID, Face ID, Windows Hello or a phone instead of typing the p
 
 ## OAuth sign-in (Authentik, Keycloak, Google…)
 
-Set it up in **Settings → Sign-in**:
+Set it up in **Settings → Security** (OAuth sign-in):
 
-1. At your provider, create an OAuth2/OpenID Connect app (confidential client). Add the **Redirect URI** shown in Settings (`https://<your app address>/api/auth/oauth/callback`).
-2. In Settings → Sign-in: turn it on, name the button (e.g. "Authentik"), enter the **issuer / discovery URL**, Client ID and Client secret. Save, then **Test connection**.
+1. At your provider, create an OAuth2/OpenID Connect app (confidential client). Add the **Redirect URI** shown there (`https://<your app address>/api/auth/oauth/callback`).
+2. In Settings → Security: turn it on, name the button (e.g. "Authentik"), enter the **issuer / discovery URL**, Client ID and Client secret. Save, then **Test connection**.
    - Authentik: `https://auth.example.com/application/o/<app-slug>/` · Keycloak: `https://kc.example.com/realms/<realm>` · Google: `https://accounts.google.com`
    - No discovery? Enter the authorize, token and user info URLs instead.
 3. **Link my account**: sign in at the provider once. (Signing in with OAuth also links automatically when the provider's *verified* email matches your profile email.) Identities that aren't linked are refused.

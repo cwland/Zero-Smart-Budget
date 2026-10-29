@@ -4,7 +4,7 @@ import { useUnsavedGuard } from "../unsavedGuard";
 import { Toggle } from "./BudgetSettings";
 import { Card, field, primaryButton, secondaryButton } from "./settingsUi";
 
-// Settings > Sign-in: OAuth / OpenID Connect (Authentik, Keycloak, Google...) and how you sign in
+// Settings > Security (OAuth sign-in): OAuth / OpenID Connect (Authentik, Keycloak, Google...) and how you sign in
 type AuthMode = "PASSWORDS_AND_OAUTH" | "OAUTH_ONLY";
 interface OAuthSettings {
   enabled: boolean;
@@ -63,7 +63,7 @@ export default function SignInSettings() {
     const p = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
     if (p.get("oauth") === "linked") setLinkMsg({ ok: true, text: "Linked. You can now sign in with it." });
     if (p.get("oauth_error")) setLinkMsg({ ok: false, text: p.get("oauth_error")! });
-    if (p.toString()) history.replaceState(null, "", "#/settings/signin");
+    if (p.toString()) history.replaceState(null, "", "#/settings/security");
   }, []);
 
   const saved = data?.settings;

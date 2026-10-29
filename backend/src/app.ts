@@ -7,6 +7,8 @@ import type { Db } from "./db/index.js";
 import { apiKeys, users } from "./db/schema.js";
 import { logEvent } from "./lib/appLog.js";
 import logRoutes from "./routes/logs.js";
+import featureRoutes from "./routes/features.js";
+import { isOn } from "./lib/features.js";
 import passkeyRoutes from "./routes/passkeys.js";
 import oauthRoutes from "./routes/oauth.js";
 import { backupKeyFromEnv, type BackupSecrets } from "./lib/settingsBackup.js";
@@ -131,6 +133,11 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
         .from(apiKeys)
         .where(eq(apiKeys.keyHash, hashApiKey(key)));
       if (found) {
+        // Settings > API keys switched off: every key is refused (the keys are kept)
+        if (!(await isOn(db, "apiKeys"))) {
+          await logEvent(db, { category: "api", level: "warning", source: `API key "${found.name}"`, event: `Refused ${req.method} ${req.url.split("?")[0]}: API keys are turned off`, detail: "Turn them back on in Settings › API keys" });
+          throw new HttpError(403, "API keys are turned off in Settings");
+        }
         const access = found.access as KeyAccess;
         const path = req.routeOptions.url ?? req.url.split("?")[0];
         if (!keyAllows(access, req.method, path)) {
@@ -171,6 +178,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(authRoutes);
   app.register(keyRoutes);
   app.register(logRoutes);
+  app.register(featureRoutes);
   app.register(passkeyRoutes);
   app.register(oauthRoutes);
   app.register(budgetRoutes);

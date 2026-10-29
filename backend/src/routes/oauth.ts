@@ -61,7 +61,7 @@ export default async function oauthRoutes(app: FastifyInstance) {
     return req.auth.userId;
   };
 
-  // ---------- Settings > Sign-in ----------
+  // ---------- Settings > Security (OAuth sign-in) ----------
 
   app.get("/api/settings/oauth", async (req) => {
     const userId = requireLogin(req);
@@ -186,7 +186,7 @@ export default async function oauthRoutes(app: FastifyInstance) {
         await logSignIn(db, req, { username: null, success: false, reason: logReason });
         return back(flow.appOrigin, "/", { oauth_error: message });
       }
-      return back(flow.appOrigin, "/settings/signin", { oauth_error: message });
+      return back(flow.appOrigin, "/settings/security", { oauth_error: message });
     };
     if (q.error) return fail(q.error_description || q.error, `OAuth: ${q.error}`);
 
@@ -223,7 +223,7 @@ export default async function oauthRoutes(app: FastifyInstance) {
       const [taken] = await db.select({ id: users.id }).from(users).where(and(eq(users.oauthIssuer, claims.iss!), eq(users.oauthSubject, claims.sub)));
       if (taken && taken.id !== flow.userId) return fail("That identity is linked to another account.", "");
       await db.update(users).set({ oauthIssuer: claims.iss!, oauthSubject: claims.sub, oauthEmail: claims.email ?? null }).where(eq(users.id, flow.userId!));
-      return back(flow.appOrigin, "/settings/signin", { oauth: "linked" });
+      return back(flow.appOrigin, "/settings/security", { oauth: "linked" });
     }
 
     // Sign in: the linked identity, or the same verified email (which then links it)
@@ -235,7 +235,7 @@ export default async function oauthRoutes(app: FastifyInstance) {
     }
     if (!user) {
       return fail(
-        `This ${s.providerName} account isn't linked to Zero Smart Budget. Sign in another way, then use Settings › Sign-in › Link my account.`,
+        `This ${s.providerName} account isn't linked to Zero Smart Budget. Sign in another way, then use Settings › Security › Link my account.`,
         `OAuth: no matching account (${claims.email ?? claims.sub})`
       );
     }

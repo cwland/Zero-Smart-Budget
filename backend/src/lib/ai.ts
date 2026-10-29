@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { appSettings } from "../db/schema.js";
+import { isOn } from "./features.js";
 import { decryptSecret, encryptSecret } from "./secrets.js";
 import { HttpError } from "./errors.js";
 import { logEvent } from "./appLog.js";
@@ -183,9 +184,12 @@ export class AiService {
       return { ...sv, apiKey: key, apiKeyUnreadable: !!apiKeyEnc && key === null };
     });
     const first = services[0];
+    // Settings > AI's master switch: off hides the AI settings and AI isn't used at all
+    const available = await isOn(this.db, "ai");
     // At least one complete service: AI can be turned on in Settings > Budget
     const ready = s.services.some((sv) => sv.model && (sv.provider !== "local" || sv.baseUrl));
     return {
+      available,
       ready,
       enabled: s.enabled,
       mode: s.mode,
@@ -205,6 +209,7 @@ export class AiService {
   async active(): Promise<{ mode: StoredAi["mode"]; maxPerRun: number; timeoutSec: number; askNextOnNoMatch: boolean; services: ActiveService[] } | null> {
     const s = await this.stored();
     if (!s?.enabled) return null;
+    if (!(await isOn(this.db, "ai"))) return null; // Settings > AI switched off
     const services = s.services
       .filter((sv) => sv.model && (sv.provider !== "local" || sv.baseUrl))
       .map((sv) => ({ id: sv.id, name: sv.name, provider: sv.provider, model: sv.model, baseUrl: sv.baseUrl, apiKey: sv.apiKeyEnc ? decryptSecret(sv.apiKeyEnc, this.secret) : null }));

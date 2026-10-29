@@ -1,3 +1,4 @@
+import { isOn } from "../lib/features.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { asc, eq, sql } from "drizzle-orm";
@@ -21,14 +22,16 @@ export default async function accountRoutes(app: FastifyInstance) {
   app.get("/api/accounts", async () => {
     // Plaid is ready when keys and the current environment's secret are saved
     const s = await plaid.stored();
-    const plaidReady = !!s?.clientId && !!(await plaid.savedSecret(s.env));
+    // Settings > Plaid switched off: no linking or syncing; connected banks show as paused
+    const plaidOn = await isOn(db, "plaid");
+    const plaidReady = plaidOn && !!s?.clientId && !!(await plaid.savedSecret(s.env));
     const items = await db.query.plaidItems.findMany({
       with: { accounts: { orderBy: (a, { asc }) => [asc(a.id)] } },
       orderBy: (i, { asc }) => [asc(i.id)],
     });
     const institutions = items.map(({ accessTokenEnc: _t, cursor: _c, accounts, ...i }) => ({
       ...i,
-      active: i.env === (s?.env ?? null),
+      active: plaidOn && i.env === (s?.env ?? null),
       accounts: accounts.map((a) => ({
         ...a,
         balanceCents: a.currentBalanceCents === null ? null : isDebt(a.type) ? -a.currentBalanceCents : a.currentBalanceCents,
@@ -46,7 +49,7 @@ export default async function accountRoutes(app: FastifyInstance) {
     const haveCents = all.filter((n) => n > 0).reduce((t, n) => t + n, 0);
     const oweCents = -all.filter((n) => n < 0).reduce((t, n) => t + n, 0);
     const assetsCents = assets.reduce((t, a) => t + a.balanceCents, 0);
-    return { plaidReady, institutions, manual, assets, totals: { haveCents, oweCents, netCents: haveCents - oweCents, assetsCents } };
+    return { plaidOn, plaidReady, institutions, manual, assets, totals: { haveCents, oweCents, netCents: haveCents - oweCents, assetsCents } };
   });
 
   const manualBody = z.object({

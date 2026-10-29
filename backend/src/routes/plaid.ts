@@ -1,3 +1,4 @@
+import { isOn } from "../lib/features.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
@@ -67,7 +68,17 @@ export default async function plaidRoutes(app: FastifyInstance) {
     }
   }
 
+  // Settings > Plaid switched off: no linking, reconnecting or syncing. Banks already connected,
+  // their transactions and their settings (import from, import on/off, remove) still work.
+  const NEEDS_PLAID_ON = new Set(["POST /api/plaid/link-token", "POST /api/plaid/exchange", "POST /api/plaid/items/:id/refresh", "POST /api/plaid/sync"]);
+  app.addHook("preHandler", async (req) => {
+    // (not set up at all: the route itself says so)
+    if (NEEDS_PLAID_ON.has(`${req.method} ${req.routeOptions.url}`) && (await plaid.stored()) && !(await isOn(db, "plaid")))
+      throw new HttpError(409, "Plaid is turned off. Turn it on in Settings › Plaid.");
+  });
+
   const listItems = async () => {
+    const plaidOn = await isOn(db, "plaid");
     const current = (await plaid.stored())?.env ?? null;
     const items = await db.query.plaidItems.findMany({
       with: { accounts: { orderBy: (a, { asc }) => [asc(a.id)] } },
@@ -75,7 +86,7 @@ export default async function plaidRoutes(app: FastifyInstance) {
     });
     return items.map(({ accessTokenEnc: _t, cursor: _c, ...i }) => ({
       ...i,
-      active: i.env === current, // connections from the other environment are paused
+      active: plaidOn && i.env === current, // paused: Plaid off, or connected with the other environment's keys
     }));
   };
 

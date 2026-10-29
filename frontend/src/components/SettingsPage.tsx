@@ -1,3 +1,4 @@
+import { FeatureSwitch } from "./FeatureSwitch";
 import { useEffect, useState } from "react";
 import BudgetSettings from "./BudgetSettings";
 import DataSettings from "./DataSettings";
@@ -13,7 +14,6 @@ const TABS = [
   { id: "profile", label: "Profile" },
   { id: "budget", label: "Budget" },
   { id: "security", label: "Security" },
-  { id: "signin", label: "Sign-in" },
   { id: "api", label: "API keys" },
   { id: "email", label: "Email" },
   { id: "plaid", label: "Plaid" },
@@ -26,6 +26,7 @@ type Tab = (typeof TABS)[number]["id"];
 // "#/settings/security" -> "security"
 const tabFromHash = (): Tab => {
   const t = window.location.hash.split("?")[0].split("/")[2];
+  if (t === "signin") return "security"; // OAuth sign-in moved into Security
   return (TABS.find((x) => x.id === t)?.id ?? "profile") as Tab;
 };
 
@@ -67,22 +68,45 @@ export default function SettingsPage() {
           <>
             <ChangePassword />
             <Passkeys />
+            <SignInSettings />
             <Devices />
             <SignInHistory />
           </>
         )}
-        {tab === "signin" && <SignInSettings />}
-        {tab === "api" && <ApiKeys />}
+        {tab === "api" && (
+          <FeatureSwitch
+            feature="apiKeys"
+            title="API keys"
+            text="Other apps (like n8n or a script) can use your budget with a key. Turn this off to refuse every key at once."
+            offText="Off: every request made with a key is refused (and shows in Logs). Your keys are kept for when you turn this back on."
+          >
+            <ApiKeys />
+          </FeatureSwitch>
+        )}
         {tab === "email" && <EmailSettings />}
         {tab === "plaid" && (
-          <>
+          <FeatureSwitch
+            feature="plaid"
+            title="Bank syncing with Plaid"
+            text="Connect your banks and import their transactions automatically."
+            offText="Off: no bank syncing or connecting. Connected banks and their imported transactions stay, shown as paused on the Accounts page. Your Plaid keys are kept."
+          >
             <PlaidSettings />
             <p className="px-1 text-subtle">
               Connect banks and see their balances on the <a href="#/accounts" className="font-semibold text-link hover:underline">Accounts</a> page.
             </p>
-          </>
+          </FeatureSwitch>
         )}
-        {tab === "ai" && <AiSettings />}
+        {tab === "ai" && (
+          <FeatureSwitch
+            feature="ai"
+            title="AI"
+            text={<>Let AI suggest categories for your transactions. Choose when it's used with <a href="#/settings/budget" className="font-semibold text-link hover:underline">AI categorization</a> in Settings › Budget.</>}
+            offText="Off: AI is never used. Your AI services are kept for when you turn this back on."
+          >
+            <AiSettings />
+          </FeatureSwitch>
+        )}
         {tab === "data" && <DataSettings />}
         {tab === "logs" && <LogsSettings />}
       </div>

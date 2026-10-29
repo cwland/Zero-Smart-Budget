@@ -1,3 +1,4 @@
+import { isOn } from "../lib/features.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -217,6 +218,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     const body = z.object({ enabled: z.boolean().optional(), mode: z.enum(["auto", "manual"]).optional(), askNextOnNoMatch: z.boolean().optional() }).strict().parse(req.body);
     const current = await app.ai.stored();
     if (!current) throw new HttpError(400, "Set up an AI service first in Settings > AI.");
+    if (body.enabled && !(await isOn(app.db, "ai"))) throw new HttpError(400, "AI is turned off. Turn it on in Settings > AI first.");
     if (body.enabled && !(await app.ai.summary())?.ready) throw new HttpError(400, "None of your AI services is ready. Finish setting one up in Settings > AI.");
     await app.ai.save({
       enabled: body.enabled ?? current.enabled,

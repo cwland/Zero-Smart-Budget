@@ -1,3 +1,4 @@
+import { isOn } from "./features.js";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { budgetMonths, plaidAccounts, plaidItems, transactions, transactionSplits } from "../db/schema.js";
@@ -204,6 +205,7 @@ export function syncAll(db: Db, plaid: PlaidService): Promise<ItemSyncResult[]> 
     try {
       const env = (await plaid.stored())?.env;
       if (!env) return [];
+      if (!(await isOn(db, "plaid"))) return []; // Settings > Plaid switched off: no syncing
       const items = await db.select().from(plaidItems).where(eq(plaidItems.env, env));
       const results: ItemSyncResult[] = [];
       for (const item of items) {

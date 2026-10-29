@@ -17,6 +17,7 @@ interface AiUsage {
   mode: "auto" | "manual";
   askNextOnNoMatch: boolean;
   ready: boolean; // at least one service is set up and on
+  available: boolean; // Settings > AI's master switch
   services: { name: string; provider: string; enabled: boolean }[];
 }
 
@@ -258,7 +259,8 @@ export default function BudgetSettings() {
   const updateAi = (changes: Partial<Pick<AiUsage, "enabled" | "mode" | "askNextOnNoMatch">>) =>
     run(async () => setAi((await api<{ settings: AiUsage }>("PUT", "/api/settings/ai/usage", changes)).settings));
 
-  const aiReady = !!ai?.ready;
+  const aiOff = !!ai && !ai.available; // Settings > AI switched off: greyed out here
+  const aiReady = !!ai?.ready && !aiOff;
   const aiOn = !!ai?.enabled && aiReady;
 
   return (
@@ -284,7 +286,15 @@ export default function BudgetSettings() {
           </button>
         }
         text={
-          aiReady ? (
+          aiOff ? (
+            <>
+              AI is turned off. Turn it on in{" "}
+              <a href="#/settings/ai" className="font-semibold text-link hover:underline">
+                Settings › AI
+              </a>{" "}
+              to use it here.
+            </>
+          ) : aiReady ? (
             "When a transaction has no history to learn from, AI suggests a budget item. Nothing is assigned until you accept it."
           ) : (
             <>
