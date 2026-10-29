@@ -138,6 +138,7 @@ Saved keys and passwords (AI keys, the email password, Plaid secrets) are includ
 - Make a key with `openssl rand -base64 32` and put `BACKUP_KEY=...` in `.env` (Docker; `env_file` passes it to the API) or `backend/.env` (npm). Restart the API.
 - **Save a copy of the key somewhere safe, away from the server** (a password manager is ideal). It can't be recovered: without it, the keys and passwords in your backups can't be restored. Restoring on another server needs the same `BACKUP_KEY` (a different `JWT_SECRET` there is fine).
 - If a key or password can't be read on restore, the one already saved on this server is kept; otherwise it has to be entered again.
+- Restoring a backup from **another server**: Settings → Data → Restore from a file… has a Backup key box for that server's `BACKUP_KEY` (used for that restore only, never saved; a key that doesn't match changes nothing). API: send it in an `X-Backup-Key` header.
 With Docker, `./backups` is mounted into the API container so backups survive updates.
 
 API: `GET /api/export`, `GET /api/export/transactions.csv?from=&to=`, `GET /api/export/budget.csv?year=&month=`,

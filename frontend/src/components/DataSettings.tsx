@@ -53,8 +53,7 @@ export default function DataSettings() {
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [backups, setBackups] = useState<BackupsState | null>(null);
   const [busy, setBusy] = useState(false);
-  const [restore, setRestore] = useState<RestoreFile | null>(null);
-  const [confirmRestore, setConfirmRestore] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [allBackups, setAllBackups] = useState(false);
   const download = (b: BackupInfo) => run(async () => `Downloaded ${await downloadFile(`/api/backups/${b.name}`)}`);
   // Inside the popup: the message shows there, so the page behind doesn't move
@@ -88,19 +87,6 @@ export default function DataSettings() {
       setBusy(false);
     }
   };
-
-  async function pickFile(file: File | undefined) {
-    setRestore(null);
-    setConfirmRestore(false);
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      if (!["Zero Smart Budget", "ZeroPoint Budget", "Cory's Dollar"].includes(data?.app) || !Array.isArray(data.months)) throw new Error();
-      setRestore({ name: file.name, data, exportedAt: data.exportedAt, months: data.months.length, transactions: data.transactions?.length ?? 0, settings: data.settings?.secrets ?? null });
-    } catch {
-      setMessage({ kind: "error", text: "That file isn't a Zero Smart Budget backup" });
-    }
-  }
 
   return (
     <div>
@@ -182,48 +168,18 @@ export default function DataSettings() {
           <p className="text-subtle">
             Load a backup or "Everything (JSON)" export. This <strong className="text-ink">replaces all budget data</strong> (months, transactions, funds) and the settings saved in the file. Your login stays the same, and a safety backup of the current data is saved first.
           </p>
-          <label className="mt-4 block">
-            <span className="sr-only">Backup file</span>
-            <input
-              type="file"
-              accept="application/json,.json"
-              aria-label="Backup file"
-              onChange={(e) => pickFile(e.target.files?.[0])}
-              className="block w-full text-sm text-subtle file:mr-3 file:rounded file:border-0 file:bg-pressed file:px-4 file:py-2.5 file:font-semibold file:text-primary hover:file:bg-active"
+          <button type="button" disabled={busy} onClick={() => (setMessage(null), setRestoring(true))} className={`${button} mt-4`}>
+            Restore from a file…
+          </button>
+          {restoring && (
+            <RestoreDialog
+              onClose={() => setRestoring(false)}
+              onDone={async (text) => {
+                setRestoring(false);
+                setMessage({ kind: "ok", text });
+                await loadBackups();
+              }}
             />
-          </label>
-
-          {restore && (
-            <div className="mt-4 rounded-lg border border-warning/50 bg-warning/5 p-4">
-              <p>
-                <strong>{restore.name}</strong>
-                {restore.exportedAt && <> from {when(restore.exportedAt)}</>}: {restore.months} month{restore.months === 1 ? "" : "s"}, {restore.transactions} transaction{restore.transactions === 1 ? "" : "s"}.
-              </p>
-              <p className="mt-1 text-sm text-subtle">
-                {restore.settings === null
-                  ? "No settings in this file (an older backup); your settings stay as they are."
-                  : restore.settings === "encrypted"
-                    ? "Includes settings, with keys and passwords encrypted by BACKUP_KEY. They come back if this server has the same BACKUP_KEY."
-                    : "Includes settings, but not keys or passwords (made without BACKUP_KEY). Keys you've already saved here are kept."}
-              </p>
-              <button
-                disabled={busy}
-                onBlur={() => setConfirmRestore(false)}
-                onClick={() => {
-                  if (!confirmRestore) return setConfirmRestore(true);
-                  void run(async () => {
-                    const res = await api<RestoreResult>("POST", "/api/import?confirm=replace", restore.data);
-                    setRestore(null);
-                    setConfirmRestore(false);
-                    await loadBackups();
-                    return `Restored ${res.months} months and ${res.transactions} transactions. Your previous data was saved as ${res.safetyBackup}.${settingsNote(res.settings)}`;
-                  });
-                }}
-                className={`mt-3 rounded px-4 py-2.5 font-semibold ${confirmRestore ? "bg-error text-white" : "border border-error text-error hover:bg-error-subtle"}`}
-              >
-                {confirmRestore ? "Yes, replace everything" : "Replace budget data and settings"}
-              </button>
-            </div>
           )}
         </Card>
       </div>
@@ -278,5 +234,126 @@ function BackupRow({ b, onDownload }: { b: BackupInfo; onDownload: () => void })
         Download
       </button>
     </li>
+  );
+}
+
+// Restore: pick a file, see what's in it, optionally give the backup key of the server it came
+// from, then confirm. Nothing changes until the last click.
+function RestoreDialog({ onClose, onDone }: { onClose: () => void; onDone: (message: string) => void }) {
+  const [file, setFile] = useState<RestoreFile | null>(null);
+  const [fileError, setFileError] = useState("");
+  const [key, setKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function pick(f: File | undefined) {
+    setFile(null);
+    setFileError("");
+    setError("");
+    setConfirm(false);
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!["Zero Smart Budget", "ZeroPoint Budget", "Cory's Dollar"].includes(data?.app) || !Array.isArray(data.months)) throw new Error();
+      setFile({ name: f.name, data, exportedAt: data.exportedAt, months: data.months.length, transactions: data.transactions?.length ?? 0, settings: data.settings?.secrets ?? null });
+    } catch {
+      setFileError("That file isn't a Zero Smart Budget backup.");
+    }
+  }
+
+  async function restore() {
+    if (!file) return;
+    if (!confirm) return setConfirm(true);
+    setBusy(true);
+    setError("");
+    try {
+      const res = await api<RestoreResult>("POST", "/api/import?confirm=replace", file.data, key.trim() ? { "x-backup-key": key.trim() } : undefined);
+      onDone(`Restored ${res.months} month${res.months === 1 ? "" : "s"} and ${res.transactions} transaction${res.transactions === 1 ? "" : "s"}. Your previous data was saved as ${res.safetyBackup}.${settingsNote(res.settings)}`);
+    } catch (e) {
+      setError((e as Error).message);
+      setConfirm(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Popup title="Restore from a backup" onClose={onClose}>
+      <div className="flex flex-col gap-4 p-6">
+        <label className="block text-sm font-medium text-subtle">
+          Backup file
+          <input
+            type="file"
+            accept="application/json,.json"
+            aria-label="Backup file"
+            onChange={(e) => pick(e.target.files?.[0])}
+            className="mt-1 block w-full text-sm text-subtle file:mr-3 file:rounded file:border-0 file:bg-pressed file:px-4 file:py-2.5 file:font-semibold file:text-primary hover:file:bg-active"
+          />
+        </label>
+        {fileError && <p role="alert" className="text-sm text-error">{fileError}</p>}
+
+        {file && (
+          <>
+            <div className="rounded-lg bg-page p-3 text-sm">
+              <p>
+                <strong>{file.name}</strong>
+                {file.exportedAt && <> from {when(file.exportedAt)}</>}
+              </p>
+              <p className="mt-0.5">
+                {file.months} month{file.months === 1 ? "" : "s"}, {file.transactions} transaction{file.transactions === 1 ? "" : "s"}
+              </p>
+              <p className="mt-1 text-subtle">
+                {file.settings === null
+                  ? "No settings in this file (an older backup); your settings stay as they are."
+                  : file.settings === "encrypted"
+                    ? "Includes settings, with keys and passwords encrypted by a BACKUP_KEY."
+                    : "Includes settings, but not keys or passwords (made without BACKUP_KEY). Keys already saved here are kept."}
+              </p>
+            </div>
+
+            {file.settings === "encrypted" && (
+              <label className="block text-sm font-medium text-subtle">
+                Backup key <span className="font-normal text-muted">(only if it came from another server)</span>
+                <span className="relative mt-1 block">
+                  <input
+                    aria-label="Backup key"
+                    type="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    style={showKey ? undefined : ({ WebkitTextSecurity: "disc" } as React.CSSProperties)}
+                    placeholder="Leave blank to use this server's BACKUP_KEY"
+                    value={key}
+                    onChange={(e) => (setKey(e.target.value), setError(""))}
+                    className="w-full rounded border border-muted/50 bg-white px-3 py-2 pr-14 font-mono text-sm outline-none focus:border-action focus:ring-2 focus:ring-action/15"
+                  />
+                  <button type="button" onClick={() => setShowKey((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 px-1 text-xs font-semibold text-link">
+                    {showKey ? "Hide" : "Show"}
+                  </button>
+                </span>
+                <span className="mt-1 block font-normal">The BACKUP_KEY of the server that made this backup. It's used for this restore only and isn't saved. If it doesn't match, nothing changes.</span>
+              </label>
+            )}
+
+            {error && <p role="alert" className="rounded-lg bg-error-subtle px-3 py-2 text-sm text-error">{error}</p>}
+
+            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
+              <button type="button" onClick={onClose} className="px-3 py-2.5 font-semibold text-subtle hover:underline">
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void restore()}
+                className={`rounded px-4 py-2.5 font-semibold disabled:opacity-60 ${confirm ? "bg-error text-white" : "border border-error text-error hover:bg-error-subtle"}`}
+              >
+                {busy ? "Restoring…" : confirm ? "Yes, replace everything" : "Replace budget data and settings"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Popup>
   );
 }

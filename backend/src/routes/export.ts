@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { BACKUP_NAME, listBackups, pruneBackups, writeBackup } from "../lib/backup.js";
 import { budgetCsv, buildExport, importData, importSchema, transactionsCsv } from "../lib/dataExport.js";
+import { checkBackupKey, type SettingsSection } from "../lib/settingsBackup.js";
 import { HttpError, notFound } from "../lib/errors.js";
 import { isoDate } from "../lib/validation.js";
 
@@ -80,9 +81,20 @@ export default async function exportRoutes(app: FastifyInstance) {
     const parsed = importSchema.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, "That file isn't a Zero Smart Budget backup");
 
+    // A backup from another server: its BACKUP_KEY can be given for this restore (X-Backup-Key
+    // header, so it never lands in a URL or log). Checked before anything changes.
+    const given = req.headers["x-backup-key"];
+    const otherKey = typeof given === "string" && given.trim() ? given.trim() : null;
+    if (otherKey) {
+      if (parsed.data.settings?.secrets !== "encrypted") throw new HttpError(400, "This backup has no encrypted keys or passwords, so no backup key is needed. Leave the key blank.");
+      const { total, readable } = checkBackupKey(parsed.data.settings as SettingsSection, otherKey);
+      if (total && !readable) throw new HttpError(400, "That backup key doesn't match this file. Nothing was changed. Check the key and try again.");
+    }
+    const secrets = otherKey ? { ...app.backupSecrets(), backupKey: otherKey } : app.backupSecrets();
+
     const safety = await writeBackup(db, app.backupDir, app.backupSecrets(), "before-restore");
     try {
-      const counts = await importData(db, parsed.data, app.backupSecrets());
+      const counts = await importData(db, parsed.data, secrets);
       return { ok: true, safetyBackup: safety.name, ...counts };
     } catch (err) {
       req.log.error(err);

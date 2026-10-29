@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, api } from "../api";
 import { Card, field, primaryButton, secondaryButton } from "./settingsUi";
 import { Toggle } from "./BudgetSettings";
+import { Popup } from "./Popup";
 
 type Security = "starttls" | "ssl" | "auto" | "none";
 
@@ -74,6 +75,7 @@ export default function EmailSettings() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<"" | "save" | "test" | "remove">("");
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [testing, setTesting] = useState(false); // the test email popup
 
   async function load() {
     const d = await api<EmailSettingsResponse>("GET", "/api/settings/email");
@@ -202,7 +204,8 @@ export default function EmailSettings() {
     } catch (err) {
       if (err instanceof ApiError && err.details?.length) {
         setFieldErrors(Object.fromEntries(err.details.map((d) => [d.path, d.message])));
-        setTestMsg({ ok: false, text: "Check the highlighted fields above." });
+        // The popup covers the form, so say what's wrong here too
+        setTestMsg({ ok: false, text: `Fix these in the form first: ${err.details.map((d) => d.message).join(". ")}.` });
       } else setTestMsg({ ok: false, text: (err as Error).message });
     } finally {
       setBusy("");
@@ -374,8 +377,39 @@ export default function EmailSettings() {
                 {confirmRemove ? "Remove all email settings?" : "Remove settings"}
               </button>
             )}
+            <button type="button" onClick={() => (setTestMsg(null), setTesting(true))} disabled={!!busy} className={secondaryButton + " ml-auto"}>
+              Send test email
+            </button>
           </div>
         </form>}
+
+        {testing && (
+          <Popup title="Send a test email" onClose={() => setTesting(false)}>
+            <div className="flex flex-col gap-4 p-6">
+              <p className="text-sm text-subtle">Uses the settings in the form, even before you save, so you can check them first.</p>
+              <label className="text-sm font-medium text-subtle">
+                Send to
+                <input aria-label="Send test to" type="email" placeholder="you@example.com" value={testTo} onChange={(e) => setTestTo(e.target.value)} className={field} />
+              </label>
+              {testMsg && (
+                <p role={testMsg.ok ? "status" : "alert"} className={`rounded-lg px-4 py-3 text-sm ${testMsg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>
+                  {testMsg.text}
+                </p>
+              )}
+              <p className="text-sm text-subtle">
+                With email on, an app address, and an email on <a href="#/settings/profile" className="font-semibold text-link hover:underline">your profile</a>, the sign-in page shows <strong>Forgot password?</strong>
+              </p>
+              <div className="flex justify-end gap-3 border-t border-line pt-4">
+                <button type="button" onClick={() => setTesting(false)} className="px-3 py-2.5 font-semibold text-subtle hover:underline">
+                  Close
+                </button>
+                <button type="button" onClick={test} disabled={!!busy} className={primaryButton}>
+                  {busy === "test" ? "Sending…" : "Send"}
+                </button>
+              </div>
+            </div>
+          </Popup>
+        )}
 
         {msg && (
           <p role={msg.ok ? "status" : "alert"} className={`mt-4 rounded-lg px-4 py-3 text-sm ${msg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>
@@ -390,26 +424,6 @@ export default function EmailSettings() {
           .
         </p>
       </Card>
-
-      {form.enabled && <Card title="Send a test email" description="Uses what's in the form above, even before you save, so you can check your settings first.">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="min-w-56 flex-1 text-sm font-medium text-subtle">
-            Send to
-            <input aria-label="Send test to" type="email" placeholder="you@example.com" value={testTo} onChange={(e) => setTestTo(e.target.value)} className={field} />
-          </label>
-          <button type="button" onClick={test} disabled={!!busy} className={secondaryButton}>
-            {busy === "test" ? "Sending…" : "Send test email"}
-          </button>
-        </div>
-        {testMsg && (
-          <p role={testMsg.ok ? "status" : "alert"} className={`mt-3 rounded-lg px-4 py-3 text-sm ${testMsg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>
-            {testMsg.text}
-          </p>
-        )}
-        <p className="mt-3 text-sm text-subtle">
-          With email on, an app address, and an email on <a href="#/settings/profile" className="font-semibold text-link hover:underline">your profile</a>, the sign-in page shows <strong>Forgot password?</strong>
-        </p>
-      </Card>}
 
       <Card title="Locked out without email?">
         <p className="text-subtle">Reset the password from the server itself:</p>

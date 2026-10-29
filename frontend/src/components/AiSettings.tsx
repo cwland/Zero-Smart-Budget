@@ -6,6 +6,7 @@ import { ApiError, api } from "../api";
 import { Card, Notice, field, primaryButton, secondaryButton } from "./settingsUi";
 import { ChevronDown, ChevronRight, EyeIcon, EyeOffIcon, GripIcon } from "./Icons";
 import { Popup } from "./Popup";
+import { useUnsavedGuard } from "../unsavedGuard";
 
 // Which saved services are collapsed (remembered in this browser)
 const COLLAPSED_KEY = "zeropoint.aiCollapsed";
@@ -105,7 +106,7 @@ const blank = (provider: Provider = "local"): Draft => ({
 // The fields one service needs, to save, test or list models
 const serviceBody = (d: Draft) => ({ id: d.id, name: d.name.trim(), enabled: true, provider: d.provider, model: d.model.trim(), baseUrl: d.baseUrl.trim() || null, apiKey: d.apiKey.trim() });
 
-function ServiceCard({ d, index, count, saving, onChange, onRemove, onMove }: { d: Draft; index: number; count: number; saving: boolean; onChange: (c: Partial<Draft>) => void; onRemove: () => void; onMove: (to: number) => void }) {
+function ServiceCard({ d, index, count, saving, dirty, failed, onSave, onChange, onRemove, onMove }: { d: Draft; index: number; count: number; saving: boolean; dirty: boolean; failed: boolean; onSave: (skipCheck?: boolean) => void; onChange: (c: Partial<Draft>) => void; onRemove: () => void; onMove: (to: number) => void }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: d.key });
   const [showKey, setShowKey] = useState(false);
   // New (unsaved) services start open; saved ones open or closed as you left them
@@ -261,9 +262,9 @@ function ServiceCard({ d, index, count, saving, onChange, onRemove, onMove }: { 
         </label>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Saves the whole list; every service is checked first */}
-          <button type="submit" disabled={!!d.busy || saving} className={primaryButton + " !py-2"}>
-            {d.busy === "test" ? "Checking…" : saving ? "Saving…" : "Save"}
+          {/* Checks this service, then saves it (only enabled once something on it changed) */}
+          <button type="button" onClick={() => onSave()} disabled={!dirty || !!d.busy || saving} className={primaryButton + " !py-2"}>
+            {d.busy === "test" ? "Checking…" : "Save"}
           </button>
           <span className="flex gap-1">
             <button type="button" disabled={index === 0} onClick={() => onMove(index - 1)} aria-label={`Move ${d.name} up`} className="rounded px-2 py-1 text-subtle hover:bg-page disabled:opacity-30">
@@ -278,6 +279,11 @@ function ServiceCard({ d, index, count, saving, onChange, onRemove, onMove }: { 
           </button>
         </div>
         <Notice msg={d.status} />
+        {failed && (
+          <button type="button" onClick={() => onSave(true)} disabled={saving} className="self-start text-sm font-semibold text-error hover:underline">
+            Save anyway
+          </button>
+        )}
       </div>}
     </li>
   );
@@ -322,31 +328,90 @@ export default function AiSettings() {
     move(from, to);
   };
 
-  // Save checks every service first (a short test question to each). All answered: saved.
-  // Any didn't: nothing is saved, that service shows why, and "Save anyway" is offered.
-  const [failedCheck, setFailedCheck] = useState(false);
-  const save = async (e?: FormEvent, skipCheck = false) => {
-    e?.preventDefault();
+  // ---- What's changed since the last save ----
+  const savedById = new Map((saved?.services ?? []).map((sv) => [sv.id, sv]));
+  const cardDirty = (d: Draft) => {
+    const sv = d.id ? savedById.get(d.id) : undefined;
+    if (!sv) return !!saved?.services.length || !!(d.model.trim() || d.baseUrl.trim() || d.apiKey.trim()) || d.provider !== "local"; // new (a first, untouched card isn't)
+    return d.name.trim() !== sv.name || d.provider !== sv.provider || d.model.trim() !== sv.model || (d.baseUrl.trim() || null) !== (sv.baseUrl ?? null) || d.apiKey.trim() !== (sv.apiKey ?? "");
+  };
+  const savedIds = (saved?.services ?? []).map((sv) => sv.id);
+  const currentIds = services.filter((d) => d.id).map((d) => d.id!);
+  const listChanged = savedIds.join() !== currentIds.join(); // removed or reordered
+  const optionsChanged = String(saved?.maxPerRun ?? 50) !== maxPerRun || String(saved?.timeoutSec ?? 15) !== timeoutSec || (saved?.askNextOnNoMatch ?? false) !== askNext;
+  const anyDirty = services.some(cardDirty) || listChanged || optionsChanged;
+  useUnsavedGuard("ai-settings", anyDirty, "AI settings");
+
+  // Ask one service a short test question; shows the answer (or why not) on its card
+  const check = async (d: Draft) => {
+    change(d.key, { busy: "test", status: null });
+    try {
+      const r = await api<{ message: string }>("POST", "/api/settings/ai/test", serviceBody(d));
+      change(d.key, { busy: "", status: { ok: true, text: r.message } });
+      return null;
+    } catch (err) {
+      const text = errorText(err);
+      change(d.key, { busy: "", status: { ok: false, text } });
+      return text;
+    }
+  };
+  const afterFirstSetup = (wasEmpty: boolean, r: Saved) => {
+    if (wasEmpty && !r.enabled) setAskTurnOn(true);
+  };
+  const [failedCheck, setFailedCheck] = useState<"all" | string | null>(null); // which Save to offer "Save anyway" for
+
+  // A card's Save: checks that service only, then saves just that one. Other cards keep any
+  // edits you haven't saved yet.
+  const saveOne = async (d: Draft, skipCheck = false) => {
     setMsg(null);
-    setFailedCheck(false);
+    setFailedCheck(null);
     setBusy("save");
     try {
       if (!skipCheck) {
+        const failed = await check(d);
+        if (failed) {
+          change(d.key, { status: { ok: false, text: `Not saved: ${failed}` } });
+          setFailedCheck(d.key);
+          return;
+        }
+      }
+      const wasEmpty = !saved?.services.length;
+      const keep = (saved?.services ?? []).map((sv) => (sv.id === d.id ? serviceBody(d) : { id: sv.id, name: sv.name, enabled: true, provider: sv.provider, model: sv.model, baseUrl: sv.baseUrl }));
+      const r = await api<{ settings: Saved }>("PUT", "/api/settings/ai", {
+        maxPerRun: saved?.maxPerRun ?? 50,
+        timeoutSec: saved?.timeoutSec ?? 15,
+        askNextOnNoMatch: saved?.askNextOnNoMatch ?? false,
+        services: d.id ? keep : [...keep, serviceBody(d)],
+      });
+      const newId = d.id ?? r.settings.services.find((sv) => !savedIds.includes(sv.id))?.id;
+      const sv = r.settings.services.find((x) => x.id === newId);
+      setSaved(r.settings);
+      change(d.key, { id: newId, apiKey: sv?.apiKey ?? d.apiKey, status: { ok: true, text: skipCheck ? "Saved, even though it didn't answer. It's skipped until it answers again." : "Saved. It answered correctly." } });
+      afterFirstSetup(wasEmpty, r.settings);
+    } catch (err) {
+      change(d.key, { status: { ok: false, text: errorText(err) } });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  // The bottom Save: everything on the page. Only services you changed are checked.
+  const save = async (e?: FormEvent, skipCheck = false) => {
+    e?.preventDefault();
+    setMsg(null);
+    setFailedCheck(null);
+    setBusy("save");
+    try {
+      const changed = services.filter(cardDirty);
+      if (!skipCheck && changed.length) {
         const failed: string[] = [];
-        for (const d of services) {
-          change(d.key, { busy: "test", status: null });
-          try {
-            const r = await api<{ message: string }>("POST", "/api/settings/ai/test", serviceBody(d));
-            change(d.key, { busy: "", status: { ok: true, text: r.message } });
-          } catch (err) {
-            const text = errorText(err);
-            change(d.key, { busy: "", status: { ok: false, text } });
-            failed.push(services.length > 1 ? `${d.name.trim() || "A service"}: ${text}` : text);
-          }
+        for (const d of changed) {
+          const text = await check(d);
+          if (text) failed.push(services.length > 1 ? `${d.name.trim() || "A service"}: ${text}` : text);
         }
         if (failed.length) {
-          setMsg({ ok: false, text: `Not saved. ${services.length > 1 ? `${failed.length} of ${services.length} services didn't answer. ` : "The AI service didn't answer. "}${failed.join(" ")}` });
-          setFailedCheck(true);
+          setMsg({ ok: false, text: `Not saved. ${changed.length > 1 ? `${failed.length} of the ${changed.length} services you changed didn't answer. ` : "The service you changed didn't answer. "}${failed.join(" ")}` });
+          setFailedCheck("all");
           return;
         }
       }
@@ -357,10 +422,10 @@ export default function AiSettings() {
         askNextOnNoMatch: askNext && enabledCount >= 2,
         services: services.map(serviceBody),
       });
-      const firstSetup = !saved?.services.length;
+      const wasEmpty = !saved?.services.length;
       apply(r.settings);
-      setMsg({ ok: true, text: skipCheck ? "Saved, even though not every service answered. A service that's down is skipped until it answers again." : services.length > 1 ? "Saved. Every AI service answered." : "Saved. The AI service answered." });
-      if (firstSetup && !r.settings.enabled) setAskTurnOn(true);
+      setMsg({ ok: true, text: skipCheck ? "Saved, even though not every service answered. A service that's down is skipped until it answers again." : changed.length ? `Saved. ${changed.length > 1 ? "The services you changed answered." : "It answered correctly."}` : "Saved." });
+      afterFirstSetup(wasEmpty, r.settings);
     } catch (err) {
       setMsg({ ok: false, text: errorText(err) });
     } finally {
@@ -439,6 +504,9 @@ export default function AiSettings() {
                     index={i}
                     count={services.length}
                     saving={busy === "save"}
+                    dirty={cardDirty(d)}
+                    failed={failedCheck === d.key}
+                    onSave={(skip) => void saveOne(d, skip)}
                     onChange={(c) => change(d.key, c)}
                     onRemove={() => setServices((list) => list.filter((x) => x.key !== d.key))}
                     onMove={(to) => move(i, to)}
@@ -492,9 +560,10 @@ export default function AiSettings() {
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={!!busy} className={primaryButton}>
+          <button type="submit" disabled={!!busy || !anyDirty} className={primaryButton}>
             {busy === "save" ? "Saving…" : "Save"}
           </button>
+          {anyDirty && !busy && <span className="text-sm text-subtle">Unsaved changes</span>}
           {saved &&
             (confirmRemove ? (
               <span className="flex items-center gap-2">
@@ -512,7 +581,7 @@ export default function AiSettings() {
             ))}
         </div>
         <Notice msg={msg} />
-        {failedCheck && (
+        {failedCheck === "all" && (
           <button type="button" onClick={() => void save(undefined, true)} disabled={!!busy} className="self-start text-sm font-semibold text-error hover:underline">
             Save anyway
           </button>

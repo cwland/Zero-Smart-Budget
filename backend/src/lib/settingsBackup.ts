@@ -64,6 +64,19 @@ export async function exportSettings(db: Db, s: BackupSecrets): Promise<Settings
   return { secrets: s.backupKey ? "encrypted" : "left out", values };
 }
 
+// How many of the file's encrypted keys and passwords this backup key can read
+export function checkBackupKey(section: SettingsSection, key: string) {
+  let total = 0;
+  let readable = 0;
+  mapSecrets(section.values, (enc) => {
+    if (enc === LEFT_OUT) return enc;
+    total++;
+    if (decryptSecret(enc, backupSecret(key)) !== null) readable++;
+    return enc;
+  });
+  return { total, readable };
+}
+
 // Puts the backup's settings back. Settings not in the file are left as they are.
 // Returns how many secrets came back and how many couldn't (no/different BACKUP_KEY, or left out).
 export async function importSettings(db: Db, section: SettingsSection, s: BackupSecrets) {

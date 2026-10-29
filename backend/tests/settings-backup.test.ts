@@ -92,6 +92,33 @@ describe("settings in backups", () => {
     expect((await plain.api("GET", "/api/settings/email")).body.settings).toMatchObject({ host: "smtp.gmail.com", passwordSet: false });
   });
 
+  it("a backup from another server restores with that server's key, given for this restore only", async () => {
+    // Made on a server with a different BACKUP_KEY
+    const other = await setupTestApp({ backupKey: "the-other-servers-key-123", jwtSecret: "another-server-secret-123" });
+    await other.reset();
+    await other.login();
+    await other.api("PUT", "/api/settings/ai", ai);
+    const file = (await other.api("GET", "/api/export")).body;
+    await other.close();
+    // (both servers share the test database: sign in again here)
+    t.setToken((await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" })).body.token);
+
+    const restore = (key?: string) => t.app.inject({ method: "POST", url: "/api/import?confirm=replace", payload: file, headers: { authorization: `Bearer ${t.getToken()}`, ...(key ? { "x-backup-key": key } : {}) } }).then((r) => ({ status: r.statusCode, body: r.json() }));
+    // Wrong key: refused before anything changes
+    await t.api("PUT", "/api/settings/budget", { fastTrack: false });
+    const wrong = await restore("not-the-right-key-000");
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.error).toMatch(/doesn't match this file/);
+    expect((await t.api("GET", "/api/settings/budget")).body.fastTrack).toBe(false);
+    // Right key: keys come back
+    const ok = await restore("the-other-servers-key-123");
+    expect(ok.body.settings).toMatchObject({ secretsRestored: 1, secretsMissing: 0 });
+    expect((await t.api("GET", "/api/settings/ai")).body.settings.services[0].apiKey).toBe("sk-secret-123");
+    // Without it (this server's own key doesn't match): settings come back, keys don't
+    await t.api("DELETE", "/api/settings/ai");
+    expect((await restore()).body.settings).toMatchObject({ secretsRestored: 0, secretsMissing: 1 });
+  });
+
   it("older backups without settings leave your settings alone", async () => {
     await setUp();
     const file = (await t.api("GET", "/api/export")).body;
