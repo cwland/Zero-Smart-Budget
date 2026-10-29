@@ -67,6 +67,7 @@ describe("sessions", () => {
 
 describe("password reset by email", () => {
   it("status says reset is available only once there's an email on the account", async () => {
+    await t.api("PATCH", "/api/profile", { email: "" }); // (accounts start with one now; it can be removed in Profile)
     expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ emailEnabled: true, resetAvailable: false });
     await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
     expect((await t.api("GET", "/api/auth/status")).body.resetAvailable).toBe(true);
@@ -117,6 +118,7 @@ describe("password reset by email", () => {
   });
 
   it("doesn't send anything (but answers the same) when there's no email on file", async () => {
+    await t.api("PATCH", "/api/profile", { email: "" });
     t.setToken("");
     const res = await t.api("POST", "/api/auth/forgot", {});
     expect(res.status).toBe(200);
@@ -124,6 +126,7 @@ describe("password reset by email", () => {
   });
 
   it("test email goes to the account address", async () => {
+    await t.api("PATCH", "/api/profile", { email: "" });
     expect((await t.api("POST", "/api/settings/email/test", {})).status).toBe(400); // no address yet
     await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
     const res = await t.api("POST", "/api/settings/email/test", {});

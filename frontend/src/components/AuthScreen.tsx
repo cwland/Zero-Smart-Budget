@@ -3,7 +3,7 @@ import WhatsNew from "./WhatsNew";
 import { KeyRound } from "lucide-react";
 import { passkeyError, passkeysAvailable, signInWithPasskey, startPasskeyAutofill } from "../passkeys";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api } from "../api";
+import { ApiError, api } from "../api";
 import type { User } from "../session";
 
 interface Props {
@@ -81,6 +81,7 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
@@ -117,10 +118,10 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
     if (setup && password !== confirm) return setError("Passwords don't match");
     setBusy(true);
     try {
-      const res = await api<{ token: string; user: User }>("POST", setup ? "/api/auth/setup" : "/api/auth/login", { username, password });
+      const res = await api<{ token: string; user: User }>("POST", setup ? "/api/auth/setup" : "/api/auth/login", setup ? { username, password, email: email.trim() } : { username, password });
       onDone(res.token, res.user);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof ApiError && err.details?.length ? err.details.map((d) => d.message).join(". ") : (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -144,6 +145,13 @@ export default function AuthScreen({ mode, resetAvailable, onDone }: Props) {
           Username
           <input className={input} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete={canPasskey ? "username webauthn" : "username"} required />
         </label>
+        {setup && (
+          <label className="mt-4 block text-sm font-medium text-subtle">
+            Email
+            <input className={input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" required />
+            <span className="mt-1 block text-xs font-normal">For password resets and reminders. You can change it later in Settings › Profile.</span>
+          </label>
+        )}
         <label className="mt-4 block text-sm font-medium text-subtle">
           Password
           <input

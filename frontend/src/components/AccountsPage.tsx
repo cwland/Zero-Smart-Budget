@@ -45,7 +45,7 @@ interface AccountsData {
   plaidReady: boolean;
   institutions: Institution[];
   manual: ManualAccount[];
-  assets: ManualAccount[]; // home, vehicle, other things you own: net worth only
+  assets: ManualAccount[]; // home, vehicle, other things you own: in the total balance only
   totals: { haveCents: number; oweCents: number; netCents: number; assetsCents: number };
 }
 
@@ -160,7 +160,7 @@ function ManualForm({ initial, asset, onSave, onDelete, onCancel }: { initial?: 
   }
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 p-5" aria-label={initial ? (isAsset ? "Edit asset" : "Edit account") : isAsset ? "Add asset" : "Add account"}>
-      {isAsset && <p className="rounded-lg bg-page px-3 py-2 text-sm text-subtle">Things you own, like your home or a car. Their value counts toward your net worth, but they're never part of your budget.</p>}
+      {isAsset && <p className="rounded-lg bg-page px-3 py-2 text-sm text-subtle">Things you own, like your home or a car. Their value counts toward your total balance, but they're never part of your budget.</p>}
       <label className="font-semibold">
         {isAsset ? "Asset Name" : "Account Name"}
         <input autoFocus aria-label={isAsset ? "Asset name" : "Account name"} value={name} onChange={(e) => setName(e.target.value)} placeholder={isAsset ? "e.g. House, 2021 Tacoma, Boat" : "e.g. Cash envelope, 401(k), Car loan"} className={`${input} font-normal`} />
@@ -277,6 +277,7 @@ function Row({ name, sub, cents, onClick, selected }: { name: string; sub?: stri
         <button
           onClick={onClick}
           aria-pressed={selected}
+          data-selected-account={selected ? "" : undefined}
           className={`-mx-6 flex w-[calc(100%+3rem)] items-center gap-4 px-6 py-5 text-left transition-shadow ${
             selected ? "relative z-10 rounded-xl bg-white shadow-[0_6px_24px_rgba(31,36,38,0.16)] md:-mx-8 md:w-[calc(100%+4rem)] md:px-8" : "hover:bg-pressed"
           }`}
@@ -333,7 +334,7 @@ function AccountPanel({
   }
 
   return (
-    <aside aria-label="Account details" className="w-full shrink-0 rounded-2xl bg-white p-6 md:sticky md:top-6 md:w-[360px]">
+    <aside aria-label="Account details" data-account-panel className="rounded-2xl bg-white p-6">
       <div className="flex items-start gap-3">
         {inst ? (
           <BankBadge name={inst.institutionName} ok={inst.status === "ok"} small />
@@ -378,7 +379,7 @@ function AccountPanel({
 
       {manual && (
         <div className="mt-6 rounded-2xl bg-page p-5">
-          <p className="text-sm text-subtle">{isAsset ? "Counts toward your net worth, never part of your budget." : "You keep this balance up to date yourself."}</p>
+          <p className="text-sm text-subtle">{isAsset ? "Counts toward your total balance, never part of your budget." : "You keep this balance up to date yourself."}</p>
           <button onClick={() => onEdit(manual)} className="mt-3 rounded bg-primary px-4 py-2.5 font-semibold text-white hover:bg-primary-pressed">
             {isAsset ? "Edit asset" : "Update balance"}
           </button>
@@ -408,6 +409,17 @@ export default function AccountsPage() {
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [popup]);
+  // A click anywhere outside the selected row and its panel closes it (popups excepted)
+  useEffect(() => {
+    if (!selected) return;
+    const outside = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      if (el?.closest("[data-account-panel], [data-selected-account], [role=dialog]")) return;
+      setSelected(null);
+    };
+    document.addEventListener("mousedown", outside);
+    return () => document.removeEventListener("mousedown", outside);
+  }, [selected]);
   const pick = (kind: "bank" | "manual", id: number) => setSelected((s) => (s?.kind === kind && s.id === id ? null : { kind, id }));
   const isSel = (kind: "bank" | "manual", id: number) => selected?.kind === kind && selected.id === id;
 
@@ -563,7 +575,7 @@ export default function AccountsPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-2xl font-bold">Assets</h2>
-                  <p className="text-subtle">Count toward your net worth, never part of your budget.</p>
+                  <p className="text-subtle">Count toward your total balance, never part of your budget.</p>
                 </div>
               </div>
               <ul className="divide-y divide-line">
@@ -599,39 +611,43 @@ export default function AccountsPage() {
           )}
         </div>
 
-        {data && selected ? (
-          <AccountPanel
-            data={data}
-            selected={selected}
-            onClose={() => setSelected(null)}
-            onEdit={(account) => setPopup({ kind: "editManual", account })}
-            onChanged={load}
-            onError={(text) => setMsg({ ok: false, text })}
-          />
-        ) : t && (data.institutions.length > 0 || data.manual.length > 0 || data.assets.length > 0) && (
-          <aside aria-label="Totals" className="w-full shrink-0 rounded-2xl bg-white p-5 md:sticky md:top-6 md:w-[300px]">
-            <h2 className="text-lg font-semibold">Net Worth</h2>
-            <div className={`tabular text-4xl font-semibold ${t.netCents < 0 ? "text-error" : "text-subtle"}`}>
-              {t.netCents < 0 ? "-" : ""}
-              {formatCents(Math.abs(t.netCents))}
-            </div>
-            <dl className="tabular mt-4 flex flex-col gap-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-subtle">What you have</dt>
-                <dd className="font-semibold">{formatCents(t.haveCents)}</dd>
+        {/* Right side: the totals always, and the selected account's details below them */}
+        {data && (t && (data.institutions.length > 0 || data.manual.length > 0 || data.assets.length > 0)) && (
+          <div className="flex w-full shrink-0 flex-col gap-4 md:sticky md:top-6 md:w-[360px]">
+            <aside aria-label="Totals" className="rounded-2xl bg-white p-5">
+              <h2 className="text-lg font-semibold">Total Balance</h2>
+              <div className={`tabular text-4xl font-semibold ${t.netCents < 0 ? "text-error" : "text-subtle"}`}>
+                {t.netCents < 0 ? "-" : ""}
+                {formatCents(Math.abs(t.netCents))}
               </div>
-              {t.assetsCents > 0 && (
-                <div className="flex justify-between pl-3 text-xs">
-                  <dt className="text-subtle">incl. assets</dt>
-                  <dd className="text-subtle">{formatCents(t.assetsCents)}</dd>
+              <dl className="tabular mt-4 flex flex-col gap-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-subtle">What you have</dt>
+                  <dd className="font-semibold">{formatCents(t.haveCents)}</dd>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <dt className="text-subtle">What you owe</dt>
-                <dd className="font-semibold text-error">{t.oweCents ? `-${formatCents(t.oweCents)}` : formatCents(0)}</dd>
-              </div>
-            </dl>
-          </aside>
+                {t.assetsCents > 0 && (
+                  <div className="flex justify-between pl-3 text-xs">
+                    <dt className="text-subtle">incl. assets</dt>
+                    <dd className="text-subtle">{formatCents(t.assetsCents)}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <dt className="text-subtle">What you owe</dt>
+                  <dd className="font-semibold text-error">{t.oweCents ? `-${formatCents(t.oweCents)}` : formatCents(0)}</dd>
+                </div>
+              </dl>
+            </aside>
+            {selected && (
+              <AccountPanel
+                data={data}
+                selected={selected}
+                onClose={() => setSelected(null)}
+                onEdit={(account) => setPopup({ kind: "editManual", account })}
+                onChanged={load}
+                onError={(text) => setMsg({ ok: false, text })}
+              />
+            )}
+          </div>
         )}
       </div>
 

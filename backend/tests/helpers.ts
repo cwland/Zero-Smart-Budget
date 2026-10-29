@@ -125,7 +125,7 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       token = "";
     },
     async login() {
-      const res = await api("POST", "/api/auth/setup", { username: "cory", password: "password123" });
+      const res = await api("POST", "/api/auth/setup", { username: "cory", password: "password123", email: "cory@example.com" });
       token = res.body.token;
     },
     getToken: () => token,

@@ -61,13 +61,13 @@ export default async function authRoutes(app: FastifyInstance) {
     };
   });
 
-  // First run only: create the single account
+  // First run only: create the single account (an email is required: password resets and notifications)
   app.post("/api/auth/setup", async (req) => {
-    const body = credentials.parse(req.body);
+    const body = credentials.extend({ email: z.string({ error: "Enter your email address" }).trim().email("That doesn't look like an email address").max(200) }).parse(req.body);
     if ((await userCount()) > 0) throw new HttpError(409, "Account already set up");
     const [user] = await db
       .insert(users)
-      .values({ username: body.username, passwordHash: await hashPassword(body.password) })
+      .values({ username: body.username, email: body.email, passwordHash: await hashPassword(body.password) })
       .returning();
     const { token, session } = await startSession(db, app.jwtSecret, req, user, "account set up", app.now());
     await logSignIn(db, req, { username: user.username, success: true, reason: "Account set up", sessionId: session.id });

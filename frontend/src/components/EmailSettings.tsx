@@ -3,6 +3,7 @@ import { ApiError, api } from "../api";
 import { Card, field, primaryButton, secondaryButton } from "./settingsUi";
 import { Toggle } from "./BudgetSettings";
 import { Popup } from "./Popup";
+import { useSession } from "../session";
 
 type Security = "starttls" | "ssl" | "auto" | "none";
 
@@ -69,6 +70,7 @@ export default function EmailSettings() {
   const [form, setForm] = useState<Form>(emptyForm);
   const [clearPassword, setClearPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { user } = useSession();
   const [testTo, setTestTo] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null); // shown in the test box
@@ -377,7 +379,12 @@ export default function EmailSettings() {
                 {confirmRemove ? "Remove all email settings?" : "Remove settings"}
               </button>
             )}
-            <button type="button" onClick={() => (setTestMsg(null), setTesting(true))} disabled={!!busy} className={secondaryButton + " ml-auto"}>
+            <button type="button" onClick={() => {
+                setTestMsg(null);
+                // Starts with your account's email; change it if you want the test to go elsewhere
+                setTestTo((t) => t.trim() || data?.accountEmail || user.email || "");
+                setTesting(true);
+              }} disabled={!!busy} className={secondaryButton + " ml-auto"}>
               Send test email
             </button>
           </div>
@@ -388,7 +395,7 @@ export default function EmailSettings() {
             <div className="flex flex-col gap-4 p-6">
               <p className="text-sm text-subtle">Uses the settings in the form, even before you save, so you can check them first.</p>
               <label className="text-sm font-medium text-subtle">
-                Send to
+                Send to <span className="font-normal text-muted">(your account's email; change it if you like)</span>
                 <input aria-label="Send test to" type="email" placeholder="you@example.com" value={testTo} onChange={(e) => setTestTo(e.target.value)} className={field} />
               </label>
               {testMsg && (
