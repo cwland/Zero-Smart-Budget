@@ -146,7 +146,7 @@ describe("export / restore with history", () => {
     await t.api("POST", `/api/funds/${fund.id}/entries`, { date: "2026-10-15", amountCents: 1234 });
     const login = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" });
     const exported = (await t.app.inject({ method: "GET", url: "/api/export", headers: { authorization: `Bearer ${login.body.token}` } })).json();
-    expect(exported.exportVersion).toBe(3);
+    expect(exported.exportVersion).toBe(4);
     expect(exported.fundEntries).toHaveLength(3);
 
     await t.api("DELETE", `/api/funds/${fund.id}`);
@@ -165,7 +165,7 @@ describe("export / restore with history", () => {
   });
 });
 
-describe("transfers into a fund (like EveryDollar)", () => {
+describe("transfers into a fund ", () => {
   it("both sides of a transfer on the fund item cancel out; the fund keeps the planned deposit", async () => {
     const { fund, item } = await setup(); // Car fund: $200 starting, $100 planned, $50 spent
     await t.api("POST", "/api/transactions", { date: "2026-10-15", merchant: "Transfer to savings", amountCents: 10000, splits: [{ lineItemId: item.id, amountCents: 10000 }] });

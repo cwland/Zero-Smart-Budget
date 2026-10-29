@@ -50,7 +50,7 @@ export default async function fundRoutes(app: FastifyInstance) {
     return funds.map((f) => ({ ...f, plan: goalPlan({ ...f, balanceCents: f.balanceCents - (budgetedThisMonth.get(f.id) ?? 0) }, now) }));
   });
 
-  // Add a goal (EveryDollar style): name, amount, the month to reach it by, what's already saved.
+  // Add a goal : name, amount, the month to reach it by, what's already saved.
   // It's added to this month's budget as a "Goals" line that saves the monthly amount needed.
   app.post("/api/goals", async (req, reply) => {
     const body = z
@@ -172,7 +172,7 @@ export default async function fundRoutes(app: FastifyInstance) {
       .leftJoin(lineItems, eq(fundEntries.lineItemId, lineItems.id))
       .where(and(eq(fundEntries.id, entryId), eq(fundEntries.fundId, id)));
     if (!entry) throw notFound("Entry");
-    if (entry.kind === "month_close") throw new HttpError(400, "This came from a Month Close. Reopen that month and close it again to change it.");
+    if (entry.kind === "month_close") throw new HttpError(400, "This came from a month wrap-up. Reopen that month and wrap it up again to change it.");
     if (entry.kind !== "adjustment" && entry.itemFundId === id) {
       throw new HttpError(400, "This entry follows a linked budget item. Change the item or its transaction instead.");
     }

@@ -23,7 +23,7 @@ export default function CreateMonth({ missing, onCreate }: Props) {
   return (
     <div className="rounded-2xl bg-white p-8 text-center">
       <h2 className="text-xl font-semibold">Start your {monthLabel(missing)} budget</h2>
-      <p className="mt-2 text-subtle">Every dollar gets a job. How do you want to begin?</p>
+      <p className="mt-2 text-subtle">Plan where this month's income will go. How would you like to start?</p>
       {!!missing.waitingTransactions && (
         <p role="status" className="mx-auto mt-4 max-w-sm rounded-lg bg-warning/10 px-4 py-2 text-sm text-ink">
           {missing.waitingTransactions} {missing.waitingTransactions === 1 ? "transaction is" : "transactions are"} already waiting for this month. They'll show up once you create it.

@@ -81,6 +81,11 @@ async function applyOrder(
 
 export default async function budgetRoutes(app: FastifyInstance) {
   const { db } = app;
+  // The Month Close state shown with a budget (Settings > Budget decides when the button shows)
+  const closeFor = async (row: typeof budgetMonths.$inferSelect, budget: NonNullable<Awaited<ReturnType<typeof loadBudget>>>) => {
+    const prefs = await getBudgetPrefs(db);
+    return closeState(row, budget, app.now(), prefs.monthCloseDays, prefs.monthCloseEnabled);
+  };
 
   // ---------- months ----------
 
@@ -107,7 +112,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
       };
     }
     const budget = (await loadBudget(db, row.id))!;
-    return { exists: true, ...budget, close: closeState(row, budget, app.now(), (await getBudgetPrefs(db)).monthCloseDays) };
+    return { exists: true, ...budget, close: await closeFor(row, budget) };
   });
 
   // ---------- Month Close ----------
@@ -219,7 +224,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
 
     const created = await findMonth(db, year, month);
     const budget = (await loadBudget(db, newId))!;
-    return reply.status(201).send({ exists: true, ...budget, close: closeState(created, budget, app.now(), (await getBudgetPrefs(db)).monthCloseDays) });
+    return reply.status(201).send({ exists: true, ...budget, close: await closeFor(created, budget) });
   });
 
   app.delete("/api/months/:id", async (req, reply) => {

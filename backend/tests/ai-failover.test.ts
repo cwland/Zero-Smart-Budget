@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 
@@ -69,10 +70,10 @@ describe("backup AI services", () => {
       ["Cloud backup", "or-key"],
       ["Home AI", null],
     ]);
-    // A service turned on needs a model; one turned off doesn't
+    // Every service needs a model (there's no per-service switch: all saved services are used)
     const bad = await t.api("PUT", "/api/settings/ai", { ...settings(), services: [{ name: "X", provider: "openai", model: "" }] });
     expect(bad.body.details[0].message).toBe("Choose a model");
-    expect((await t.api("PUT", "/api/settings/ai", { ...settings(), services: [{ name: "X", provider: "openai", model: "", enabled: false }, settings().services[0]] })).status).toBe(200);
+    expect((await t.api("PUT", "/api/settings/ai", { ...settings(), enabled: false, services: [{ name: "X", provider: "openai", model: "" }] })).status).toBe(400);
   });
 
   it("uses the first service, and the next when the first is down", async () => {
@@ -128,6 +129,36 @@ describe("backup AI services", () => {
     const all = (await t.api("GET", "/api/transactions?year=2026&month=10")).body;
     expect(all.find((x: any) => x.merchant === "Mystery Shop").aiSuggestion).toBeNull();
     expect(t.ai.calls.filter((c) => c.body.messages[1].content.includes("Mystery Shop")).length).toBe(2); // home, then cloud
+  });
+
+  it("Settings > Budget turns AI on or off and picks how it's used, without touching the services", async () => {
+    expect((await t.api("PUT", "/api/settings/ai/usage", { enabled: true })).body.error).toMatch(/Set up an AI service first/);
+    // Saving services from Settings > AI leaves on/off alone (new setups start off)
+    const saved = (await t.api("PUT", "/api/settings/ai", { maxPerRun: 50, timeoutSec: 3, services: settings().services })).body.settings;
+    expect(saved).toMatchObject({ enabled: false, ready: true });
+    let s = (await t.api("PUT", "/api/settings/ai/usage", { enabled: true, mode: "auto", askNextOnNoMatch: true })).body.settings;
+    expect(s).toMatchObject({ enabled: true, mode: "auto", askNextOnNoMatch: true });
+    expect(s.services.map((x: any) => [x.name, x.apiKey])).toEqual([["Home AI", null], ["Cloud backup", "or-key"]]);
+    s = (await t.api("PUT", "/api/settings/ai", { maxPerRun: 20, services: s.services.map((x: any) => ({ ...x, apiKey: undefined })) })).body.settings;
+    expect(s).toMatchObject({ enabled: true, mode: "auto", maxPerRun: 20 });
+    expect((await t.api("GET", "/api/ai/status")).body).toEqual({ enabled: true, mode: "auto" });
+    // No service ready: can't be turned on
+    await t.api("DELETE", "/api/settings/ai");
+    expect((await t.api("PUT", "/api/settings/ai/usage", { enabled: true })).body.error).toMatch(/Set up an AI service first/);
+  });
+
+  it("services saved with their own switch off are used now; if all were off, AI stays off", async () => {
+    const stored = (enabled: boolean, flags: boolean[]) =>
+      t.db.execute(sql`insert into app_settings (key, value) values ('ai', ${JSON.stringify({ enabled, mode: "manual", maxPerRun: 50, services: flags.map((f, i) => ({ id: `s${i}`, name: `S${i}`, enabled: f, provider: "local", model: "qwen", baseUrl: HOME, apiKeyEnc: null })) })}::jsonb)
+        on conflict (key) do update set value = excluded.value`);
+    await stored(true, [false]);
+    let s = (await t.api("GET", "/api/settings/ai")).body.settings;
+    expect(s).toMatchObject({ enabled: false, ready: true });
+    expect(s.services[0].enabled).toBe(true);
+    await stored(true, [false, true]);
+    s = (await t.api("GET", "/api/settings/ai")).body.settings;
+    expect(s.enabled).toBe(true);
+    expect(s.services.every((x: any) => x.enabled)).toBe(true);
   });
 
   it("settings saved the old way become the first service", async () => {

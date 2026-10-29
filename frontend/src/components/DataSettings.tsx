@@ -22,11 +22,35 @@ interface RestoreFile {
   exportedAt?: string;
   months: number;
   transactions: number;
+  settings: "encrypted" | "left out" | null; // null: an older backup without settings
+}
+
+interface BackupsState {
+  dir: string;
+  keep: number;
+  secretsIncluded: boolean;
+  backupKeyProblem: string | null;
+  backups: BackupInfo[];
+}
+
+interface RestoreResult {
+  safetyBackup: string;
+  months: number;
+  transactions: number;
+  settings: { settingsRestored: number; secretsRestored: number; secretsKept: number; secretsMissing: number } | null;
+}
+
+// What happened to settings in a restore, in a sentence
+function settingsNote(s: RestoreResult["settings"]) {
+  if (!s) return " This backup has no settings, so yours were left as they are.";
+  let text = " Settings were restored too.";
+  if (s.secretsMissing) text += ` ${s.secretsMissing} saved key${s.secretsMissing === 1 ? "" : "s"} or password${s.secretsMissing === 1 ? "" : "s"} couldn't be brought back (the backup was made without BACKUP_KEY, or with a different one). Enter ${s.secretsMissing === 1 ? "it" : "them"} again in Settings.`;
+  return text;
 }
 
 export default function DataSettings() {
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const [backups, setBackups] = useState<{ dir: string; keep: number; backups: BackupInfo[] } | null>(null);
+  const [backups, setBackups] = useState<BackupsState | null>(null);
   const [busy, setBusy] = useState(false);
   const [restore, setRestore] = useState<RestoreFile | null>(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
@@ -59,7 +83,7 @@ export default function DataSettings() {
     try {
       const data = JSON.parse(await file.text());
       if (!["ZeroPoint Budget", "Cory's Dollar"].includes(data?.app) || !Array.isArray(data.months)) throw new Error();
-      setRestore({ name: file.name, data, exportedAt: data.exportedAt, months: data.months.length, transactions: data.transactions?.length ?? 0 });
+      setRestore({ name: file.name, data, exportedAt: data.exportedAt, months: data.months.length, transactions: data.transactions?.length ?? 0, settings: data.settings?.secrets ?? null });
     } catch {
       setMessage({ kind: "error", text: "That file isn't a ZeroPoint Budget backup" });
     }
@@ -98,6 +122,7 @@ export default function DataSettings() {
               </>
             )}
           </p>
+          {backups && <BackupKeyStatus info={backups} />}
           <button
             disabled={busy}
             className={`${button} mt-4`}
@@ -105,7 +130,7 @@ export default function DataSettings() {
               run(async () => {
                 const made = await api<{ name: string }>("POST", "/api/backups");
                 await loadBackups();
-                return `Backup saved: ${made.name}`;
+                return `Backup saved: ${made.name}${backups?.secretsIncluded ? ". Remember: restoring its keys and passwords needs your BACKUP_KEY." : ""}`;
               })
             }
           >
@@ -132,7 +157,7 @@ export default function DataSettings() {
 
         <Card title="Restore">
           <p className="text-subtle">
-            Load a backup or "Everything (JSON)" export. This <strong className="text-ink">replaces all budget data</strong> (months, transactions, funds) with what's in the file. Your login stays the same, and a safety backup of the current data is saved first.
+            Load a backup or "Everything (JSON)" export. This <strong className="text-ink">replaces all budget data</strong> (months, transactions, funds) and the settings saved in the file. Your login stays the same, and a safety backup of the current data is saved first.
           </p>
           <label className="mt-4 block">
             <span className="sr-only">Backup file</span>
@@ -151,27 +176,68 @@ export default function DataSettings() {
                 <strong>{restore.name}</strong>
                 {restore.exportedAt && <> from {when(restore.exportedAt)}</>}: {restore.months} month{restore.months === 1 ? "" : "s"}, {restore.transactions} transaction{restore.transactions === 1 ? "" : "s"}.
               </p>
+              <p className="mt-1 text-sm text-subtle">
+                {restore.settings === null
+                  ? "No settings in this file (an older backup); your settings stay as they are."
+                  : restore.settings === "encrypted"
+                    ? "Includes settings, with keys and passwords encrypted by BACKUP_KEY. They come back if this server has the same BACKUP_KEY."
+                    : "Includes settings, but not keys or passwords (made without BACKUP_KEY). Keys you've already saved here are kept."}
+              </p>
               <button
                 disabled={busy}
                 onBlur={() => setConfirmRestore(false)}
                 onClick={() => {
                   if (!confirmRestore) return setConfirmRestore(true);
                   void run(async () => {
-                    const res = await api<{ safetyBackup: string; months: number; transactions: number }>("POST", "/api/import?confirm=replace", restore.data);
+                    const res = await api<RestoreResult>("POST", "/api/import?confirm=replace", restore.data);
                     setRestore(null);
                     setConfirmRestore(false);
                     await loadBackups();
-                    return `Restored ${res.months} months and ${res.transactions} transactions. Your previous data was saved as ${res.safetyBackup}.`;
+                    return `Restored ${res.months} months and ${res.transactions} transactions. Your previous data was saved as ${res.safetyBackup}.${settingsNote(res.settings)}`;
                   });
                 }}
                 className={`mt-3 rounded px-4 py-2.5 font-semibold ${confirmRestore ? "bg-error text-white" : "border border-error text-error hover:bg-error-subtle"}`}
               >
-                {confirmRestore ? "Yes, replace everything" : "Replace all budget data"}
+                {confirmRestore ? "Yes, replace everything" : "Replace budget data and settings"}
               </button>
             </div>
           )}
         </Card>
       </div>
     </div>
+  );
+}
+
+// Whether saved keys and passwords go into backups (only with BACKUP_KEY set on the server)
+function BackupKeyStatus({ info }: { info: BackupsState }) {
+  // Key set: just the reminder to keep it safe
+  if (info.secretsIncluded)
+    return (
+      <div className="mt-3 text-sm">
+        <SaveKeyReminder />
+      </div>
+    );
+  return (
+    <div className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-sm">
+      <p>
+        Backups include your settings, but <strong>not saved keys or passwords</strong> (AI keys, email password, Plaid secrets).
+        {info.backupKeyProblem && <span className="text-error"> {info.backupKeyProblem}.</span>}
+      </p>
+      <p className="mt-1 text-subtle">To include them, encrypted, add a long random BACKUP_KEY on the server and restart it:</p>
+      <pre className="mt-2 overflow-x-auto rounded bg-ink p-3 font-mono text-xs leading-relaxed text-white">{`# .env (running with npm: backend/.env)
+BACKUP_KEY=a-long-random-string-at-least-16-characters
+
+# make one:
+openssl rand -base64 32`}</pre>
+      <SaveKeyReminder />
+    </div>
+  );
+}
+
+function SaveKeyReminder() {
+  return (
+    <p role="note" className="mt-2 rounded border border-error/40 bg-error-subtle px-3 py-2 font-semibold text-error">
+      ⚠️ Save your BACKUP_KEY somewhere safe, away from this server (a password manager is ideal). If the server is lost, you can't restore your saved keys and passwords without it, and it can't be recovered.
+    </p>
   );
 }

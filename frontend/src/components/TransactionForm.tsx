@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { api, type Budget, type Suggestion, type Transaction, type TransactionInput } from "../api";
 import { defaultDateFor, monthBounds } from "../dates";
 import { centsToInput, formatCents, parseMoney } from "../money";
-import { ChevronDown, ChevronUp, Trash } from "./Icons";
+import { ChevronDown, ChevronUp, CloseIcon, Trash } from "./Icons";
 import { useLockBodyScroll } from "../scrollLock";
 
 // The Add / Edit transaction popup, laid out like EveryDollar's:
@@ -271,9 +271,7 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
         <header className={`relative flex items-center justify-center px-12 py-5 ${type === "income" ? "bg-success-subtle" : "bg-page"}`}>
           <h2 className="text-xl font-bold">{title}</h2>
           <button type="button" onClick={onCancel} aria-label="Close" className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1.5 text-subtle hover:bg-white/70 hover:text-ink">
-            <svg viewBox="0 0 24 24" className="size-6 fill-none stroke-current" strokeWidth={1.8} strokeLinecap="round" aria-hidden>
-              <path d="M5 5l14 14M19 5L5 19" />
-            </svg>
+            <CloseIcon />
           </button>
         </header>
 

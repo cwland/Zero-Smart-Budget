@@ -6,7 +6,7 @@ import { openPlaidLink } from "../plaidLink";
 import { useLockBodyScroll } from "../scrollLock";
 import { PlusIcon } from "./Icons";
 
-// The Accounts page, like EveryDollar's: one card per bank (connected through Plaid) with its
+// The Accounts page: one card per bank (connected through Plaid) with its
 // accounts and balances, plus accounts you keep track of by hand.
 
 interface BankAccount {
@@ -31,7 +31,7 @@ interface Institution {
   importFrom: string;
   accounts: BankAccount[];
 }
-type ManualType = "checking" | "savings" | "cash" | "credit" | "loan" | "investment" | "other";
+type ManualType = "checking" | "savings" | "cash" | "credit" | "loan" | "investment" | "other" | "home" | "vehicle" | "asset";
 interface ManualAccount {
   id: number;
   name: string;
@@ -44,7 +44,8 @@ interface AccountsData {
   plaidReady: boolean;
   institutions: Institution[];
   manual: ManualAccount[];
-  totals: { haveCents: number; oweCents: number; netCents: number };
+  assets: ManualAccount[]; // home, vehicle, other things you own: net worth only
+  totals: { haveCents: number; oweCents: number; netCents: number; assetsCents: number };
 }
 
 const TYPE_LABELS: Record<ManualType, string> = {
@@ -55,7 +56,12 @@ const TYPE_LABELS: Record<ManualType, string> = {
   loan: "Loan",
   investment: "Investment",
   other: "Other",
+  home: "Home",
+  vehicle: "Vehicle",
+  asset: "Other asset",
 };
+const ACCOUNT_TYPES: ManualType[] = ["checking", "savings", "cash", "credit", "loan", "investment", "other"];
+const ASSET_TYPES: ManualType[] = ["home", "vehicle", "asset"];
 const isDebt = (t: string) => t === "credit" || t === "loan";
 
 // "15 hours ago"
@@ -131,7 +137,7 @@ function Menu({ label, items }: { label: string; items: { label: string; icon?: 
 }
 
 // A centered popup
-function Popup({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Popup({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useLockBodyScroll();
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -156,16 +162,18 @@ function Popup({ title, onClose, children }: { title: string; onClose: () => voi
 
 const input = "mt-1 w-full rounded border border-muted/50 bg-white px-3 py-2 outline-none focus:border-action focus:ring-2 focus:ring-action/15";
 
-function ManualForm({ initial, onSave, onDelete, onCancel }: { initial?: ManualAccount; onSave: (a: { name: string; type: ManualType; balanceCents: number }) => Promise<void>; onDelete?: () => Promise<void>; onCancel: () => void }) {
+function ManualForm({ initial, asset, onSave, onDelete, onCancel }: { initial?: ManualAccount; asset?: boolean; onSave: (a: { name: string; type: ManualType; balanceCents: number }) => Promise<void>; onDelete?: () => Promise<void>; onCancel: () => void }) {
+  const isAsset = asset ?? (initial ? ASSET_TYPES.includes(initial.type) : false);
+  const types = isAsset ? ASSET_TYPES : ACCOUNT_TYPES;
   const [name, setName] = useState(initial?.name ?? "");
-  const [type, setType] = useState<ManualType>(initial?.type ?? "checking");
+  const [type, setType] = useState<ManualType>(initial?.type ?? types[0]);
   const [balance, setBalance] = useState(initial ? centsToInput(initial.balanceCents) : "");
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
     const cents = balance.trim() ? parseMoney(balance) : 0;
-    if (!name.trim()) return setError("Give the account a name");
+    if (!name.trim()) return setError(isAsset ? "Give the asset a name" : "Give the account a name");
     if (cents === null) return setError("Balance isn't a valid amount");
     try {
       await onSave({ name: name.trim(), type, balanceCents: cents });
@@ -174,25 +182,26 @@ function ManualForm({ initial, onSave, onDelete, onCancel }: { initial?: ManualA
     }
   }
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4 p-5" aria-label={initial ? "Edit account" : "Add account"}>
+    <form onSubmit={submit} className="flex flex-col gap-4 p-5" aria-label={initial ? (isAsset ? "Edit asset" : "Edit account") : isAsset ? "Add asset" : "Add account"}>
+      {isAsset && <p className="rounded-lg bg-page px-3 py-2 text-sm text-subtle">Things you own, like your home or a car. Their value counts toward your net worth, but they're never part of your budget.</p>}
       <label className="font-semibold">
-        Account Name
-        <input autoFocus aria-label="Account name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Cash envelope, 401(k), Car loan" className={`${input} font-normal`} />
+        {isAsset ? "Asset Name" : "Account Name"}
+        <input autoFocus aria-label={isAsset ? "Asset name" : "Account name"} value={name} onChange={(e) => setName(e.target.value)} placeholder={isAsset ? "e.g. House, 2021 Tacoma, Boat" : "e.g. Cash envelope, 401(k), Car loan"} className={`${input} font-normal`} />
       </label>
       <label className="font-semibold">
         Type
         <select aria-label="Account type" value={type} onChange={(e) => setType(e.target.value as ManualType)} className={`${input} font-normal`}>
-          {Object.entries(TYPE_LABELS).map(([v, l]) => (
+          {types.map((v) => (
             <option key={v} value={v}>
-              {l}
+              {TYPE_LABELS[v]}
             </option>
           ))}
         </select>
       </label>
       <label className="font-semibold">
-        {isDebt(type) ? "Amount Owed" : "Balance"}
-        <input aria-label={isDebt(type) ? "Amount owed" : "Balance"} inputMode="decimal" value={balance} onChange={(e) => setBalance(e.target.value)} placeholder="$0.00" className={`${input} tabular font-normal`} />
-        <span className="mt-1 block text-sm font-normal text-subtle">You update this yourself whenever it changes.</span>
+        {isAsset ? "Current Value" : isDebt(type) ? "Amount Owed" : "Balance"}
+        <input aria-label={isAsset ? "Current value" : isDebt(type) ? "Amount owed" : "Balance"} inputMode="decimal" value={balance} onChange={(e) => setBalance(e.target.value)} placeholder="$0.00" className={`${input} tabular font-normal`} />
+        <span className="mt-1 block text-sm font-normal text-subtle">{isAsset ? "What it's worth today. Update it whenever you like." : "You update this yourself whenever it changes."}</span>
       </label>
       {error && <p role="alert" className="rounded bg-error-subtle px-3 py-2 text-sm text-error">{error}</p>}
       <div className="flex items-center justify-end gap-3 pt-2">
@@ -210,7 +219,7 @@ function ManualForm({ initial, onSave, onDelete, onCancel }: { initial?: ManualA
           Cancel
         </button>
         <button type="submit" className="rounded bg-primary px-6 py-3 font-semibold text-white hover:bg-primary-pressed">
-          {initial ? "Save" : "Add Account"}
+          {initial ? "Save" : isAsset ? "Add Asset" : "Add Account"}
         </button>
       </div>
     </form>
@@ -304,6 +313,7 @@ export default function AccountsPage() {
   const [busy, setBusy] = useState("");
   const [popup, setPopup] = useState<
     | { kind: "addManual" }
+    | { kind: "addAsset" }
     | { kind: "editManual"; account: ManualAccount }
     | { kind: "import"; inst: Institution }
     | { kind: "remove"; inst: Institution; force: boolean }
@@ -399,7 +409,7 @@ export default function AccountsPage() {
                   </h2>
                   {inst.status === "ok" ? (
                     <p className="text-subtle">
-                      {inst.active ? `Auto-updated by Plaid ${ago(inst.lastSyncedAt)}` : "Paused: your Plaid keys are set to the other environment"}
+                      {inst.active ? `Synced through Plaid ${ago(inst.lastSyncedAt)}` : "Paused: your Plaid keys are set to the other environment"}
                     </p>
                   ) : (
                     <p role="alert" className="text-error">
@@ -413,10 +423,10 @@ export default function AccountsPage() {
                 <Menu
                   label={`${inst.institutionName} options`}
                   items={[
-                    ...(inst.active ? [{ label: busy === "sync" ? "Updating…" : "Update Accounts", icon: "↻", onClick: update }] : []),
+                    ...(inst.active ? [{ label: busy === "sync" ? "Syncing…" : "Sync now", icon: "↻", onClick: update }] : []),
                     { label: "Reconnect", icon: "🔑", onClick: () => reconnect(inst) },
                     { label: "Import Settings", icon: "⚙", onClick: () => setPopup({ kind: "import", inst }) },
-                    { label: "Remove Institution", icon: "🗑", danger: true, onClick: () => setPopup({ kind: "remove", inst, force: false }) },
+                    { label: "Disconnect bank", icon: "🗑", danger: true, onClick: () => setPopup({ kind: "remove", inst, force: false }) },
                   ]}
                 />
               </div>
@@ -452,17 +462,40 @@ export default function AccountsPage() {
             </section>
           )}
 
+          {!!data?.assets.length && (
+            <section aria-label="Assets" className="rounded-2xl bg-white px-6 pt-6">
+              <div className="flex items-start gap-3 border-b border-line pb-5">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-page text-2xl" aria-hidden>
+                  🏠
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-2xl font-bold">Assets</h2>
+                  <p className="text-subtle">Count toward your net worth, never part of your budget.</p>
+                </div>
+              </div>
+              <ul className="divide-y divide-line">
+                {data.assets.map((m) => (
+                  <Row key={m.id} name={m.name} sub={`${TYPE_LABELS[m.type]} · updated ${ago(m.balanceUpdatedAt)}`} cents={m.signedCents} onClick={() => setPopup({ kind: "editManual", account: m })} />
+                ))}
+              </ul>
+            </section>
+          )}
+
           {data && (
             <div className="flex flex-wrap items-center gap-x-10 gap-y-3 px-6">
               {data.plaidReady && (
                 <button onClick={connect} disabled={!!busy} className="flex items-center gap-2 text-lg font-semibold text-action hover:underline disabled:opacity-50">
                   <span aria-hidden>⇄</span>
-                  {busy === "connect" ? "Opening Plaid…" : "Connect Account"}
+                  {busy === "connect" ? "Opening Plaid…" : "Link a Bank"}
                 </button>
               )}
               <button onClick={() => setPopup({ kind: "addManual" })} className="flex items-center gap-2 text-lg font-semibold text-action hover:underline">
                 <PlusIcon className="size-5" />
-                Add Account Manually
+                Add Manual Account
+              </button>
+              <button onClick={() => setPopup({ kind: "addAsset" })} className="flex items-center gap-2 text-lg font-semibold text-action hover:underline">
+                <PlusIcon className="size-5" />
+                Add Asset
               </button>
             </div>
           )}
@@ -473,7 +506,7 @@ export default function AccountsPage() {
           )}
         </div>
 
-        {t && (data.institutions.length > 0 || data.manual.length > 0) && (
+        {t && (data.institutions.length > 0 || data.manual.length > 0 || data.assets.length > 0) && (
           <aside aria-label="Totals" className="w-full shrink-0 rounded-2xl bg-white p-5 md:sticky md:top-6 md:w-[300px]">
             <h2 className="text-lg font-semibold">Net Worth</h2>
             <div className={`tabular text-4xl font-semibold ${t.netCents < 0 ? "text-error" : "text-subtle"}`}>
@@ -485,6 +518,12 @@ export default function AccountsPage() {
                 <dt className="text-subtle">What you have</dt>
                 <dd className="font-semibold">{formatCents(t.haveCents)}</dd>
               </div>
+              {t.assetsCents > 0 && (
+                <div className="flex justify-between pl-3 text-xs">
+                  <dt className="text-subtle">incl. assets</dt>
+                  <dd className="text-subtle">{formatCents(t.assetsCents)}</dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-subtle">What you owe</dt>
                 <dd className="font-semibold text-error">{t.oweCents ? `-${formatCents(t.oweCents)}` : formatCents(0)}</dd>
@@ -495,8 +534,21 @@ export default function AccountsPage() {
       </div>
 
       {popup?.kind === "addManual" && (
-        <Popup title="Add Account Manually" onClose={() => setPopup(null)}>
+        <Popup title="Add Manual Account" onClose={() => setPopup(null)}>
           <ManualForm
+            onCancel={() => setPopup(null)}
+            onSave={async (a) => {
+              await api("POST", "/api/accounts/manual", a);
+              setPopup(null);
+              await load();
+            }}
+          />
+        </Popup>
+      )}
+      {popup?.kind === "addAsset" && (
+        <Popup title="Add Asset" onClose={() => setPopup(null)}>
+          <ManualForm
+            asset
             onCancel={() => setPopup(null)}
             onSave={async (a) => {
               await api("POST", "/api/accounts/manual", a);
@@ -530,7 +582,7 @@ export default function AccountsPage() {
         </Popup>
       )}
       {popup?.kind === "remove" && (
-        <Popup title="Remove Institution" onClose={() => setPopup(null)}>
+        <Popup title="Disconnect bank" onClose={() => setPopup(null)}>
           <div className="flex flex-col gap-4 p-5">
             <p>
               {popup.force

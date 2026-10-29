@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Db } from "../db/index.js";
 import { buildExport } from "./dataExport.js";
+import type { BackupSecrets } from "./settingsBackup.js";
 
 // zeropoint-budget-2026-10-27-143005.json, or with a label: zeropoint-budget-2026-10-27-143005-before-restore.json
 // (backups from before the rename are named corys-dollar-...)
@@ -12,10 +13,10 @@ const stamp = (d: Date) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 };
 
-export async function writeBackup(db: Db, dir: string, label?: string) {
+export async function writeBackup(db: Db, dir: string, secrets: BackupSecrets, label?: string) {
   await fs.mkdir(dir, { recursive: true });
   const name = `zeropoint-budget-${stamp(new Date())}${label ? `-${label}` : ""}.json`;
-  const data = JSON.stringify(await buildExport(db), null, 2);
+  const data = JSON.stringify(await buildExport(db, secrets), null, 2);
   const tmp = path.join(dir, `.${name}.tmp`);
   await fs.writeFile(tmp, data);
   await fs.rename(tmp, path.join(dir, name)); // never leave a half-written backup
@@ -53,14 +54,15 @@ export function startBackupSchedule(
   db: Db,
   dir: string,
   keep: number,
-  log: { info: (msg: string) => void; error: (err: unknown) => void }
+  log: { info: (msg: string) => void; error: (err: unknown) => void },
+  secrets: BackupSecrets
 ) {
   const DAY = 24 * 60 * 60 * 1000;
   const check = async () => {
     try {
       const [newest] = await listBackups(dir);
       if (newest && Date.now() - new Date(newest.createdAt).getTime() < DAY) return;
-      const { name } = await writeBackup(db, dir);
+      const { name } = await writeBackup(db, dir, secrets);
       const removed = await pruneBackups(dir, keep);
       log.info(`Backup written: ${name}${removed.length ? ` (removed ${removed.length} old)` : ""}`);
     } catch (err) {

@@ -8,6 +8,7 @@ import { emailConfigFromEnv } from "./lib/mail.js";
 import { syncAll } from "./lib/plaidSync.js";
 import { autoSuggest } from "./lib/aiSuggest.js";
 import { autoCloseOldMonths } from "./lib/monthClose.js";
+import { runNotifications } from "./lib/notifications.js";
 
 const { db } = createDb(process.env.DATABASE_URL!);
 await runMigrations(db);
@@ -30,8 +31,12 @@ if (process.env.BACKUP_ENABLED !== "false") {
   startBackupSchedule(db, backupDir, backupKeep, {
     info: (msg) => app.log.info(msg),
     error: (err) => app.log.error(err),
-  });
+  }, app.backupSecrets());
 }
+// Remind on every start: the backup key can't be recovered
+if (app.backupKey.key) app.log.info("BACKUP_KEY is set: saved keys and passwords go into backups, encrypted. Save a copy of BACKUP_KEY somewhere safe, away from this server; restoring them needs it.");
+else if (app.backupKey.problem) app.log.warn(app.backupKey.problem);
+
 // Import bank transactions through Plaid every few hours (PLAID_SYNC_HOURS=0 turns it off)
 const syncHours = Number(process.env.PLAID_SYNC_HOURS ?? 6);
 if (syncHours > 0) {
@@ -56,6 +61,14 @@ const autoClose = () =>
     .catch((err) => app.log.error(err));
 autoClose();
 setInterval(autoClose, 6 * 60 * 60 * 1000);
+
+// Email notifications (Month Close reminder, "come back" nudge): checked every hour
+const notify = () =>
+  runNotifications(db, app.mail)
+    .then((r) => r.sent.length && app.log.info(`Sent ${r.sent.map((x) => x.kind).join(", ")} email`))
+    .catch((err) => app.log.error(err));
+setTimeout(notify, 2 * 60 * 1000);
+setInterval(notify, 60 * 60 * 1000);
 
 const port = Number(process.env.PORT ?? 4000);
 

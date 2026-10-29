@@ -179,6 +179,9 @@ describe("Month Close", () => {
     expect((await t.api("PUT", "/api/settings/budget", { monthCloseDays: 10 })).body.monthCloseDays).toBe(10);
     expect((await month(2026, 9)).close.available).toBe(true);
     expect((await t.api("PUT", "/api/settings/budget", { monthCloseDays: 40 })).status).toBe(400);
+    // Turned off: no button
+    await t.api("PUT", "/api/settings/budget", { monthCloseEnabled: false });
+    expect((await month(2026, 9)).close.available).toBe(false);
   });
 
   it("closes months automatically on the 1st of the second month after, keeping the leftover", async () => {
@@ -190,6 +193,14 @@ describe("Month Close", () => {
     expect(s.close).toMatchObject({ closed: true, closedBy: "auto", result: { totalCents: 53000, leftover: { to: "keep", keptCents: 53000 } } });
     expect((await month(2026, 10)).close.closed).toBe(false);
     expect((await fund(car.id)).balanceCents).toBe(0); // nothing moved
+    // With Month Close turned off, or set to "leave it open", months don't close on their own
+    await t.api("PUT", "/api/settings/budget", { monthCloseEnabled: false });
+    expect(await autoCloseOldMonths(t.db, new Date(2026, 11, 1, 1))).toBe(0); // Dec 1: October stays open
+    await t.api("PUT", "/api/settings/budget", { monthCloseEnabled: true, monthCloseAuto: false });
+    expect(await autoCloseOldMonths(t.db, new Date(2026, 11, 1, 1))).toBe(0);
+    expect((await month(2026, 10)).close.closed).toBe(false);
+    await t.api("PUT", "/api/settings/budget", { monthCloseAuto: true });
+    expect(await autoCloseOldMonths(t.db, new Date(2026, 11, 1, 1))).toBe(1);
     // It can still be reopened and closed by hand
     await t.api("POST", `/api/months/${s.id}/reopen`);
     await t.api("POST", `/api/months/${s.id}/close`, { leftover: { to: "fund", fundId: car.id } });

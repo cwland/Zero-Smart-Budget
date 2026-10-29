@@ -112,3 +112,13 @@ describe("email settings saved in the app", () => {
     expect((await t.api("PUT", "/api/settings/email", gmail, { "x-api-key": key })).status).toBe(403);
   });
 });
+
+describe("show the saved email password", () => {
+  it("returns it only to a signed-in user who asks", async () => {
+    await t.api("PUT", "/api/settings/email", gmail);
+    expect((await t.api("GET", "/api/settings/email/password")).body).toEqual({ password: gmail.password });
+    const key = (await t.api("POST", "/api/keys", { name: "x", access: "read" })).body.key;
+    t.setToken("");
+    expect((await t.api("GET", "/api/settings/email/password", undefined, { "x-api-key": key })).status).toBe(403);
+  });
+});

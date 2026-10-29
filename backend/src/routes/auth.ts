@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { and, count, eq, gt, isNull, sql } from "drizzle-orm";
-import { passwordResets, users } from "../db/schema.js";
-import { checkPassword, generateResetToken, hashApiKey, hashPassword, signToken } from "../lib/auth.js";
+import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { checkPassword, generateResetToken, hashApiKey, hashPassword } from "../lib/auth.js";
+import { describeDevice, logSignIn, renewSession, revokeAll, startSession } from "../lib/sessions.js";
+import { loginEvents, passwordResets, sessions, users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 
 const password = z.string().min(8, "Password must be at least 8 characters").max(200);
@@ -65,19 +66,29 @@ export default async function authRoutes(app: FastifyInstance) {
       .insert(users)
       .values({ username: body.username, passwordHash: await hashPassword(body.password) })
       .returning();
-    return { token: signToken(user.id, user.tokenVersion, app.jwtSecret), user: publicUser(user) };
+    const { token, session } = await startSession(db, app.jwtSecret, req, user, "account set up", app.now());
+    await logSignIn(db, req, { username: user.username, success: true, reason: "Account set up", sessionId: session.id });
+    return { token, user: publicUser(user) };
   });
 
   app.post("/api/auth/login", async (req) => {
-    checkLockout(req);
     const body = z.object({ username: z.string(), password: z.string() }).parse(req.body);
+    try {
+      checkLockout(req);
+    } catch (e) {
+      await logSignIn(db, req, { username: body.username, success: false, reason: "Blocked: too many failed attempts" });
+      throw e;
+    }
     const [user] = await db.select().from(users).where(sql`lower(${users.username}) = ${body.username.trim().toLowerCase()}`); // usernames ignore capitalization
     if (!user || !(await checkPassword(body.password, user.passwordHash))) {
       recordFailure(req);
+      await logSignIn(db, req, { username: body.username, success: false, reason: user ? "Wrong password" : "Unknown username" });
       throw new HttpError(401, "Wrong username or password");
     }
     failures.delete(req.ip);
-    return { token: signToken(user.id, user.tokenVersion, app.jwtSecret), user: publicUser(user) };
+    const { token, session } = await startSession(db, app.jwtSecret, req, user, "password", app.now());
+    await logSignIn(db, req, { username: body.username, success: true, reason: "Signed in with password", sessionId: session.id });
+    return { token, user: publicUser(user) };
   });
 
   app.get("/api/auth/me", async (req) => {
@@ -100,7 +111,8 @@ export default async function authRoutes(app: FastifyInstance) {
       .set({ passwordHash: await hashPassword(body.newPassword), tokenVersion: sql`${users.tokenVersion} + 1` })
       .where(eq(users.id, user.id))
       .returning();
-    return { ok: true, token: signToken(updated.id, updated.tokenVersion, app.jwtSecret) };
+    await revokeAll(db, user.id, req.auth.sessionId, app.now());
+    return { ok: true, token: await renewSession(db, app.jwtSecret, updated, req.auth.sessionId, app.now()) };
   });
 
   // Sign out everywhere. With keepThisDevice, returns a fresh token so this browser stays in.
@@ -112,7 +124,61 @@ export default async function authRoutes(app: FastifyInstance) {
       .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
       .where(eq(users.id, req.auth.userId))
       .returning();
-    return { ok: true, token: body.keepThisDevice ? signToken(updated.id, updated.tokenVersion, app.jwtSecret) : undefined };
+    await revokeAll(db, updated.id, body.keepThisDevice ? req.auth.sessionId : undefined, app.now());
+    return { ok: true, token: body.keepThisDevice ? await renewSession(db, app.jwtSecret, updated, req.auth.sessionId, app.now()) : undefined };
+  });
+
+  // Sign out this device
+  app.post("/api/auth/logout", async (req) => {
+    if (req.auth?.method !== "token") return { ok: true };
+    await db.update(sessions).set({ revokedAt: app.now() }).where(eq(sessions.id, req.auth.sessionId));
+    return { ok: true };
+  });
+
+  // ---------- signed-in devices and sign-in history (Settings > Security) ----------
+
+  app.get("/api/auth/sessions", async (req) => {
+    if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
+    const auth = req.auth;
+    const [user] = await db.select({ tv: users.tokenVersion }).from(users).where(eq(users.id, auth.userId));
+    const now = app.now();
+    const rows = await db.select().from(sessions).where(eq(sessions.userId, auth.userId)).orderBy(desc(sessions.lastSeenAt)).limit(100);
+    return rows.map((s) => {
+      const status = s.revokedAt || s.tokenVersion !== user.tv ? "signed out" : s.expiresAt < now ? "expired" : "active";
+      return {
+        id: s.id,
+        current: s.id === auth.sessionId,
+        status,
+        device: describeDevice(s.userAgent),
+        userAgent: s.userAgent,
+        how: s.how,
+        ip: s.ip,
+        lastIp: s.lastIp,
+        createdAt: s.createdAt,
+        lastSeenAt: s.lastSeenAt,
+        expiresAt: s.expiresAt,
+        signedOutAt: s.revokedAt,
+      };
+    });
+  });
+
+  // Sign out one device
+  app.delete("/api/auth/sessions/:id", async (req, reply) => {
+    if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
+    const id = z.coerce.number().int().positive().parse((req.params as { id: string }).id);
+    const [row] = await db
+      .update(sessions)
+      .set({ revokedAt: app.now() })
+      .where(and(eq(sessions.id, id), eq(sessions.userId, req.auth.userId), isNull(sessions.revokedAt)))
+      .returning({ id: sessions.id });
+    if (!row) throw new HttpError(404, "That device isn't signed in");
+    return reply.status(204).send();
+  });
+
+  app.get("/api/auth/logins", async (req) => {
+    if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
+    const rows = await db.select().from(loginEvents).orderBy(desc(loginEvents.at), desc(loginEvents.id)).limit(200);
+    return rows.map((e) => ({ ...e, device: describeDevice(e.userAgent) }));
   });
 
   // Email a reset link to the account's address. Always answers the same way, so it
@@ -167,6 +233,9 @@ export default async function authRoutes(app: FastifyInstance) {
       .set({ passwordHash: await hashPassword(body.newPassword), tokenVersion: sql`${users.tokenVersion} + 1` })
       .where(eq(users.id, reset.userId))
       .returning();
-    return { token: signToken(user.id, user.tokenVersion, app.jwtSecret), user: publicUser(user) };
+    await revokeAll(db, user.id, undefined, app.now());
+    const { token, session } = await startSession(db, app.jwtSecret, req, user, "password reset link", app.now());
+    await logSignIn(db, req, { username: user.username, success: true, reason: "Reset the password with an email link", sessionId: session.id });
+    return { token, user: publicUser(user) };
   });
 }

@@ -5,10 +5,12 @@ import { manualAccounts, transactions } from "../db/schema.js";
 import { notFound } from "../lib/errors.js";
 import { idParam, name } from "../lib/validation.js";
 
-// The Accounts page (like EveryDollar's): banks connected through Plaid, plus accounts you track
+// The Accounts page: banks connected through Plaid, plus accounts you track
 // by hand. Balances are shown signed: money you have is positive, money you owe is negative.
 
-const MANUAL_TYPES = ["checking", "savings", "cash", "credit", "loan", "investment", "other"] as const;
+const MANUAL_TYPES = ["checking", "savings", "cash", "credit", "loan", "investment", "other", "home", "vehicle", "asset"] as const;
+// Things you own: in net worth, but not accounts money moves through (not offered on transactions)
+const ASSET_TYPES = new Set(["home", "vehicle", "asset"]);
 const isDebt = (type: string) => type === "credit" || type === "loan";
 // Manual accounts are picked on a transaction as "manual:<id>" (stored with the bank account ids)
 export const manualAccountKey = (id: number) => `manual:${id}`;
@@ -32,16 +34,19 @@ export default async function accountRoutes(app: FastifyInstance) {
         balanceCents: a.currentBalanceCents === null ? null : isDebt(a.type) ? -a.currentBalanceCents : a.currentBalanceCents,
       })),
     }));
-    const manual = (await db.select().from(manualAccounts).orderBy(asc(manualAccounts.sortOrder), asc(manualAccounts.id))).map((m) => ({
+    const rows = (await db.select().from(manualAccounts).orderBy(asc(manualAccounts.sortOrder), asc(manualAccounts.id))).map((m) => ({
       ...m,
       key: manualAccountKey(m.id),
       signedCents: isDebt(m.type) ? -m.balanceCents : m.balanceCents,
     }));
+    const manual = rows.filter((m) => !ASSET_TYPES.has(m.type));
+    const assets = rows.filter((m) => ASSET_TYPES.has(m.type));
 
-    const all = [...institutions.flatMap((i) => i.accounts.map((a) => a.balanceCents ?? 0)), ...manual.map((m) => m.signedCents)];
+    const all = [...institutions.flatMap((i) => i.accounts.map((a) => a.balanceCents ?? 0)), ...rows.map((m) => m.signedCents)];
     const haveCents = all.filter((n) => n > 0).reduce((t, n) => t + n, 0);
     const oweCents = -all.filter((n) => n < 0).reduce((t, n) => t + n, 0);
-    return { plaidReady, institutions, manual, totals: { haveCents, oweCents, netCents: haveCents - oweCents } };
+    const assetsCents = assets.reduce((t, a) => t + a.balanceCents, 0);
+    return { plaidReady, institutions, manual, assets, totals: { haveCents, oweCents, netCents: haveCents - oweCents, assetsCents } };
   });
 
   const manualBody = z.object({
@@ -64,6 +69,8 @@ export default async function accountRoutes(app: FastifyInstance) {
     const changes = { ...body, ...(body.balanceCents !== undefined ? { balanceUpdatedAt: new Date() } : {}) };
     const [row] = await db.update(manualAccounts).set(changes).where(eq(manualAccounts.id, id)).returning();
     if (!row) throw notFound("Account");
+    // Turned into an asset: it's no longer an account transactions can be marked with
+    if (ASSET_TYPES.has(row.type)) await db.update(transactions).set({ plaidAccountId: null }).where(eq(transactions.plaidAccountId, manualAccountKey(id)));
     return row;
   });
 

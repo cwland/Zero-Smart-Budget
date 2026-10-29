@@ -73,8 +73,8 @@ export interface ServiceInput {
   apiKey?: string | null; // undefined = keep the saved one, "" or null = remove it
 }
 export interface SaveInput {
-  enabled: boolean;
-  mode: StoredAi["mode"];
+  enabled?: boolean; // left out: keep the saved choice
+  mode?: StoredAi["mode"];
   maxPerRun: number;
   timeoutSec?: number;
   askNextOnNoMatch?: boolean;
@@ -93,8 +93,20 @@ export class AiError extends Error {}
 const trimSlash = (s: string) => s.replace(/\/+$/, "");
 const newId = () => Math.random().toString(36).slice(2, 10);
 
+// Every saved service is used: AI is turned on and off only in Settings > Budget. Services saved
+// back when each had its own switch are all used now; if every one was switched off, AI was
+// effectively off, so it stays off.
 function normalize(v: StoredAi | LegacyAi): StoredAi {
-  if ("services" in v && Array.isArray(v.services)) return { ...v, timeoutSec: v.timeoutSec ?? 15, askNextOnNoMatch: v.askNextOnNoMatch ?? false };
+  if ("services" in v && Array.isArray(v.services)) {
+    const allOff = v.services.length > 0 && v.services.every((sv) => sv.enabled === false);
+    return {
+      ...v,
+      enabled: v.enabled && !allOff,
+      timeoutSec: v.timeoutSec ?? 15,
+      askNextOnNoMatch: v.askNextOnNoMatch ?? false,
+      services: v.services.map((sv) => ({ ...sv, enabled: true })),
+    };
+  }
   const l = v as LegacyAi;
   return {
     enabled: l.enabled,
@@ -126,7 +138,7 @@ export class AiService {
       return {
         id: prev?.id ?? sv.id ?? newId(),
         name: sv.name?.trim() || PROVIDER_NAMES[sv.provider],
-        enabled: sv.enabled ?? true,
+        enabled: true, // always used (no per-service switch)
         provider: sv.provider,
         model: sv.model,
         baseUrl: sv.baseUrl,
@@ -134,8 +146,8 @@ export class AiService {
       };
     });
     const value: StoredAi = {
-      enabled: input.enabled,
-      mode: input.mode,
+      enabled: input.enabled ?? current?.enabled ?? false,
+      mode: input.mode ?? current?.mode ?? "auto",
       maxPerRun: input.maxPerRun,
       timeoutSec: input.timeoutSec ?? current?.timeoutSec ?? 15,
       askNextOnNoMatch: input.askNextOnNoMatch ?? current?.askNextOnNoMatch ?? false,
@@ -170,7 +182,10 @@ export class AiService {
       return { ...sv, apiKey: key, apiKeyUnreadable: !!apiKeyEnc && key === null };
     });
     const first = services[0];
+    // At least one complete service: AI can be turned on in Settings > Budget
+    const ready = s.services.some((sv) => sv.model && (sv.provider !== "local" || sv.baseUrl));
     return {
+      ready,
       enabled: s.enabled,
       mode: s.mode,
       maxPerRun: s.maxPerRun,
@@ -190,7 +205,7 @@ export class AiService {
     const s = await this.stored();
     if (!s?.enabled) return null;
     const services = s.services
-      .filter((sv) => sv.enabled && sv.model && (sv.provider !== "local" || sv.baseUrl))
+      .filter((sv) => sv.model && (sv.provider !== "local" || sv.baseUrl))
       .map((sv) => ({ id: sv.id, name: sv.name, provider: sv.provider, model: sv.model, baseUrl: sv.baseUrl, apiKey: sv.apiKeyEnc ? decryptSecret(sv.apiKeyEnc, this.secret) : null }));
     if (!services.length) return null;
     return { mode: s.mode, maxPerRun: s.maxPerRun, timeoutSec: s.timeoutSec, askNextOnNoMatch: s.askNextOnNoMatch, services };

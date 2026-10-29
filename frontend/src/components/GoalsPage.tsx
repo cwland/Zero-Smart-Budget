@@ -48,7 +48,7 @@ function GoalForm({ initial, onSave, onClose, onDelete }: { initial?: SinkingFun
     e.preventDefault();
     const targetCents = parseMoney(amount);
     const startingCents = starting.trim() ? parseMoney(starting) : 0;
-    if (!name.trim()) return setError("What are you saving for?");
+    if (!name.trim()) return setError("Give the goal a name");
     if (!targetCents) return setError("Enter the goal amount");
     if (startingCents === null || startingCents < 0) return setError("Starting balance isn't a valid amount");
     if (!!month !== !!year) return setError("Pick both a month and a year (or neither)");
@@ -75,20 +75,20 @@ function GoalForm({ initial, onSave, onClose, onDelete }: { initial?: SinkingFun
       </div>
       <div className="px-4">
         <label className="block border-b border-line py-5">
-          <span className="font-semibold">Goal Name</span>
-          <input autoFocus aria-label="Goal name" value={name} onChange={(e) => setName(e.target.value)} placeholder="What are you saving for?" className={`${input} mt-2`} />
+          <span className="font-semibold">Name</span>
+          <input autoFocus aria-label="Goal name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Emergency fund, New car" className={`${input} mt-2`} />
         </label>
         <div className={row}>
           <div>
-            <div className="font-semibold">Goal Amount</div>
-            <div className="text-sm text-subtle">Total amount you want to save</div>
+            <div className="font-semibold">Target</div>
+            <div className="text-sm text-subtle">How much you need in the end</div>
           </div>
           <input aria-label="Goal amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="$0.00" className={`${input} tabular w-32 text-right`} />
         </div>
         <div className={row}>
           <div>
-            <div className="font-semibold">Goal Date</div>
-            <div className="text-sm text-subtle">The date you want to hit your goal</div>
+            <div className="font-semibold">Reach it by</div>
+            <div className="text-sm text-subtle">Optional. We'll work out a monthly amount.</div>
           </div>
           <div className="flex shrink-0 gap-2">
             <select aria-label="Goal month" value={month} onChange={(e) => setMonth(e.target.value)} className={`${input} w-[5.5rem] px-2`}>
@@ -109,8 +109,8 @@ function GoalForm({ initial, onSave, onClose, onDelete }: { initial?: SinkingFun
         </div>
         <div className={`${row} border-b-0`}>
           <div>
-            <div className="font-semibold">Starting Balance</div>
-            <div className="text-sm text-subtle">How much have you already saved?</div>
+            <div className="font-semibold">Already saved</div>
+            <div className="text-sm text-subtle">What you have toward it today</div>
           </div>
           <input aria-label="Starting balance" inputMode="decimal" value={starting} onChange={(e) => setStarting(e.target.value)} placeholder="$0.00" className={`${input} tabular w-32 text-right`} />
         </div>
@@ -134,7 +134,7 @@ function GoalForm({ initial, onSave, onClose, onDelete }: { initial?: SinkingFun
           {initial ? "Save" : "Add Goal"}
         </button>
       </div>
-      {!initial && <p className="px-4 pb-5 text-right text-subtle">This goal will be added to your budget.</p>}
+      {!initial && <p className="px-4 pb-5 text-right text-subtle">A monthly line for it goes into this month's budget.</p>}
     </form>
   );
 }
@@ -271,9 +271,9 @@ export default function GoalsPage() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-3 pb-16 pt-8 sm:px-6">
-      <h1 className="text-4xl font-bold">Personal Goals</h1>
+      <h1 className="text-4xl font-bold">Savings Goals</h1>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-lg text-subtle">Set money goals and we'll help you stay on track.</p>
+        <p className="text-lg text-subtle">Choose a target and a date, and we'll work out how much to set aside each month.</p>
         <label className="flex items-center gap-2 text-sm text-subtle">
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="size-4 accent-[#0073b9]" />
           Show archived
@@ -312,9 +312,9 @@ export default function GoalsPage() {
             panelEl
           ) : (
             <section aria-label="Total saved so far" className="rounded-2xl bg-white p-4">
-              <h2 className="text-lg font-semibold">Total Saved So Far</h2>
+              <h2 className="text-lg font-semibold">Saved toward goals</h2>
               <div className="tabular text-4xl font-semibold text-subtle">{totalSaved % 100 === 0 ? formatWholeDollars(totalSaved) : formatCents(totalSaved)}</div>
-              <p className="mt-1 text-sm text-subtle">This is the total balance of all your goals.</p>
+              <p className="mt-1 text-sm text-subtle">Everything set aside across your goals.</p>
             </section>
           )}
         </aside>

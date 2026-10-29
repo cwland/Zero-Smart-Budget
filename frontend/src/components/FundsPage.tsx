@@ -139,7 +139,7 @@ function FundCard({ fund, onEdit, onArchive, onChanged }: { fund: SinkingFund; o
         </div>
         <div className="rounded-lg bg-page px-3 py-2">
           <dt className="text-xs uppercase tracking-wide text-subtle">Adjusted</dt>
-          {/* By hand, plus leftovers put in / overspends covered at Month Close */}
+          {/* By hand, plus leftovers put in / overspends covered at Month Wrap-Up */}
           <dd className={adjusted < 0 ? "text-error" : adjusted > 0 ? "text-success" : ""}>
             {adjusted > 0 ? "+" : adjusted < 0 ? "−" : ""}
             {formatCents(Math.abs(adjusted))}
@@ -219,26 +219,6 @@ export default function FundsPage() {
       {error && <p role="alert" className="mt-4 rounded bg-error-subtle px-3 py-2 text-error">{error}</p>}
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
-        {adding ? (
-          <div className="rounded-2xl bg-white p-5">
-            <FundForm
-              onCancel={() => setAdding(false)}
-              onSave={async (f) => {
-                await api("POST", "/api/funds", f);
-                setAdding(false);
-                await load();
-              }}
-            />
-          </div>
-        ) : (
-          <button
-            onClick={() => setAdding(true)}
-            className="min-h-32 self-start rounded-2xl border-2 border-dotted border-strong p-6 font-semibold text-action hover:bg-white"
-          >
-            Add Fund
-          </button>
-        )}
-
         {funds?.map((f) =>
           editingId === f.id ? (
             <div key={f.id} className="rounded-2xl bg-white p-5">
@@ -270,6 +250,27 @@ export default function FundsPage() {
               }
             />
           )
+        )}
+
+        {/* Add Fund sits where the next fund will go */}
+        {adding ? (
+          <div className="rounded-2xl bg-white p-5">
+            <FundForm
+              onCancel={() => setAdding(false)}
+              onSave={async (f) => {
+                await api("POST", "/api/funds", f);
+                setAdding(false);
+                await load();
+              }}
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="min-h-32 rounded-2xl border-2 border-dotted border-strong p-6 font-semibold text-action hover:bg-white"
+          >
+            Add Fund
+          </button>
         )}
       </div>
 

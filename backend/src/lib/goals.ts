@@ -5,7 +5,7 @@ import { nextSortOrder } from "./budget.js";
 import { monthIndex } from "./calc.js";
 import { syncLineItem } from "./fundLedger.js";
 
-// Personal goals (like EveryDollar's): a target amount, an optional month to reach it by, and a
+// Savings goals: a target amount, an optional month to reach it by, and a
 // line in your budget that saves toward it each month.
 
 export const GOALS_GROUP = "Goals";

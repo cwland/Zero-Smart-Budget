@@ -18,7 +18,7 @@ function label(e: FundEntry) {
     const [y, m] = e.date.split("-").map(Number);
     return `Budgeted · ${e.description ?? "item"} (${MONTH_NAMES[m - 1]} ${y})`;
   }
-  if (e.kind === "month_close") return `Month Close · ${e.description ?? ""}`;
+  if (e.kind === "month_close") return `Month wrap-up · ${e.description ?? ""}`;
   if (e.kind === "spent") return `${e.amountCents > 0 ? "Money back" : "Spent"} · ${e.description ?? "transaction"}`;
   return e.description || (e.amountCents > 0 ? "Added by hand" : "Taken out by hand");
 }

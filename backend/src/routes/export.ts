@@ -19,7 +19,7 @@ export default async function exportRoutes(app: FastifyInstance) {
   // ---------- downloads ----------
 
   app.get("/api/export", async (_req, reply) => {
-    const data = await buildExport(db);
+    const data = await buildExport(db, app.backupSecrets());
     return reply.header("Content-Disposition", `attachment; filename="zeropoint-budget-${today()}.json"`).send(data);
   });
 
@@ -46,11 +46,14 @@ export default async function exportRoutes(app: FastifyInstance) {
   app.get("/api/backups", async () => ({
     dir: app.backupDir,
     keep: app.backupKeep,
+    // Saved keys and passwords go into backups (encrypted) only when BACKUP_KEY is set
+    secretsIncluded: !!app.backupKey.key,
+    backupKeyProblem: app.backupKey.problem,
     backups: await listBackups(app.backupDir),
   }));
 
   app.post("/api/backups", async (_req, reply) => {
-    const created = await writeBackup(db, app.backupDir);
+    const created = await writeBackup(db, app.backupDir, app.backupSecrets());
     await pruneBackups(app.backupDir, app.backupKeep);
     return reply.status(201).send(created);
   });
@@ -77,9 +80,9 @@ export default async function exportRoutes(app: FastifyInstance) {
     const parsed = importSchema.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, "That file isn't a ZeroPoint Budget backup");
 
-    const safety = await writeBackup(db, app.backupDir, "before-restore");
+    const safety = await writeBackup(db, app.backupDir, app.backupSecrets(), "before-restore");
     try {
-      const counts = await importData(db, parsed.data);
+      const counts = await importData(db, parsed.data, app.backupSecrets());
       return { ok: true, safetyBackup: safety.name, ...counts };
     } catch (err) {
       req.log.error(err);

@@ -29,7 +29,7 @@ const bank = (path: string, body: any) => {
 describe("accounts", () => {
   it("lists banks and manual accounts with signed balances and totals", async () => {
     // No Plaid keys yet: Connect Account is hidden
-    expect((await t.api("GET", "/api/accounts")).body).toMatchObject({ plaidReady: false, institutions: [], manual: [] });
+    expect((await t.api("GET", "/api/accounts")).body).toMatchObject({ plaidReady: false, institutions: [], manual: [], assets: [] });
 
     t.plaid.respond = bank;
     await t.api("PUT", "/api/settings/plaid", { clientId: "cid", env: "sandbox", sandboxSecret: "sbx" });
@@ -49,7 +49,7 @@ describe("accounts", () => {
       ["Cash Envelope", 20000, "manual:1"],
       ["Car Loan", -850000, `manual:${car.id}`],
     ]);
-    expect(a.totals).toEqual({ haveCents: 336392, oweCents: 1007419, netCents: 336392 - 1007419 });
+    expect(a.totals).toEqual({ haveCents: 336392, oweCents: 1007419, netCents: 336392 - 1007419, assetsCents: 0 });
   });
 
   it("edits and deletes a manual account; transactions marked with it keep their amounts", async () => {
@@ -66,6 +66,20 @@ describe("accounts", () => {
     const after = (await t.api("GET", "/api/transactions")).body[0];
     expect(after).toMatchObject({ id: tx.id, amountCents: 800, plaidAccountId: null, account: null });
     expect((await t.api("DELETE", `/api/accounts/manual/${acct.id}`)).status).toBe(404);
+  });
+
+  it("assets count toward net worth but aren't accounts you can pick on a transaction", async () => {
+    await t.api("POST", "/api/accounts/manual", { name: "Checking", type: "checking", balanceCents: 100000 });
+    await t.api("POST", "/api/accounts/manual", { name: "House", type: "home", balanceCents: 35000000 });
+    await t.api("POST", "/api/accounts/manual", { name: "Truck", type: "vehicle", balanceCents: 1800000 });
+    await t.api("POST", "/api/accounts/manual", { name: "Mortgage", type: "loan", balanceCents: 21000000 });
+    const a = (await t.api("GET", "/api/accounts")).body;
+    expect(a.manual.map((m: any) => m.name)).toEqual(["Checking", "Mortgage"]);
+    expect(a.assets.map((m: any) => [m.name, m.signedCents])).toEqual([
+      ["House", 35000000],
+      ["Truck", 1800000],
+    ]);
+    expect(a.totals).toEqual({ haveCents: 100000 + 35000000 + 1800000, oweCents: 21000000, netCents: 100000 + 35000000 + 1800000 - 21000000, assetsCents: 36800000 });
   });
 
   it("manual accounts are in backups", async () => {

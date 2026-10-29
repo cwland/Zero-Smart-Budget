@@ -91,6 +91,7 @@ export default function App() {
   }
 
   const signOut = () => {
+    api("POST", "/api/auth/logout").catch(() => {}); // this device shows as signed out
     setToken(null);
     check();
   };

@@ -1,0 +1,1 @@
+ALTER TABLE "api_keys" ADD COLUMN "access" text DEFAULT 'read_add' NOT NULL;

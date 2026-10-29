@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": process.env.API_PROXY_TARGET ?? "http://localhost:4000",
+      // xfwd: pass the browser's address along, so Signed-in devices shows the real IP
+      "/api": { target: process.env.API_PROXY_TARGET ?? "http://localhost:4000", xfwd: true },
     },
   },
 });

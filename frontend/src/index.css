@@ -61,3 +61,11 @@
 @media (prefers-reduced-motion: reduce) {
   .toss-catch, .toss-bump { animation: none; }
 }
+
+/* Scrolls sideways (on narrow screens) without showing a scrollbar */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

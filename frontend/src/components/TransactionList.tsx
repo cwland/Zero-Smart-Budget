@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CloseIcon, SearchIcon, Trash } from "./Icons";
 import { api, waitingNote, type Budget, type Transaction } from "../api";
 import { MONTH_NAMES, addMonths, monthBounds, shortDate, type YearMonth } from "../dates";
 import { formatCents } from "../money";
@@ -166,9 +167,7 @@ function UnassignedRow({
               title="Remove this AI suggestion"
               className="flex size-6 shrink-0 items-center justify-center rounded-full text-[#6a3de8]/70 hover:bg-[#7c4dff]/10 hover:text-[#6a3de8] disabled:opacity-50"
             >
-              <svg viewBox="0 0 24 24" className="size-3.5 fill-none stroke-current" strokeWidth={2.4} strokeLinecap="round" aria-hidden>
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
+              <CloseIcon className="size-3.5" />
             </button>
           )}
           </span>
@@ -204,9 +203,7 @@ function DeletedRow({ t, busy, onRestore, onErase }: { t: Transaction; busy: boo
                 Restore
               </button>
               <button onClick={() => setConfirm(true)} disabled={busy} aria-label={`Delete ${t.merchant} forever`} title="Delete forever" className="rounded p-1 text-muted hover:bg-error-subtle hover:text-error">
-                <svg viewBox="0 0 24 24" className="size-4 fill-none stroke-current" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3" />
-                </svg>
+                <Trash />
               </button>
             </>
           )}
@@ -216,20 +213,12 @@ function DeletedRow({ t, busy, onRestore, onErase }: { t: Transaction; busy: boo
   );
 }
 
-function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-4 fill-none stroke-current" strokeWidth={2} strokeLinecap="round" aria-hidden>
-      <circle cx="11" cy="11" r="7" />
-      <path d="M20 20l-3.5-3.5" />
-    </svg>
-  );
-}
 
 type Tab = "new" | "tracked" | "pending" | "deleted";
 
-// New: waiting to be assigned. Tracked: assigned. Pending: not posted at the bank yet (an assigned
+// New: waiting to be assigned. Assigned ("tracked"): has a budget item. Pending: not posted at the bank yet (an assigned
 // pending charge stays in Tracked, tagged Pending).
-const TAB_NAMES: Record<Tab, string> = { new: "New", tracked: "Tracked", deleted: "Deleted", pending: "Pending" };
+const TAB_NAMES: Record<Tab, string> = { new: "New", tracked: "Assigned", deleted: "Deleted", pending: "Pending" };
 
 const tabOf = (t: Transaction): Tab => (t.deletedAt ? "deleted" : !isUnassigned(t) ? "tracked" : t.pending ? "pending" : "new");
 

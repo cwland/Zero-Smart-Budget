@@ -10,7 +10,7 @@ import { plaidItems } from "../db/schema.js";
 import type { PlaidEnv } from "../lib/plaid.js";
 
 const BUDGET_TABLES = "budget_months, sinking_funds, transactions"; // cascades to groups, items, income, splits, fund history
-const ACCOUNT_TABLES = "users, api_keys, app_settings, manual_accounts"; // cascades to password resets
+const ACCOUNT_TABLES = "users, api_keys, app_settings, manual_accounts, notification_log"; // cascades to password resets
 
 export default async function devResetRoutes(app: FastifyInstance) {
   const { db } = app;
@@ -29,7 +29,7 @@ export default async function devResetRoutes(app: FastifyInstance) {
       .parse(req.body);
     if (body.confirm !== "RESET") throw new HttpError(400, 'Type RESET to confirm');
 
-    const backup = await writeBackup(db, app.backupDir, "before-reset");
+    const backup = await writeBackup(db, app.backupDir, app.backupSecrets(), "before-reset");
 
     // Tell Plaid to drop each bank first (frees the connection; needs the keys, so before they're
     // deleted), then forget them here. A bank Plaid can't remove is still forgotten here.

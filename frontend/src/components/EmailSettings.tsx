@@ -69,6 +69,7 @@ export default function EmailSettings() {
   const [showPassword, setShowPassword] = useState(false);
   const [testTo, setTestTo] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null); // shown in the test box
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<"" | "save" | "test" | "remove">("");
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -105,7 +106,11 @@ export default function EmailSettings() {
     setFieldErrors((e) => ({ ...e, [k]: "" }));
   };
 
-  const preset = PRESETS.find((p) => p.host === form.host);
+  // The Provider box remembers what you picked ("custom" stays custom even if the address matches a preset)
+  const [providerChoice, setProviderChoice] = useState<string | null>(null);
+  const matched = PRESETS.find((p) => p.host === form.host);
+  const providerId = providerChoice ?? matched?.id ?? "custom";
+  const preset = PRESETS.find((p) => p.id === providerId);
 
   function body() {
     return {
@@ -120,6 +125,20 @@ export default function EmailSettings() {
       fromAddress: form.fromAddress.trim(),
       appUrl: form.appUrl.trim() || null,
     };
+  }
+
+  // Show: if the box is empty but a password is saved, load the saved one so there's something to show
+  async function togglePassword() {
+    if (showPassword) return setShowPassword(false);
+    if (!form.password && s?.passwordSet && !s.passwordUnreadable) {
+      try {
+        const r = await api<{ password: string | null }>("GET", "/api/settings/email/password");
+        if (r.password) set("password", r.password);
+      } catch (err) {
+        return showError(err);
+      }
+    }
+    setShowPassword(true);
   }
 
   function showError(e: unknown) {
@@ -149,13 +168,16 @@ export default function EmailSettings() {
 
   async function test() {
     setBusy("test");
-    setMsg(null);
+    setTestMsg(null);
     setFieldErrors({});
     try {
       const res = await api<{ to: string }>("POST", "/api/settings/email/test", { settings: { ...body(), enabled: true }, to: testTo.trim() || undefined });
-      setMsg({ ok: true, text: `Test email sent to ${res.to}. Check your inbox (and spam folder).` });
+      setTestMsg({ ok: true, text: `Test email sent to ${res.to}. Check your inbox (and spam folder).` });
     } catch (err) {
-      showError(err);
+      if (err instanceof ApiError && err.details?.length) {
+        setFieldErrors(Object.fromEntries(err.details.map((d) => [d.path, d.message])));
+        setTestMsg({ ok: false, text: "Check the highlighted fields above." });
+      } else setTestMsg({ ok: false, text: (err as Error).message });
     } finally {
       setBusy("");
     }
@@ -205,10 +227,14 @@ export default function EmailSettings() {
             Provider
             <select
               aria-label="Provider"
-              value={preset?.id ?? "custom"}
+              value={providerId}
               onChange={(e) => {
-                const p = PRESETS.find((x) => x.id === e.target.value);
+                const id = e.target.value;
+                setProviderChoice(id);
+                const p = PRESETS.find((x) => x.id === id);
                 if (p) setForm((f) => ({ ...f, host: p.host, port: String(p.port), security: p.security }));
+                // Custom: clear a preset's address so you can type your own server
+                else if (matched) setForm((f) => ({ ...f, host: "", port: "587", security: "starttls" }));
               }}
               className={field}
             >
@@ -270,7 +296,7 @@ export default function EmailSettings() {
                 onChange={(e) => set("password", e.target.value)}
                 className={field + " pr-16 disabled:bg-page"}
               />
-              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-1 text-xs font-semibold text-link">
+              <button type="button" onClick={togglePassword} disabled={clearPassword} className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 px-1 text-xs font-semibold text-link disabled:text-muted">
                 {showPassword ? "Hide" : "Show"}
               </button>
             </div>
@@ -338,6 +364,11 @@ export default function EmailSettings() {
             {busy === "test" ? "Sending…" : "Send test email"}
           </button>
         </div>
+        {testMsg && (
+          <p role={testMsg.ok ? "status" : "alert"} className={`mt-3 rounded-lg px-4 py-3 text-sm ${testMsg.ok ? "bg-success-subtle text-success" : "bg-error-subtle text-error"}`}>
+            {testMsg.text}
+          </p>
+        )}
         <p className="mt-3 text-sm text-subtle">
           With email on, an app address, and an email on <a href="#/settings/profile" className="font-semibold text-link hover:underline">your profile</a>, the sign-in page shows <strong>Forgot password?</strong>
         </p>

@@ -5,7 +5,7 @@ import EmailSettings from "./EmailSettings";
 import AiSettings from "./AiSettings";
 import PlaidSettings from "./PlaidSettings";
 import ProfileSettings from "./ProfileSettings";
-import { ApiKeys, ChangePassword, Devices } from "./SecuritySettings";
+import { ApiKeys, ChangePassword, Devices, SignInHistory } from "./SecuritySettings";
 
 const TABS = [
   { id: "profile", label: "Profile" },
@@ -38,7 +38,7 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-[760px] px-3 pb-16 pt-4 sm:px-6">
       <h1 className="text-2xl font-semibold">Settings</h1>
 
-      <nav aria-label="Settings sections" className="-mx-3 mt-3 overflow-x-auto border-b border-line px-3 sm:mx-0 sm:px-0">
+      <nav aria-label="Settings sections" className="no-scrollbar -mx-3 mt-3 overflow-x-auto border-b border-line px-3 sm:mx-0 sm:px-0">
         <div role="tablist" className="flex min-w-max gap-1">
           {TABS.map((t) => (
             <a
@@ -63,6 +63,7 @@ export default function SettingsPage() {
           <>
             <ChangePassword />
             <Devices />
+            <SignInHistory />
           </>
         )}
         {tab === "api" && <ApiKeys />}

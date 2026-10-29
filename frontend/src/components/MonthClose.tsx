@@ -4,9 +4,9 @@ import { api, type Budget, type CloseChoice, type MonthClosePreview, type MonthC
 import { MONTH_NAMES } from "../dates";
 import { formatCents } from "../money";
 import { useLockBodyScroll } from "../scrollLock";
-import { PiggyIcon } from "./Icons";
+import { CloseIcon, PiggyIcon } from "./Icons";
 
-// Month Close (like EveryDollar's): from 4 days before the end of a month (and on any past month
+// Month Wrap-Up: from 4 days before the end of a month (and on any past month
 // that's still open), review what's left and what's overspent, then give the leftover ONE job:
 // a goal or sinking fund, or roll it over to next month. If you're over, cover it from one fund.
 
@@ -28,6 +28,12 @@ export function resultSummary(r: MonthCloseResult, monthName: string, nextName: 
   return "";
 }
 
+// Is this budget for a month that's already over?
+const isPast = (b: { year: number; month: number }) => {
+  const now = new Date();
+  return b.year * 12 + b.month < now.getFullYear() * 12 + now.getMonth() + 1;
+};
+
 const nextMonthName = (b: { year: number; month: number }) => (b.month === 12 ? MONTH_NAMES[0] : MONTH_NAMES[b.month]);
 
 // The card at the top of the budget
@@ -39,11 +45,11 @@ export function MonthCloseBanner({ budget, onOpen, onReopen }: { budget: Budget;
 
   if (c.closed) {
     return (
-      <section aria-label="Month closed" className="mb-6 rounded-2xl bg-white p-4 sm:px-6">
+      <section aria-label="Month wrapped up" className="mb-6 rounded-2xl bg-white p-4 sm:px-6">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-full bg-page px-3 py-1 text-sm font-semibold text-subtle">🔒 Closed</span>
+          <span className="rounded-full bg-page px-3 py-1 text-sm font-semibold text-subtle">🔒 Wrapped up</span>
           <p className="min-w-0 flex-1 text-subtle">
-            {c.closedBy === "auto" ? `${name} closed automatically.` : `You closed ${name}.`} {c.result && resultSummary(c.result, name, nextMonthName(budget))}
+            {c.closedBy === "auto" ? `${name} was wrapped up automatically.` : `You wrapped up ${name}.`} {c.result && resultSummary(c.result, name, nextMonthName(budget))}
           </p>
           <button
             disabled={busy}
@@ -53,28 +59,28 @@ export function MonthCloseBanner({ budget, onOpen, onReopen }: { budget: Budget;
             }}
             className="rounded border border-action px-4 py-2 font-semibold text-action hover:bg-pressed disabled:opacity-50"
           >
-            Reopen Budget
+            Reopen {name}
           </button>
         </div>
         {c.changedSinceClose && (
           <p role="status" className="mt-3 rounded-lg bg-[#fff4dc] px-3 py-2 text-sm text-ink">
-            Transactions changed after you closed {name}, so the numbers are different now. Reopen it and close it again to update where the money went.
+            Transactions changed after you wrapped up {name}, so the numbers are different now. Reopen it and wrap it up again to update where the money went.
           </p>
         )}
-        <p className="mt-2 text-sm text-muted">The plan can't be changed while it's closed. Transactions can still be added.</p>
+        <p className="mt-2 text-sm text-muted">The plan is locked while it's wrapped up. Transactions can still be added.</p>
       </section>
     );
   }
 
   if (!c.available) return null;
   return (
-    <section aria-label="Month Close" className="mb-6 flex flex-wrap items-center gap-4 rounded-2xl bg-primary p-4 text-white sm:px-6">
+    <section aria-label="Month Wrap-Up" className="mb-6 flex flex-wrap items-center gap-4 rounded-2xl bg-primary p-4 text-white sm:px-6">
       <div className="min-w-0 flex-1">
-        <h2 className="text-lg font-bold">Time to close out {name}</h2>
-        <p className="text-white/80">See what's left and what's overspent, then give any extra money a job.</p>
+        <h2 className="text-lg font-bold">{budget.close.available && isPast(budget) ? `${name} hasn't been wrapped up yet` : `${name} is almost over`}</h2>
+        <p className="text-white/80">See where you came out ahead or went over, and decide where any extra money goes.</p>
       </div>
       <button onClick={onOpen} className="rounded bg-white px-5 py-2.5 font-semibold text-primary hover:bg-pressed">
-        Month Close
+        Wrap Up {name}
       </button>
     </section>
   );
@@ -196,16 +202,14 @@ export function MonthCloseDialog({ monthId, onClose, onDone }: { monthId: number
     </label>
   );
 
-  const title = p ? `Close ${p.name}` : "Month Close";
+  const title = p ? `Wrap up ${p.name}` : "Month Wrap-Up";
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label={title} className="flex max-h-[94vh] w-full max-w-[34rem] flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_12px_40px_rgba(31,36,38,0.3)] sm:rounded-2xl">
         <header className="relative flex items-center justify-center bg-page px-12 py-5">
           <h2 className="text-xl font-bold">{title}</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1.5 text-subtle hover:bg-white/70 hover:text-ink">
-            <svg viewBox="0 0 24 24" className="size-6 fill-none stroke-current" strokeWidth={1.8} strokeLinecap="round" aria-hidden>
-              <path d="M5 5l14 14M19 5L5 19" />
-            </svg>
+            <CloseIcon />
           </button>
         </header>
 
@@ -215,7 +219,7 @@ export function MonthCloseDialog({ monthId, onClose, onDone }: { monthId: number
           {p && done && (
             <div className="py-8 text-center">
               <div className="text-5xl">🎉</div>
-              <h3 className="mt-3 text-2xl font-bold">{short} is closed</h3>
+              <h3 className="mt-3 text-2xl font-bold">{short} is wrapped up</h3>
               <p className="mt-2 text-subtle">{resultSummary(done, short, nextShort)}</p>
               {done.leftover?.to === "rollover" && !p.nextExists && <p className="mt-2 text-sm text-subtle">It'll show up as income when you create {nextShort}'s budget.</p>}
             </div>
@@ -311,7 +315,7 @@ export function MonthCloseDialog({ monthId, onClose, onDone }: { monthId: number
                 Cancel
               </button>
               <button disabled={!p || busy} onClick={submit} className="rounded bg-primary px-6 py-3 font-semibold text-white hover:bg-primary-pressed disabled:opacity-50">
-                Close Month
+                Finish Wrap-Up
               </button>
             </>
           )}

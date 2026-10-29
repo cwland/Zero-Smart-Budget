@@ -1,37 +1,63 @@
-// Small inline icons (stroke = currentColor)
-type P = { className?: string };
-const base = "fill-none stroke-current";
+// App icons from Lucide (lucide.dev, open source, ISC license). Each wrapper keeps the app's own
+// name and default size, so screens just use <BankIcon /> etc.
+import {
+  ChartPie,
+  Check as LucideCheck,
+  ChevronDown as LucideChevronDown,
+  ChevronLeft as LucideChevronLeft,
+  ChevronRight as LucideChevronRight,
+  ChevronUp as LucideChevronUp,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Landmark,
+  LogOut,
+  PiggyBank,
+  Plus,
+  RotateCcw,
+  Search,
+  Settings,
+  Star,
+  Target,
+  Trash2,
+  User,
+  Wallet,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
-export const ChevronLeft = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
-);
-export const ChevronRight = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
-);
-export const ChevronDown = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-);
-export const ChevronUp = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M6 15l6-6 6 6" /></svg>
-);
-export const Trash = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3" /></svg>
-);
-export const Check = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-);
-export const BudgetIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-);
-export const LogoutIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10" /></svg>
-);
-export const PieIcon = ({ className = "size-4" }: P) => (
-  // A thick donut chart in uneven slices with small gaps (like EveryDollar's)
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`}>
-    <circle cx="12" cy="12" r="7" strokeWidth={5} strokeDasharray="15.2 1.9 11 1.9 8.6 1.9 3.5 1.9" transform="rotate(-80 12 12)" />
-  </svg>
-);
+type P = { className?: string };
+const icon = (I: LucideIcon, size: string, strokeWidth = 2) =>
+  function AppIcon({ className = size }: P) {
+    return <I className={className} strokeWidth={strokeWidth} aria-hidden />;
+  };
+
+export const ChevronLeft = icon(LucideChevronLeft, "size-4");
+export const ChevronRight = icon(LucideChevronRight, "size-4");
+export const ChevronDown = icon(LucideChevronDown, "size-4");
+export const ChevronUp = icon(LucideChevronUp, "size-4");
+export const Trash = icon(Trash2, "size-4", 1.8);
+export const Check = icon(LucideCheck, "size-4", 2.4);
+export const BudgetIcon = icon(Wallet, "size-5", 1.8);
+export const LogoutIcon = icon(LogOut, "size-5", 1.8);
+export const PieIcon = icon(ChartPie, "size-4", 2);
+export const BankIcon = icon(Landmark, "size-5", 1.8);
+export const GoalIcon = icon(Target, "size-5", 1.9);
+export const PlusIcon = icon(Plus, "size-5");
+export const PiggyIcon = icon(PiggyBank, "size-5", 1.8);
+export const GearIcon = icon(Settings, "size-5", 1.8);
+export const GripIcon = icon(GripVertical, "size-4");
+export const UserIcon = icon(User, "size-5", 1.8);
+export const ResetIcon = icon(RotateCcw, "size-5", 1.8);
+export const EyeIcon = icon(Eye, "size-5", 1.8);
+export const EyeOffIcon = icon(EyeOff, "size-5", 1.8);
+export const CloseIcon = icon(X, "size-6", 1.8);
+export const SearchIcon = icon(Search, "size-4");
+
+// Filled when on (favorites)
+export function StarIcon({ filled, className = "size-6" }: P & { filled?: boolean }) {
+  return <Star className={className} strokeWidth={1.8} fill={filled ? "currentColor" : "none"} aria-hidden />;
+}
 
 // ZeroPoint Budget mark: green rounded square with a "0" ring and a dot in the middle (the zero point)
 export const Logo = ({ className = "size-8" }: P) => (
@@ -40,64 +66,4 @@ export const Logo = ({ className = "size-8" }: P) => (
     <ellipse cx="16" cy="16" rx="7" ry="9" fill="none" stroke="#fff" strokeWidth="3.2" />
     <circle cx="16" cy="16" r="2.4" fill="#fff" />
   </svg>
-);
-
-// A bank building (Accounts)
-export const BankIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9.5L12 4l9 5.5M4.5 10v8M9 10v8M15 10v8M19.5 10v8M3 20.5h18" />
-  </svg>
-);
-// A target (Goals)
-export const GoalIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.9}>
-    <circle cx="12" cy="12" r="8.5" />
-    <circle cx="12" cy="12" r="4.8" />
-    <circle cx="12" cy="12" r="1.3" fill="currentColor" />
-  </svg>
-);
-export const PlusIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={2} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-);
-export const PiggyIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 11a7 6 0 0112.6-3.5H20v3l-1.2.8A6 6 0 0117 15.5V19h-3v-2h-3v2H8v-3.2A6 6 0 015 11z" />
-    <path d="M9 7.5h3" />
-    <circle cx="15.5" cy="10" r=".6" fill="currentColor" />
-  </svg>
-);
-
-export const GearIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" />
-  </svg>
-);
-
-export const GripIcon = ({ className = "size-4" }: P) => (
-  <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
-    <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
-    <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
-    <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
-  </svg>
-);
-
-export const UserIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 20a8 8 0 0116 0" />
-  </svg>
-);
-
-export const ResetIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 12a8 8 0 108-8 8.5 8.5 0 00-6 2.5L4 8" />
-    <path d="M4 4v4h4" />
-  </svg>
-);
-export const EyeIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
-);
-export const EyeOffIcon = ({ className = "size-5" }: P) => (
-  <svg viewBox="0 0 24 24" className={`${base} ${className}`} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18M10.6 5.1A10.4 10.4 0 0112 5c6.5 0 10 7 10 7a17.6 17.6 0 01-3.2 4.2M6.6 6.6A17.4 17.4 0 002 12s3.5 7 10 7a9.9 9.9 0 005.4-1.6M9.9 9.9a3 3 0 004.2 4.2" /></svg>
 );

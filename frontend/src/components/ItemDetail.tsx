@@ -1,6 +1,6 @@
 import type { Budget, Transaction } from "../api";
 import { formatCents } from "../money";
-import { ChevronLeft } from "./Icons";
+import { ChevronLeft, StarIcon } from "./Icons";
 import { api } from "../api";
 import FundLink from "./FundLink";
 import { ProgressBar } from "./ItemRow";
@@ -80,9 +80,7 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
             title={favorite ? "Remove from favorites" : "Add to favorites"}
             className={`rounded-full p-2 hover:bg-page ${favorite ? "text-[#f5b301]" : "text-muted"}`}
           >
-            <svg viewBox="0 0 24 24" className="size-6" fill={favorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} strokeLinejoin="round">
-              <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
-            </svg>
+            <StarIcon filled={favorite} />
           </button>
         )}
       </div>

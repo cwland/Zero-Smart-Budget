@@ -7,6 +7,8 @@ import { createDb } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
+import { resetActiveMark } from "../src/lib/notifications.js";
+import { resetSessionTouches } from "../src/lib/sessions.js";
 import type { EmailConfig, MailMessage } from "../src/lib/mail.js";
 import type { PlaidFetch } from "../src/lib/plaid.js";
 import type { AiFetch } from "../src/lib/ai.js";
@@ -16,7 +18,7 @@ import type { AiFetch } from "../src/lib/ai.js";
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/corysdollar_test";
 if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a test database");
 
-export async function setupTestApp(opts: { email?: boolean } = {}) {
+export async function setupTestApp(opts: { email?: boolean; backupKey?: string; jwtSecret?: string } = {}) {
   const { db, pool } = createDb(url);
   await db.execute(sql`drop schema if exists public cascade`);
   await db.execute(sql`drop schema if exists drizzle cascade`);
@@ -64,8 +66,9 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
     aiFetch,
     plaidFetch,
     db,
-    jwtSecret: "test-secret-that-is-long-enough",
+    jwtSecret: opts.jwtSecret ?? "test-secret-that-is-long-enough",
     backupDir,
+    backupKey: opts.backupKey ?? "",
     backupKeep: 3,
     emailEnv,
     mailTransport: (config) => ({
@@ -113,7 +116,9 @@ export async function setupTestApp(opts: { email?: boolean } = {}) {
       ai.respond = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
-      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts restart identity cascade`);
+      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events restart identity cascade`);
+      resetSessionTouches();
+      resetActiveMark();
       resetLoginLockouts();
       token = "";
     },

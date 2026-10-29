@@ -22,6 +22,7 @@ services:
     environment:
       PORT: ${API_PORT:-4000}
       BACKUP_DIR: /app/backups
+      # Set BACKUP_KEY in .env (passed in through env_file) to include encrypted keys and passwords in backups
     depends_on:
       db:
         condition: service_healthy

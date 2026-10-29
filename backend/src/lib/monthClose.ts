@@ -4,8 +4,9 @@ import { budgetMonths, fundEntries, incomeItems, transactions, transactionSplits
 import { loadBudget, loadFunds, nextSortOrder } from "./budget.js";
 import { monthDateRange, monthIndex, nextMonth } from "./calc.js";
 import { badRequest, notFound } from "./errors.js";
+import { getBudgetPrefs } from "./prefs.js";
 
-// Month Close (like EveryDollar's): at the end of a month, see which items have money left and
+// Month Close (shown to users as "Month Wrap-Up"): at the end of a month, see which items have money left and
 // which are overspent, then either put the leftover in ONE fund or goal (or roll it over to next
 // month), or cover the overspend from ONE fund or goal. Optional: months close themselves on the
 // 1st of the second month after (September closes November 1), keeping any leftover in the month.
@@ -39,13 +40,13 @@ export function closeAvailable(m: { year: number; month: number }, now: Date, da
 }
 
 // Close state for the budget screen
-export function closeState(row: typeof budgetMonths.$inferSelect, b: Budget, now: Date, daysBefore = 4) {
+export function closeState(row: typeof budgetMonths.$inferSelect, b: Budget, now: Date, daysBefore = 4, enabled = true) {
   const total = closeTotal(b);
   return {
     closed: !!row.closedAt,
     closedAt: row.closedAt,
     closedBy: row.closedBy,
-    available: !row.closedAt && closeAvailable(row, now, daysBefore),
+    available: enabled && !row.closedAt && closeAvailable(row, now, daysBefore),
     result: row.closeResult,
     // A transaction came in (or changed) after closing, so the result is out of date
     changedSinceClose: !!row.closedAt && !!row.closeResult && row.closeResult.totalCents !== total,
@@ -221,6 +222,8 @@ export async function reopenMonth(db: Db, monthId: number) {
 
 // Close months that are two or more months old and still open. Their leftover stays in the month.
 export async function autoCloseOldMonths(db: Db, now = new Date()) {
+  const prefs = await getBudgetPrefs(db);
+  if (!prefs.monthCloseEnabled || !prefs.monthCloseAuto) return 0; // Settings > Budget: Month Close off, or "leave it open"
   const cutoff = monthIndex(now.getFullYear(), now.getMonth() + 1) - 2;
   const open = await db
     .select()

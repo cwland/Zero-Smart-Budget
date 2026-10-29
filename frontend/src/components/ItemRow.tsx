@@ -3,7 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { formatCents } from "../money";
 import { InlineText, MoneyInput } from "./inputs";
-import { GoalIcon, GripIcon, PiggyIcon, Trash } from "./Icons";
+import { GoalIcon, GripIcon, PiggyIcon, PlusIcon, Trash } from "./Icons";
 
 export interface RowData {
   id: number;
@@ -111,9 +111,7 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
                 title={`Add a transaction to ${row.name}`}
                 className="flex size-7 shrink-0 items-center justify-center rounded-full text-action opacity-60 hover:bg-pressed hover:opacity-100 focus:opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100"
               >
-                <svg viewBox="0 0 24 24" className="size-5 fill-none stroke-current" strokeWidth={2.2} strokeLinecap="round" aria-hidden>
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
+                <PlusIcon className="size-5" />
               </button>
             )}
           </span>

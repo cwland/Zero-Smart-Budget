@@ -7,6 +7,7 @@ import type { EmailConfig } from "../lib/mail.js";
 import { getBudgetPrefs, saveBudgetPrefs } from "../lib/prefs.js";
 import { PlaidError, explainPlaidError, type PlaidKeys } from "../lib/plaid.js";
 import { AI_PROVIDERS, AiError, type AiConfig } from "../lib/ai.js";
+import { getNotificationPrefs, saveNotificationPrefs } from "../lib/notifications.js";
 
 function requireLogin(req: FastifyRequest): number {
   if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
@@ -150,18 +151,20 @@ export default async function settingsRoutes(app: FastifyInstance) {
     timeoutSec: z.coerce.number().int().min(3).max(300).optional(),
     askNextOnNoMatch: z.boolean().optional(),
   };
-  // Each service that's turned on needs a model (and a local one its address)
+  // Each service needs a model (and a local one its address)
   const checkReady = (enabled: boolean, list: z.infer<typeof service>[], ctx: z.RefinementCtx, prefix: (i: number) => (string | number)[]) => {
     if (!enabled) return;
     list.forEach((v, i) => {
-      if (!v.enabled) return;
       const who = list.length > 1 ? `${v.name || `Service ${i + 1}`}: ` : "";
       if (v.provider === "local" && !v.baseUrl) ctx.addIssue({ code: "custom", path: [...prefix(i), "baseUrl"], message: `${who}Enter your AI server's address` });
       if (!v.model) ctx.addIssue({ code: "custom", path: [...prefix(i), "model"], message: `${who}Choose a model` });
     });
   };
   const aiSettings = z.union([
-    z.object({ ...common, services: z.array(service).max(10) }).superRefine((v, ctx) => checkReady(v.enabled, v.services, ctx, (i) => ["services", i])),
+    // Settings > AI saves the services (on/off and how it's used live in Settings > Budget)
+    z
+      .object({ ...common, enabled: z.boolean().optional(), mode: z.enum(["auto", "manual"]).optional(), services: z.array(service).max(10) })
+      .superRefine((v, ctx) => checkReady(true, v.services, ctx, (i) => ["services", i])),
     // The single-provider shape from before backup services (updates the first service)
     service.and(z.object(common)).superRefine((v, ctx) => checkReady(v.enabled, [v], ctx, () => [])),
   ]);
@@ -208,6 +211,23 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
+  // Settings > Budget: whether AI suggestions are used, and how. Needs a working service to turn on.
+  app.put("/api/settings/ai/usage", async (req) => {
+    requireLogin(req);
+    const body = z.object({ enabled: z.boolean().optional(), mode: z.enum(["auto", "manual"]).optional(), askNextOnNoMatch: z.boolean().optional() }).strict().parse(req.body);
+    const current = await app.ai.stored();
+    if (!current) throw new HttpError(400, "Set up an AI service first in Settings > AI.");
+    if (body.enabled && !(await app.ai.summary())?.ready) throw new HttpError(400, "None of your AI services is ready. Finish setting one up in Settings > AI.");
+    await app.ai.save({
+      enabled: body.enabled ?? current.enabled,
+      mode: body.mode ?? current.mode,
+      maxPerRun: current.maxPerRun,
+      askNextOnNoMatch: body.askNextOnNoMatch ?? current.askNextOnNoMatch,
+      services: current.services.map((sv) => ({ ...sv, apiKey: undefined })),
+    });
+    return { settings: await app.ai.summary() };
+  });
+
   app.post("/api/settings/ai/test", async (req) => {
     requireLogin(req);
     const c = await aiConfigFrom(req.body);
@@ -222,13 +242,67 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return { models: await aiErrors(() => app.ai.models(c)) };
   });
 
+  // ---------- Notifications (email) ----------
+  const notifyStatus = async (userId: number) => {
+    const active = await mail.active();
+    return { settings: await getNotificationPrefs(db), emailReady: !!active, to: await accountEmail(userId) };
+  };
+  app.get("/api/settings/notifications", async (req) => {
+    const userId = requireLogin(req);
+    return notifyStatus(userId);
+  });
+  app.put("/api/settings/notifications", async (req) => {
+    const userId = requireLogin(req);
+    const body = z
+      .object({
+        enabled: z.boolean().optional(),
+        monthCloseReminder: z.boolean().optional(),
+        nudge: z.boolean().optional(),
+        nudgeDays: z.number().int().min(1).max(90).optional(),
+        monthlySummary: z.boolean().optional(),
+      })
+      .strict()
+      .parse(req.body);
+    if (body.enabled) {
+      if (!(await mail.active())) throw new HttpError(400, "Set up email first in Settings > Email.");
+      if (!(await accountEmail(userId))) throw new HttpError(400, "Add your email address in Settings > Profile first.");
+    }
+    await saveNotificationPrefs(db, body);
+    return notifyStatus(userId);
+  });
+  // A sample of each notification, to see what they look like
+  app.post("/api/settings/notifications/test", async (req) => {
+    const userId = requireLogin(req);
+    const to = await accountEmail(userId);
+    if (!to) throw new HttpError(400, "Add your email address in Settings > Profile first.");
+    if (!(await mail.active())) throw new HttpError(400, "Set up email first in Settings > Email.");
+    try {
+      await mail.send({
+        to,
+        subject: "ZeroPoint Budget notifications are working",
+        text: "This is a test. You'll get emails like this when it's time to wrap up a month, or when transactions are waiting for you after a while away.\n\nYou can turn these emails off in Settings > Budget > Notifications.",
+      });
+    } catch (err) {
+      throw new HttpError(502, `Couldn't send: ${(err as Error).message.replace(/\s+/g, " ").slice(0, 300)}`);
+    }
+    return { ok: true, to };
+  });
+
   // Budget preferences (Fast Track)
   app.get("/api/settings/budget", async () => getBudgetPrefs(db));
 
   app.put("/api/settings/budget", async (req) => {
     requireLogin(req);
-    const body = z.object({ fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional(), monthCloseDays: z.number().int().min(0).max(27).optional() }).strict().parse(req.body);
+    const body = z.object({ fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional(), monthCloseDays: z.number().int().min(0).max(27).optional(), monthCloseEnabled: z.boolean().optional(), monthCloseAuto: z.boolean().optional() }).strict().parse(req.body);
     return saveBudgetPrefs(db, body);
+  });
+
+  // The saved password, only when you click Show (signed in only; never in the normal settings read)
+  app.get("/api/settings/email/password", async (req) => {
+    requireLogin(req);
+    const { password, unreadable } = await mail.storedPassword();
+    if (unreadable) throw new HttpError(409, "The saved password can't be read (the server's secret changed). Enter it again.");
+    return { password };
   });
 
   app.put("/api/settings/email", async (req) => {

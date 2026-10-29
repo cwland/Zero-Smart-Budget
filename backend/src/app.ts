@@ -5,6 +5,8 @@ import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
 import type { Db } from "./db/index.js";
 import { apiKeys, users } from "./db/schema.js";
+import { backupKeyFromEnv, type BackupSecrets } from "./lib/settingsBackup.js";
+import { keyAllows, keyDenied, type KeyAccess } from "./lib/keyAccess.js";
 import { HttpError } from "./lib/errors.js";
 import { hashApiKey, verifyToken } from "./lib/auth.js";
 import authRoutes from "./routes/auth.js";
@@ -21,12 +23,16 @@ import devResetRoutes from "./routes/devReset.js"; // TEMPORARY testing tool
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
 import { PlaidService, type PlaidFetch } from "./lib/plaid.js";
 import { AiService, type AiFetch } from "./lib/ai.js";
+import { markActive } from "./lib/notifications.js";
+import { sessionForToken } from "./lib/sessions.js";
 
 declare module "fastify" {
   interface FastifyInstance {
     db: Db;
     jwtSecret: string;
     backupDir: string;
+    backupKey: { key: string | null; problem: string | null };
+    backupSecrets: () => BackupSecrets;
     backupKeep: number;
     mail: MailService;
     plaid: PlaidService;
@@ -34,7 +40,7 @@ declare module "fastify" {
     now: () => Date; // the clock (tests set the date)
   }
   interface FastifyRequest {
-    auth?: { method: "token"; userId: number } | { method: "apiKey"; keyId: number };
+    auth?: { method: "token"; userId: number; sessionId: number } | { method: "apiKey"; keyId: number };
   }
 }
 
@@ -43,6 +49,7 @@ export interface AppOptions {
   jwtSecret: string;
   logger?: boolean;
   backupDir?: string;
+  backupKey?: string; // BACKUP_KEY: encrypts saved keys and passwords inside backups
   backupKeep?: number;
   emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
   mailTransport?: TransportFactory; // tests swap in a fake
@@ -64,15 +71,20 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/reset",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, emailEnv = null, mailTransport, plaidFetch, aiFetch, now = () => new Date() }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, emailEnv = null, mailTransport, plaidFetch, aiFetch, now = () => new Date() }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
 
-  const app = Fastify({ logger });
+  // Behind a proxy on this machine or the local network (Vite in development, a reverse proxy in
+  // Docker), take the visitor's address from X-Forwarded-For so devices show their real IP
+  const app = Fastify({ logger, trustProxy: process.env.TRUST_PROXY ?? "loopback, linklocal, uniquelocal" });
   app.decorate("db", db);
   app.decorate("jwtSecret", jwtSecret);
   app.decorate("backupDir", backupDir);
+  const bk = backupKeyFromEnv(backupKey);
+  app.decorate("backupKey", bk);
+  app.decorate("backupSecrets", () => ({ jwtSecret, backupKey: bk.key }));
   app.decorate("backupKeep", backupKeep);
   app.decorate("mail", new MailService(db, jwtSecret, emailEnv, mailTransport));
   app.decorate("plaid", new PlaidService(db, jwtSecret, plaidFetch));
@@ -90,8 +102,11 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
       if (claims) {
         // Tokens issued before the last "sign out everywhere" / password change no longer work
         const [user] = await db.select({ tv: users.tokenVersion }).from(users).where(eq(users.id, claims.userId));
-        if (user && user.tv === claims.tokenVersion) {
-          req.auth = { method: "token", userId: claims.userId };
+        // ...and its device hasn't been signed out
+        const session = user && user.tv === claims.tokenVersion ? await sessionForToken(db, req, header.slice(7), claims, app.now()) : null;
+        if (session) {
+          req.auth = { method: "token", userId: claims.userId, sessionId: session.id };
+          await markActive(db, claims.userId, app.now().getTime()); // for the "come back" nudge
           return;
         }
       }
@@ -100,10 +115,13 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
     const key = req.headers["x-api-key"];
     if (typeof key === "string" && key) {
       const [found] = await db
-        .select({ id: apiKeys.id })
+        .select({ id: apiKeys.id, access: apiKeys.access })
         .from(apiKeys)
         .where(eq(apiKeys.keyHash, hashApiKey(key)));
       if (found) {
+        const access = found.access as KeyAccess;
+        const path = req.routeOptions.url ?? req.url.split("?")[0];
+        if (!keyAllows(access, req.method, path)) throw new HttpError(403, keyDenied(access, req.method));
         req.auth = { method: "apiKey", keyId: found.id };
         await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, found.id));
         return;

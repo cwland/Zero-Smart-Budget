@@ -14,19 +14,19 @@ export default function SummaryBanner({ totals }: { totals: BudgetTotals }) {
         <span className="flex size-5 items-center justify-center rounded-full bg-success text-white">
           <Check className="size-3.5" />
         </span>
-        It's a zero-based budget!
+        Balanced! All of your income has a plan.
       </span>
     );
   } else if (left > 0) {
     content = (
       <span>
-        <span className="tabular font-medium text-success">{formatCents(left)}</span> left to budget
+        <span className="tabular font-medium text-success">{formatCents(left)}</span> still to plan
       </span>
     );
   } else {
     content = (
       <span>
-        <span className="tabular font-medium text-error">{formatCents(-left)}</span> over budget
+        <span className="tabular font-medium text-error">{formatCents(-left)}</span> planned beyond your income
       </span>
     );
   }

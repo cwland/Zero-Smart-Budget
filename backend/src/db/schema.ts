@@ -33,6 +33,7 @@ export const users = pgTable("users", {
   email: text("email"), // used for password resets (and later, notifications)
   // Bumped to sign out every device: login tokens carry the version they were issued with
   tokenVersion: integer("token_version").notNull().default(0),
+  lastActiveAt: timestamp("last_active_at", { withTimezone: true }), // last time the app was used (for the "come back" nudge)
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -61,6 +62,8 @@ export const apiKeys = pgTable("api_keys", {
   name: text("name").notNull(),
   prefix: text("prefix").notNull(), // first characters, shown in the UI to identify the key
   keyHash: text("key_hash").notNull().unique(),
+  // What the key may do: "read", "add" (add transactions) or "read_add" (see lib/keyAccess.ts)
+  access: text("access").notNull().default("read_add"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
 });
@@ -291,11 +294,60 @@ export const plaidAccounts = pgTable(
 export const manualAccounts = pgTable("manual_accounts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  type: text("type").notNull().$type<"checking" | "savings" | "cash" | "credit" | "loan" | "investment" | "other">(),
+  // home, vehicle, asset: things you own (count toward net worth, never used in the budget)
+  type: text("type").notNull().$type<"checking" | "savings" | "cash" | "credit" | "loan" | "investment" | "other" | "home" | "vehicle" | "asset">(),
   balanceCents: integer("balance_cents").notNull().default(0),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   balanceUpdatedAt: timestamp("balance_updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Signed-in devices: one row per sign-in (each login token carries its row's tokenId).
+// A session works while it isn't signed out, its token version is current and it hasn't expired.
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenId: text("token_id").notNull().unique(),
+    tokenVersion: integer("token_version").notNull(),
+    how: text("how").notNull(), // password, setup, reset link, earlier sign-in
+    userAgent: text("user_agent"),
+    ip: text("ip"), // where it signed in from
+    lastIp: text("last_ip"), // where it was last used from
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }), // signed out
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)]
+);
+
+// Every sign-in attempt, good or bad (Settings > Security)
+export const loginEvents = pgTable(
+  "login_events",
+  {
+    id: serial("id").primaryKey(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    username: text("username"), // as typed
+    success: boolean("success").notNull(),
+    reason: text("reason"), // why it failed, or how it signed in
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    sessionId: integer("session_id").references(() => sessions.id, { onDelete: "set null" }),
+  },
+  (t) => [index("login_events_at_idx").on(t.at)]
+);
+
+// Notifications already sent, so each one goes out once ("month-close:2026-10", "nudge:2026-10-28")
+export const notificationLog = pgTable("notification_log", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").notNull(), // month-close, nudge
+  sentTo: text("sent_to").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ---------- relations (for nested queries) ----------

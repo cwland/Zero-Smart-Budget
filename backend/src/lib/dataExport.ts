@@ -15,11 +15,13 @@ import {
 import { loadBudget } from "./budget.js";
 import { rebuildAllEntries } from "./fundLedger.js";
 import { backfillMerchantKeys } from "./merchant.js";
+import { exportSettings, importSettings, type BackupSecrets, type SettingsSection } from "./settingsBackup.js";
 
-export const EXPORT_VERSION = 3; // 2 added fundEntries, 3 Month Close (closed months, goals, rollovers)
+export const EXPORT_VERSION = 4; // 2 added fundEntries, 3 Month Close (closed months, goals, rollovers), 4 settings
 
-// Everything except the login and API keys
-export async function buildExport(db: Db) {
+// Everything except the login, API keys and bank connections. Settings are included; their saved
+// keys and passwords only when BACKUP_KEY is set (encrypted with it; see settingsBackup.ts)
+export async function buildExport(db: Db, secrets: BackupSecrets) {
   return {
     app: "ZeroPoint Budget",
     exportVersion: EXPORT_VERSION,
@@ -33,6 +35,7 @@ export async function buildExport(db: Db) {
     transactionSplits: await db.select().from(transactionSplits).orderBy(asc(transactionSplits.id)),
     fundEntries: await db.select().from(fundEntries).orderBy(asc(fundEntries.id)),
     manualAccounts: await db.select().from(manualAccounts).orderBy(asc(manualAccounts.id)),
+    settings: await exportSettings(db, secrets),
   };
 }
 
@@ -122,7 +125,7 @@ export async function budgetCsv(db: Db, year?: number, month?: number) {
 const rows = z.array(z.record(z.string(), z.unknown()));
 export const importSchema = z.object({
   app: z.enum(["ZeroPoint Budget", "Cory's Dollar"]), // backups made before the rename still restore
-  exportVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  exportVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   months: rows,
   incomeItems: rows,
   groups: rows,
@@ -132,6 +135,7 @@ export const importSchema = z.object({
   transactionSplits: rows,
   fundEntries: rows.optional(), // missing in version 1 files: rebuilt from links
   manualAccounts: rows.optional(), // version 3+
+  settings: z.object({ secrets: z.enum(["encrypted", "left out"]), values: z.record(z.string(), z.unknown()) }).optional(), // version 4+
 });
 export type ImportData = z.infer<typeof importSchema>;
 
@@ -164,7 +168,8 @@ const TABLES = [
 
 // Replaces ALL budget data with the backup's contents (the login and API keys are kept).
 // Runs in one database transaction, so a bad file changes nothing.
-export async function importData(db: Db, data: ImportData) {
+export async function importData(db: Db, data: ImportData, secrets: BackupSecrets) {
+  let settings: Awaited<ReturnType<typeof importSettings>> | null = null;
   await db.transaction(async (tx) => {
     await tx.execute(sql.raw(`truncate ${TABLES.join(", ")} restart identity cascade`));
     await insertChunks(tx, sinkingFunds, data.sinkingFunds);
@@ -184,10 +189,13 @@ export async function importData(db: Db, data: ImportData) {
     }
     if (!data.fundEntries) await rebuildAllEntries(tx as unknown as Db);
     await backfillMerchantKeys(tx as unknown as Db); // older backups have no merchant keys
+    if (data.settings) settings = await importSettings(tx as unknown as Db, data.settings as SettingsSection, secrets);
   });
   return {
     months: data.months.length,
     transactions: data.transactions.length,
     sinkingFunds: data.sinkingFunds.length,
+    // null: an older backup without settings (yours were left as they are)
+    settings,
   };
 }
