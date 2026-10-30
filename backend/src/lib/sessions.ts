@@ -21,7 +21,7 @@ export function deviceIdOf(req: FastifyRequest) {
  * shows one row per browser.
  */
 // Called when a browser or device signs in for the first time (the new sign-in email)
-type NewDeviceHandler = (s: { sessionId: number; userAgent: string | null; ip: string; how: string; at: Date }) => Promise<unknown>;
+type NewDeviceHandler = (s: { userId: number; sessionId: number; userAgent: string | null; ip: string; how: string; at: Date }) => Promise<unknown>;
 let onNewDevice: NewDeviceHandler | null = null;
 export const setNewDeviceHandler = (fn: NewDeviceHandler | null) => {
   onNewDevice = fn;
@@ -46,7 +46,7 @@ export async function startSession(db: Db, secret: string, req: FastifyRequest, 
         .returning();
   touched.delete(row.id);
   // Not for the very first sign-in (setting up the account); sent in the background
-  if (!seenBefore && how !== "account set up" && onNewDevice) lastAlert = onNewDevice({ sessionId: row.id, userAgent: row.userAgent, ip: req.ip, how, at: now }).catch(() => {});
+  if (!seenBefore && how !== "account set up" && onNewDevice) lastAlert = onNewDevice({ userId: user.id, sessionId: row.id, userAgent: row.userAgent, ip: req.ip, how, at: now }).catch(() => {});
   return { token: signToken(user.id, user.tokenVersion, secret, tokenId), session: row };
 }
 

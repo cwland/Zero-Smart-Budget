@@ -151,7 +151,7 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       github.respond = () => ({ status: 404, json: { message: "Not Found" } });
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
-      await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events, app_log, passkeys restart identity cascade`);
+      await db.execute(sql`truncate users, invites, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events, app_log, passkeys restart identity cascade`);
       resetSessionTouches();
       resetActiveMark();
       resetLoginLockouts();

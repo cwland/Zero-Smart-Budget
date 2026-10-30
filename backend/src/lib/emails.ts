@@ -34,6 +34,25 @@ export function passwordReset(username: string, link: string): EmailContent {
   };
 }
 
+export function invitation(p: { from: string; name: string | null; role: "admin" | "user"; link: string; days: number }): EmailContent {
+  const what =
+    p.role === "admin"
+      ? "As an **admin** you can do everything in the app, including its settings, except inviting people."
+      : "As a **user** you can use the budget, transactions, accounts and reports, and set up your own profile and notifications.";
+  return {
+    subject: `${p.from} shared their budget with you`,
+    preheader: `Set up your sign-in. The link works for ${p.days} days.`,
+    title: `${p.name ? `Hi ${p.name}, you're` : "You're"} invited`,
+    blocks: [
+      { type: "p", text: `**${p.from}** invited you to their budget in Zero Smart Budget.` },
+      { type: "p", text: what },
+      { type: "p", text: `Use the button below to pick a username and password. The link works once, for ${p.days} days.` },
+    ],
+    button: { label: "Set up my sign-in", url: p.link },
+    why: "You got this because someone added your email address to their budget. If you didn't expect it, ignore this email.",
+  };
+}
+
 export function monthCloseReminder(p: { monthName: string; over: boolean; leftCents?: number | null; spentCents?: number | null; plannedCents?: number | null }): EmailContent {
   const money = (c: number) => `$${(Math.abs(c) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const blocks: EmailContent["blocks"] = [

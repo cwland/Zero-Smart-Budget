@@ -20,7 +20,9 @@ export default function EmailPreview({ kind, title, onClose }: { kind: string; t
           {error}
         </p>
       ) : html === null ? (
-        <div className="h-full" aria-busy="true" />
+        <p className="p-6 text-center text-subtle" aria-busy="true">
+          Loading the preview…
+        </p>
       ) : (
         <iframe title={`${title} email`} srcDoc={html} sandbox="" className="h-[calc(85vh-4.5rem)] w-full border-0" />
       )}

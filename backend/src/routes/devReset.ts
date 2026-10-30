@@ -10,7 +10,7 @@ import { plaidItems } from "../db/schema.js";
 import type { PlaidEnv } from "../lib/plaid.js";
 
 const BUDGET_TABLES = "budget_months, sinking_funds, transactions"; // cascades to groups, items, income, splits, fund history
-const ACCOUNT_TABLES = "users, api_keys, app_settings, manual_accounts, notification_log"; // cascades to password resets
+const ACCOUNT_TABLES = "users, invites, api_keys, app_settings, manual_accounts, notification_log"; // cascades to password resets
 
 export default async function devResetRoutes(app: FastifyInstance) {
   const { db } = app;

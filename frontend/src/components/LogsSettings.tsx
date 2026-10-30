@@ -5,7 +5,7 @@ import { Card } from "./settingsUi";
 interface LogRow {
   id: number;
   at: string;
-  category: "email" | "ai" | "bank" | "api" | "schedule";
+  category: "email" | "ai" | "bank" | "api" | "schedule" | "access";
   level: "info" | "warning" | "error";
   source: string | null;
   event: string;
@@ -20,8 +20,9 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "bank", label: "Bank sync" },
   { id: "api", label: "API" },
   { id: "schedule", label: "Scheduled tasks" },
+  { id: "access", label: "Shared access" },
 ];
-const CATEGORY_LABEL: Record<LogRow["category"], string> = { email: "Email", ai: "AI", bank: "Bank sync", api: "API", schedule: "Scheduled" };
+const CATEGORY_LABEL: Record<LogRow["category"], string> = { email: "Email", ai: "AI", bank: "Bank sync", api: "API", schedule: "Scheduled", access: "Shared access" };
 const LEVEL: Record<LogRow["level"], { mark: string; cls: string; label: string }> = {
   info: { mark: "✓", cls: "text-success", label: "OK" },
   warning: { mark: "!", cls: "text-warning", label: "Warning" },

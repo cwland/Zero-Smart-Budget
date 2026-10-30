@@ -41,6 +41,26 @@ export const users = pgTable("users", {
   oauthIssuer: text("oauth_issuer"),
   oauthSubject: text("oauth_subject"),
   oauthEmail: text("oauth_email"), // shown in Settings (what the provider called it)
+  // Shared access: the owner (who set the server up) invites admins and users. Everyone shares
+  // one budget; an admin can do everything but manage people; a user can't change the setup.
+  role: text("role").notNull().default("user").$type<"owner" | "admin" | "user">(),
+  // This person's own notification switches (the owner's live in app_settings "notifications")
+  notificationPrefs: jsonb("notification_prefs"),
+  tossAnimation: boolean("toss_animation").notNull().default(true), // Settings > Budget, per person
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Shared access invites: a one-time sign-up link (only a hash of the token is stored)
+export const invites = pgTable("invites", {
+  id: serial("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  name: text("name"),
+  email: text("email").notNull(),
+  role: text("role").notNull().$type<"admin" | "user">(),
+  invitedBy: integer("invited_by").references(() => users.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }), // who signed up with it
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -11,6 +11,7 @@ import { AI_PROVIDERS, AiError, type AiConfig } from "../lib/ai.js";
 import { getNotificationPrefs, NOTIFICATION_KINDS, NOTIFICATION_NAMES, renderForRecipient, sampleNotification, saveNotificationPrefs } from "../lib/notifications.js";
 import { previewHtml, renderEmail } from "../lib/emailLayout.js";
 import { emailWorks } from "../lib/emails.js";
+import { canManage } from "../lib/roles.js";
 
 function requireLogin(req: FastifyRequest): number {
   if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
@@ -249,7 +250,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
   // ---------- Notifications (email) ----------
   const notifyStatus = async (userId: number) => {
     const active = await mail.active();
-    return { settings: await getNotificationPrefs(db), emailReady: !!active, to: await accountEmail(userId) };
+    return { settings: await getNotificationPrefs(db, userId), emailReady: !!active, to: await accountEmail(userId) };
   };
   app.get("/api/settings/notifications", async (req) => {
     const userId = requireLogin(req);
@@ -283,7 +284,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       if (!(await mail.active())) throw new HttpError(400, "Set up email first in Settings > Email.");
       if (!(await accountEmail(userId))) throw new HttpError(400, "Add your email address in Settings > Profile first.");
     }
-    await saveNotificationPrefs(db, body);
+    await saveNotificationPrefs(db, body, userId);
     return notifyStatus(userId);
   });
   // A sample of a notification, with your real numbers where there are some. Subject starts "[Test]".
@@ -294,7 +295,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     const to = await accountEmail(userId);
     if (!to) throw new HttpError(400, "Add your email address in Settings > Profile first.");
     if (!(await mail.active())) throw new HttpError(400, "Set up email first in Settings > Email.");
-    const email = await renderForRecipient(db, mail, await sampleNotification(db, kind, new Date(), app.ai), NOTIFICATION_NAMES[kind]);
+    const email = await renderForRecipient(db, mail, await sampleNotification(db, kind, new Date(), app.ai, userId), NOTIFICATION_NAMES[kind], userId);
     try {
       await mail.sendRendered(to, email, "notification-test");
     } catch (err) {
@@ -305,20 +306,26 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   // See a notification in the browser without sending it
   app.get("/api/settings/notifications/preview", async (req, reply) => {
-    requireLogin(req);
+    const userId = requireLogin(req);
     const { kind } = kindParam.parse(req.query ?? {});
-    const email = await renderForRecipient(db, mail, await sampleNotification(db, kind, new Date(), app.ai), NOTIFICATION_NAMES[kind]);
+    const email = await renderForRecipient(db, mail, await sampleNotification(db, kind, new Date(), app.ai, userId), NOTIFICATION_NAMES[kind], userId);
     return reply.type("text/html; charset=utf-8").header("content-security-policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'").send(previewHtml(email));
   });
 
-  // Budget preferences (Quick Assign, Month Wrap-Up...)
-  app.get("/api/settings/budget", async () => getBudgetPrefs(db));
+  // Budget preferences (Quick Assign, Month Wrap-Up...). The toss animation is each person's own.
+  const tossOf = async (req: FastifyRequest) =>
+    req.auth?.method === "token" ? ((await db.select({ t: users.tossAnimation }).from(users).where(eq(users.id, req.auth.userId)))[0]?.t ?? true) : (await getBudgetPrefs(db)).tossAnimation;
+  app.get("/api/settings/budget", async (req) => ({ ...(await getBudgetPrefs(db)), tossAnimation: await tossOf(req) }));
 
   app.put("/api/settings/budget", async (req) => {
-    requireLogin(req);
+    const userId = requireLogin(req);
     // (fastTrack: Quick Assign's old name, still accepted from older scripts)
-    const { fastTrack, ...body } = z.object({ quickAssign: z.boolean().optional(), fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional(), monthCloseDays: z.number().int().min(0).max(27).optional(), monthCloseEnabled: z.boolean().optional(), monthCloseAuto: z.boolean().optional() }).strict().parse(req.body);
-    return saveBudgetPrefs(db, { ...(fastTrack !== undefined && body.quickAssign === undefined ? { quickAssign: fastTrack } : {}), ...body });
+    const { fastTrack, tossAnimation, ...body } = z.object({ quickAssign: z.boolean().optional(), fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional(), monthCloseDays: z.number().int().min(0).max(27).optional(), monthCloseEnabled: z.boolean().optional(), monthCloseAuto: z.boolean().optional() }).strict().parse(req.body);
+    const shared = { ...(fastTrack !== undefined && body.quickAssign === undefined ? { quickAssign: fastTrack } : {}), ...body };
+    if (Object.keys(shared).length && !canManage(req.auth?.method === "token" ? req.auth.role : undefined)) throw new HttpError(403, "Your account can't change this. Ask the account owner.");
+    if (tossAnimation !== undefined) await db.update(users).set({ tossAnimation }).where(eq(users.id, userId));
+    const prefs = Object.keys(shared).length ? await saveBudgetPrefs(db, shared) : await getBudgetPrefs(db);
+    return { ...prefs, tossAnimation: await tossOf(req) };
   });
 
   // The saved password, only when you click Show (signed in only; never in the normal settings read)

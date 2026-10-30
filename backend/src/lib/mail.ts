@@ -77,11 +77,12 @@ export function emailConfigFromEnv(env: NodeJS.ProcessEnv): EmailConfig | null {
 export const fromHeader = (c: EmailConfig) =>
   c.fromName ? `"${c.fromName.replace(/["\\\\]/g, "")}" <${c.fromAddress}>` : c.fromAddress;
 
-export type EmailKind = "test" | "notification-test" | "password-reset" | "month-close" | "nudge" | "summary" | "insights" | "bank" | "over-budget" | "weekly" | "goal" | "large-purchase" | "next-month" | "sign-in" | "other";
+export type EmailKind = "test" | "notification-test" | "password-reset" | "invite" | "month-close" | "nudge" | "summary" | "insights" | "bank" | "over-budget" | "weekly" | "goal" | "large-purchase" | "next-month" | "sign-in" | "other";
 const EMAIL_KIND_LABELS: Record<EmailKind, string> = {
   test: "Test email",
   "notification-test": "Notification test",
   "password-reset": "Password reset",
+  invite: "Shared access invite",
   "month-close": "Wrap-Up reminder",
   nudge: "Come-back nudge",
   summary: "Monthly summary",

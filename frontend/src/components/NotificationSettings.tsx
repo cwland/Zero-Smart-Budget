@@ -80,11 +80,21 @@ export default function NotificationSettings() {
     }
   }
   const update = (changes: Partial<NotifyPrefs>) => run(async () => setData(await api<Status>("PUT", "/api/settings/notifications", changes)));
-  const sample = (kind: string) =>
-    run(async () => {
+  // Send a sample: shown on its own row ("Sending…", then the result), without locking the page
+  const [sending, setSending] = useState<string | null>(null);
+  const [sampleMsg, setSampleMsg] = useState<{ kind: string; ok: boolean; text: string } | null>(null);
+  const sample = async (kind: string) => {
+    setSending(kind);
+    setSampleMsg(null);
+    try {
       const r = await api<{ to: string; subject: string }>("POST", "/api/settings/notifications/test", { kind });
-      setMsg({ ok: true, text: `Sent "${r.subject}" to ${r.to}` });
-    });
+      setSampleMsg({ kind, ok: true, text: `Sent "${r.subject}" to ${r.to}. It can take a minute to arrive.` });
+    } catch (e) {
+      setSampleMsg({ kind, ok: false, text: (e as Error).message });
+    } finally {
+      setSending(null);
+    }
+  };
 
   const ready = !!data?.emailReady && !!data?.to;
   const s = data?.settings;
@@ -102,13 +112,19 @@ export default function NotificationSettings() {
             Preview
           </button>
           {ready && (
-            <button type="button" onClick={() => sample(o.kind)} disabled={busy} className="font-semibold text-link hover:underline disabled:opacity-60">
-              Send a sample
+            <button type="button" onClick={() => sample(o.kind)} disabled={sending !== null} className="font-semibold text-link hover:underline disabled:cursor-default disabled:no-underline disabled:opacity-60">
+              {sending === o.kind ? "Sending…" : "Send a sample"}
             </button>
           )}
         </div>
+        {sampleMsg?.kind === o.kind && (
+          <p role={sampleMsg.ok ? "status" : "alert"} className={`mt-1.5 text-sm ${sampleMsg.ok ? "text-success" : "text-error"}`}>
+            {sampleMsg.ok ? "✓ " : ""}
+            {sampleMsg.text}
+          </p>
+        )}
       </div>
-      <Toggle label={o.title} checked={o.checked && !o.disabledNote} disabled={busy || !!o.disabledNote} onChange={o.set} text="" />
+      <Toggle label={o.title} checked={o.checked && !o.disabledNote} disabled={!!o.disabledNote} onChange={o.set} text="" />
     </li>
   );
   const section = (title: string, rows: ReactNode) => (

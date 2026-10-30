@@ -47,6 +47,8 @@ export const publicUser = (u: typeof users.$inferSelect) => ({
   email: u.email,
   seenVersion: u.seenVersion,
   theme: u.theme,
+  role: u.role,
+  tossAnimation: u.tossAnimation,
 });
 
 export default async function authRoutes(app: FastifyInstance) {
@@ -56,7 +58,7 @@ export default async function authRoutes(app: FastifyInstance) {
   const emailEnabled = () => app.mail.canSendLinks();
 
   app.get("/api/auth/status", async () => {
-    const [user] = await db.select({ email: users.email }).from(users).limit(1);
+    const [user] = await db.select({ email: users.email }).from(users).where(eq(users.role, "owner")).limit(1);
     const enabled = await emailEnabled();
     const oauth = await getOAuth(db);
     const passwords = passwordsAllowed(oauth);
@@ -81,7 +83,7 @@ export default async function authRoutes(app: FastifyInstance) {
     if ((await userCount()) > 0) throw new HttpError(409, "Account already set up");
     const [user] = await db
       .insert(users)
-      .values({ username: body.username, email: body.email, passwordHash: await hashPassword(body.password) })
+      .values({ username: body.username, email: body.email, passwordHash: await hashPassword(body.password), role: "owner" })
       .returning();
     const { token, session } = await startSession(db, app.jwtSecret, req, user, "account set up", app.now());
     await logSignIn(db, req, { username: user.username, success: true, reason: "Account set up", sessionId: session.id });
@@ -210,7 +212,13 @@ export default async function authRoutes(app: FastifyInstance) {
     if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
     // The last 60 days (older ones are deleted)
     await pruneLoginLog(db);
-    const rows = await db.select().from(loginEvents).orderBy(desc(loginEvents.at), desc(loginEvents.id)).limit(5000);
+    // A user sees only their own sign-ins (by username, or a session of theirs); the owner and admins see everyone's
+    const auth = req.auth;
+    const mine =
+      auth.role === "user"
+        ? sql`(lower(${loginEvents.username}) = (select lower(username) from users where id = ${auth.userId}) or ${loginEvents.sessionId} in (select id from sessions where user_id = ${auth.userId}))`
+        : undefined;
+    const rows = await db.select().from(loginEvents).where(mine).orderBy(desc(loginEvents.at), desc(loginEvents.id)).limit(5000);
     return rows.map((e) => ({ ...e, device: describeDevice(e.userAgent) }));
   });
 
@@ -226,7 +234,11 @@ export default async function authRoutes(app: FastifyInstance) {
       throw new HttpError(429, "A reset email was sent recently. Check your inbox, or try again in a few minutes.");
     }
 
-    const [user] = await db.select().from(users).limit(1);
+    // Whose password: the username or email typed on the sign-in page (the owner's when blank)
+    const who = z.object({ who: z.string().trim().max(200).optional() }).parse(req.body ?? {}).who?.toLowerCase();
+    const [user] = who
+      ? await db.select().from(users).where(sql`lower(${users.username}) = ${who} or lower(${users.email}) = ${who}`).limit(1)
+      : await db.select().from(users).where(eq(users.role, "owner")).limit(1);
     if (user?.email) {
       resetSends.push(now);
       // Only the newest link works

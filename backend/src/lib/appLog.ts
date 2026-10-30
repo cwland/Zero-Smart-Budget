@@ -8,7 +8,8 @@ import { appLog } from "../db/schema.js";
 //  - bank:     bank (Plaid) sync results and connection problems
 //  - api:      requests from API keys that were refused, and server errors
 //  - schedule: scheduled task runs (backups, bank sync, notifications, Wrap-Up, AI suggestions)
-export const LOG_CATEGORIES = ["email", "ai", "bank", "api", "schedule"] as const;
+//  - access:   shared access: people invited, joined, changed or removed
+export const LOG_CATEGORIES = ["email", "ai", "bank", "api", "schedule", "access"] as const;
 export type LogCategory = (typeof LOG_CATEGORIES)[number];
 export type LogLevel = "info" | "warning" | "error";
 export const LOG_DAYS = 30;

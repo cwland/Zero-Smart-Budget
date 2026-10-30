@@ -69,7 +69,19 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   newSignIn: true,
 };
 
-export async function getNotificationPrefs(db: Db): Promise<NotificationPrefs> {
+// Each person has their own switches. The owner's are in app_settings "notifications" (as before
+// shared access); everyone else's are on their user row, and start with emails off.
+const isOwnerId = async (db: Db, userId?: number) => {
+  if (userId === undefined) return true;
+  const [u] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  return !u || u.role === "owner";
+};
+
+export async function getNotificationPrefs(db: Db, userId?: number): Promise<NotificationPrefs> {
+  if (!(await isOwnerId(db, userId))) {
+    const [u] = await db.select({ p: users.notificationPrefs }).from(users).where(eq(users.id, userId!));
+    return { ...DEFAULT_NOTIFICATION_PREFS, ...((u?.p as Partial<NotificationPrefs>) ?? {}) };
+  }
   const [row] = await db.select().from(appSettings).where(eq(appSettings.key, "notifications"));
   const saved = { ...((row?.value as Partial<NotificationPrefs>) ?? {}) };
   // Saved before the monthly summary existed (its switch was a locked placeholder): use the new default
@@ -77,8 +89,12 @@ export async function getNotificationPrefs(db: Db): Promise<NotificationPrefs> {
   return { ...DEFAULT_NOTIFICATION_PREFS, ...saved };
 }
 
-export async function saveNotificationPrefs(db: Db, changes: Partial<NotificationPrefs>) {
-  const value = { ...(await getNotificationPrefs(db)), ...changes };
+export async function saveNotificationPrefs(db: Db, changes: Partial<NotificationPrefs>, userId?: number) {
+  const value = { ...(await getNotificationPrefs(db, userId)), ...changes };
+  if (!(await isOwnerId(db, userId))) {
+    await db.update(users).set({ notificationPrefs: value }).where(eq(users.id, userId!));
+    return value;
+  }
   await db
     .insert(appSettings)
     .values({ key: "notifications", value })
@@ -86,11 +102,19 @@ export async function saveNotificationPrefs(db: Db, changes: Partial<Notificatio
   return value;
 }
 
-// The one user's email (notifications go there)
-export async function recipient(db: Db) {
-  const [u] = await db.select({ email: users.email, lastActiveAt: users.lastActiveAt, createdAt: users.createdAt, name: users.displayName, theme: users.theme }).from(users).orderBy(asc(users.id)).limit(1);
+const recipientCols = { id: users.id, role: users.role, email: users.email, lastActiveAt: users.lastActiveAt, createdAt: users.createdAt, name: users.displayName, theme: users.theme };
+
+// Who a notification goes to: that person, or the owner
+export async function recipient(db: Db, userId?: number) {
+  const [u] =
+    userId !== undefined
+      ? await db.select(recipientCols).from(users).where(eq(users.id, userId))
+      : await db.select(recipientCols).from(users).orderBy(sql`${users.role} <> 'owner'`, asc(users.id)).limit(1);
   return u ?? null;
 }
+
+// notification_log keys: the owner's as before ("summary:2026-10"), everyone else's start "u<id>:"
+const keyPrefix = (u: { id: number; role: string }) => (u.role === "owner" ? "" : `u${u.id}:`);
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -141,15 +165,15 @@ export const NOTIFICATION_NAMES: Record<NotificationKind, string> = {
 };
 
 /** A sample of a notification with your real numbers where there are some (Settings › Send a sample). */
-export async function sampleNotification(db: Db, kind: NotificationKind, now = new Date(), ai?: AiService): Promise<EmailContent> {
-  if (kind !== "month-close" && kind !== "nudge") return sampleOther(db, kind, now, ai);
+export async function sampleNotification(db: Db, kind: NotificationKind, now = new Date(), ai?: AiService, userId?: number): Promise<EmailContent> {
+  if (kind !== "month-close" && kind !== "nudge") return sampleOther(db, kind, now, ai, userId);
   if (kind === "month-close") {
     const cur = { year: now.getFullYear(), month: now.getMonth() + 1 };
     const [m] = await db.select().from(budgetMonths).where(and(eq(budgetMonths.year, cur.year), eq(budgetMonths.month, cur.month)));
     if (m) return monthCloseContent(db, m, false);
     return monthCloseReminder({ monthName: monthName(cur), over: false, plannedCents: 512000, spentCents: 468350 });
   }
-  const user = await recipient(db);
+  const user = await recipient(db, userId);
   const days = Math.max(1, Math.floor((now.getTime() - (user?.lastActiveAt ?? user?.createdAt ?? now).getTime()) / DAY));
   const waiting = await uncategorizedCount(db);
   if (waiting > 0) return nudgeContent(db, waiting, days);
@@ -305,8 +329,8 @@ async function largeRecent(db: Db, now: Date, threshold: number) {
 const largeRow = (r: { merchant: string; cents: number; date: string; account: string | null; mask: string | null }) => ({ merchant: r.merchant, cents: r.cents, date: shortDate(r.date), account: r.account ? `${r.account}${r.mask ? ` ••${r.mask}` : ""}` : null });
 
 // Samples of the newer notifications: your data where there is some, otherwise an example
-async function sampleOther(db: Db, kind: Exclude<NotificationKind, "month-close" | "nudge">, now: Date, ai?: AiService): Promise<EmailContent> {
-  const prefs = await getNotificationPrefs(db);
+async function sampleOther(db: Db, kind: Exclude<NotificationKind, "month-close" | "nudge">, now: Date, ai?: AiService, userId?: number): Promise<EmailContent> {
+  const prefs = await getNotificationPrefs(db, userId);
   const cur = ymOf(now);
   switch (kind) {
     case "summary": {
@@ -373,8 +397,8 @@ async function sampleOther(db: Db, kind: Exclude<NotificationKind, "month-close"
 }
 
 /** Branded email for the account's theme and the app's address */
-export async function renderForRecipient(db: Db, mail: MailService, content: EmailContent, test?: string) {
-  const user = await recipient(db);
+export async function renderForRecipient(db: Db, mail: MailService, content: EmailContent, test?: string, userId?: number) {
+  const user = await recipient(db, userId);
   const active = await mail.active();
   return renderEmail(content, { theme: user?.theme, appUrl: active?.config.appUrl ?? null, test: test ? { what: test } : null });
 }
@@ -386,16 +410,40 @@ export interface NotificationResult {
 
 /** Send whatever is due. Safe to call often: each notification goes out once. */
 export async function runNotifications(db: Db, mail: MailService, now = new Date(), ai?: AiService): Promise<NotificationResult> {
-  const prefs = await getNotificationPrefs(db);
-  if (!prefs.enabled) return { sent: [], skipped: "notifications are off" };
+  // Everyone whose notifications are on, the owner first. Each person gets their own emails.
+  const people = await db.select(recipientCols).from(users).orderBy(sql`${users.role} <> 'owner'`, asc(users.id));
+  const on: { user: (typeof people)[number]; prefs: NotificationPrefs }[] = [];
+  for (const u of people) {
+    const prefs = await getNotificationPrefs(db, u.id);
+    if (prefs.enabled) on.push({ user: u, prefs });
+  }
+  if (!on.length) return { sent: [], skipped: "notifications are off" };
   const active = await mail.active();
   if (!active) return { sent: [], skipped: "email isn't set up" };
-  const user = await recipient(db);
-  if (!user?.email) return { sent: [], skipped: "no email address on your profile" };
-  const appUrl = active.config.appUrl ?? null;
+  const ready = on.filter((p) => p.user.email);
+  if (!ready.length) return { sent: [], skipped: "no email address on your profile" };
   const sent: NotificationResult["sent"] = [];
+  const errors: Error[] = [];
+  for (const p of ready) {
+    try {
+      sent.push(...(await runFor(db, mail, now, ai, active.config.appUrl ?? null, p.user as Recipient, p.prefs)));
+    } catch (e) {
+      errors.push(e as Error);
+    }
+  }
+  if (errors.length) throw errors[0];
+  return { sent };
+}
 
-  const send = async (key: string, kind: string, content: EmailContent) => {
+type Recipient = { id: number; role: string; email: string; lastActiveAt: Date | null; createdAt: Date; name: string | null; theme: string | null };
+
+// One person's notifications
+async function runFor(db: Db, mail: MailService, now: Date, ai: AiService | undefined, appUrl: string | null, user: Recipient, prefs: NotificationPrefs) {
+  const sent: NotificationResult["sent"] = [];
+  const p = keyPrefix(user);
+
+  const send = async (bareKey: string, kind: string, content: EmailContent) => {
+    const key = p + bareKey;
     // Claim the key first, so two runs can't both send it
     const claimed = await db.insert(notificationLog).values({ key, kind, sentTo: user.email!, sentAt: now }).onConflictDoNothing().returning();
     if (!claimed.length) return;
@@ -408,9 +456,10 @@ export async function runNotifications(db: Db, mail: MailService, now = new Date
       throw e;
     }
   };
-  const logged = async (key: string) => (await db.select({ key: notificationLog.key }).from(notificationLog).where(eq(notificationLog.key, key))).length > 0;
+  const logged = async (key: string) => (await db.select({ key: notificationLog.key }).from(notificationLog).where(eq(notificationLog.key, p + key))).length > 0;
   // One email covering several keys (over-budget items, goal steps, purchases): all claimed, or none
-  const sendMany = async (keys: string[], kind: string, content: EmailContent) => {
+  const sendMany = async (bareKeys: string[], kind: string, content: EmailContent) => {
+    const keys = bareKeys.map((k) => p + k);
     const claimed = await db.insert(notificationLog).values(keys.map((key) => ({ key, kind, sentTo: user.email!, sentAt: now }))).onConflictDoNothing().returning();
     if (!claimed.length) return;
     try {
@@ -452,7 +501,7 @@ export async function runNotifications(db: Db, mail: MailService, now = new Date
     const last = (user.lastActiveAt ?? user.createdAt).getTime();
     const away = now.getTime() - last >= prefs.nudgeDays * DAY;
     if (away) {
-      const [lastNudge] = await db.select().from(notificationLog).where(eq(notificationLog.kind, "nudge")).orderBy(desc(notificationLog.sentAt)).limit(1);
+      const [lastNudge] = await db.select().from(notificationLog).where(sql`${notificationLog.key} like ${`${p}nudge:%`}`).orderBy(desc(notificationLog.sentAt)).limit(1);
       const nudgedRecently = lastNudge && now.getTime() - lastNudge.sentAt.getTime() < prefs.nudgeDays * DAY && lastNudge.sentAt.getTime() > last;
       const waiting = await uncategorizedCount(db);
       if (!nudgedRecently && waiting > 0) {
@@ -484,7 +533,7 @@ export async function runNotifications(db: Db, mail: MailService, now = new Date
   if (prefs.bankAttention && (await isOn(db, "plaid"))) await section(async () => {
     for (const item of await db.select().from(plaidItems)) {
       if (item.status === "ok") {
-        await db.delete(notificationLog).where(sql`${notificationLog.key} like ${`bank:${item.id}:%`}`);
+        await db.delete(notificationLog).where(sql`${notificationLog.key} like ${`${p}bank:${item.id}:%`}`);
         continue;
       }
       await send(`bank:${item.id}:${item.status}`, "bank", bankAttention({ bank: item.institutionName, status: item.status, message: item.errorMessage, lastSynced: item.lastSyncedAt ? item.lastSyncedAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : null }));
@@ -542,16 +591,17 @@ export async function runNotifications(db: Db, mail: MailService, now = new Date
   });
 
   if (errors.length) throw errors[0];
-  return { sent };
+  return sent;
 }
 
 /** New sign-in alert, sent right away (not on the hourly check). Never throws. */
-export async function notifyNewSignIn(db: Db, mail: MailService, s: { sessionId: number; userAgent: string | null; ip: string; how: string; at: Date }) {
+export async function notifyNewSignIn(db: Db, mail: MailService, s: { userId?: number; sessionId: number; userAgent: string | null; ip: string; how: string; at: Date }) {
   try {
-    const prefs = await getNotificationPrefs(db);
+    // To the person who signed in, if their alert is on
+    const prefs = await getNotificationPrefs(db, s.userId);
     if (!prefs.enabled || !prefs.newSignIn) return false;
     const active = await mail.active();
-    const user = await recipient(db);
+    const user = await recipient(db, s.userId);
     if (!active || !user?.email) return false;
     const key = `signin:${s.sessionId}:${s.at.getTime()}`;
     const claimed = await db.insert(notificationLog).values({ key, kind: "sign-in", sentTo: user.email, sentAt: s.at }).onConflictDoNothing().returning();
@@ -564,13 +614,13 @@ export async function notifyNewSignIn(db: Db, mail: MailService, s: { sessionId:
   }
 }
 
-// Remember when the app was last used (at most every few minutes)
-let lastMark = 0;
+// Remember when each person last used the app (at most every few minutes)
+const lastMark = new Map<number, number>();
 export async function markActive(db: Db, userId: number, now = Date.now()) {
-  if (Math.abs(now - lastMark) < 5 * 60 * 1000) return;
-  lastMark = now;
+  if (Math.abs(now - (lastMark.get(userId) ?? 0)) < 5 * 60 * 1000) return;
+  lastMark.set(userId, now);
   await db.update(users).set({ lastActiveAt: new Date(now) }).where(eq(users.id, userId));
 }
 export const resetActiveMark = () => {
-  lastMark = 0;
+  lastMark.clear();
 };

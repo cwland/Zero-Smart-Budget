@@ -48,14 +48,14 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-semibold">Settings</h1>
 
       <nav aria-label="Settings sections" className="no-scrollbar -mx-3 mt-3 overflow-x-auto border-b border-line px-3 sm:mx-0 sm:px-0">
-        <div role="tablist" className="flex min-w-max gap-1">
+        <div role="tablist" className="flex min-w-max">
           {TABS.map((t) => (
             <a
               key={t.id}
               role="tab"
               href={`#/settings/${t.id}`}
               aria-selected={tab === t.id}
-              className={`-mb-px border-b-[3px] px-4 py-2.5 text-sm font-semibold whitespace-nowrap ${
+              className={`-mb-px border-b-[3px] px-3 py-2.5 text-sm font-semibold whitespace-nowrap ${
                 tab === t.id ? "border-primary text-ink" : "border-transparent text-subtle hover:border-strong hover:text-ink"
               }`}
             >

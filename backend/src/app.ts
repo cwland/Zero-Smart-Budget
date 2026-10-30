@@ -1,4 +1,6 @@
 import path from "node:path";
+import userRoutes from "./routes/users.js";
+import { asRole, roleAllows, roleDenied, type Role } from "./lib/roles.js";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
@@ -52,7 +54,7 @@ declare module "fastify" {
     now: () => Date; // the clock (tests set the date)
   }
   interface FastifyRequest {
-    auth?: { method: "token"; userId: number; sessionId: number } | { method: "apiKey"; keyId: number };
+    auth?: { method: "token"; userId: number; sessionId: number; role: Role } | { method: "apiKey"; keyId: number };
   }
 }
 
@@ -85,6 +87,8 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/login",
   "POST /api/auth/forgot",
   "POST /api/auth/reset",
+  "GET /api/auth/invite",
+  "POST /api/auth/invite/accept",
   "POST /api/auth/passkey/login/options",
   "POST /api/auth/passkey/login/verify",
   "POST /api/auth/oauth/start",
@@ -125,11 +129,14 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
       const claims = verifyToken(header.slice(7), jwtSecret);
       if (claims) {
         // Tokens issued before the last "sign out everywhere" / password change no longer work
-        const [user] = await db.select({ tv: users.tokenVersion }).from(users).where(eq(users.id, claims.userId));
+        const [user] = await db.select({ tv: users.tokenVersion, role: users.role }).from(users).where(eq(users.id, claims.userId));
         // ...and its device hasn't been signed out
         const session = user && user.tv === claims.tokenVersion ? await sessionForToken(db, req, header.slice(7), claims, app.now()) : null;
         if (session) {
-          req.auth = { method: "token", userId: claims.userId, sessionId: session.id };
+          const role = asRole(user.role);
+          const path = req.routeOptions.url ?? req.url.split("?")[0];
+          if (!roleAllows(role, req.method, path)) throw new HttpError(403, roleDenied(role));
+          req.auth = { method: "token", userId: claims.userId, sessionId: session.id, role };
           await markActive(db, claims.userId, app.now().getTime()); // for the "come back" nudge
           return;
         }
@@ -198,6 +205,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(reportRoutes);
   app.register(exportRoutes);
   app.register(profileRoutes);
+  app.register(userRoutes);
   app.register(settingsRoutes);
   app.register(plaidRoutes);
   app.register(accountRoutes);

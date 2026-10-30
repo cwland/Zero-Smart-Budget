@@ -1,5 +1,6 @@
 // Reset the login password from the server, no email needed.
-//   npm run reset-password
+//   npm run reset-password             (the owner's)
+//   npm run reset-password -- jess     (someone else's, by username)
 //   docker compose exec api npm run reset-password
 import "dotenv/config";
 import readline from "node:readline";
@@ -29,9 +30,12 @@ function ask(question: string, hidden = false): Promise<string> {
 const { db, pool } = createDb(process.env.DATABASE_URL!);
 try {
   await runMigrations(db);
-  const [user] = await db.select().from(users).limit(1);
+  const who = process.argv[2]?.trim().toLowerCase();
+  const [user] = who
+    ? await db.select().from(users).where(sql`lower(${users.username}) = ${who}`)
+    : await db.select().from(users).where(eq(users.role, "owner")).limit(1);
   if (!user) {
-    console.log("No account yet. Open the app to create one.");
+    console.log(who ? `No one has the username "${who}".` : "No account yet. Open the app to create one.");
   } else {
     console.log(`Resetting the password for "${user.username}".`);
     const pw = process.env.NEW_PASSWORD ?? (await ask("New password: ", true));
