@@ -151,6 +151,17 @@ cp .env.example .env
 docker compose up --build
 ```
 
+## New version bar (release watcher)
+
+When a newer release is published on GitHub, a slim bar shows across the top of the app:
+"Version 0.3.0 is available! [See What's New] [Dismiss]". See What's New shows that release's notes;
+Dismiss hides the bar until the next version. The server checks after you sign in (at most every
+10 minutes) and every 3 hours (`UPDATE_CHECK_HOURS`). Turn it off, or Check now, in Settings › Data › Updates.
+
+- Releases come from `UPDATE_REPO` (default `cwland/Corys_Dollar`). Publish a GitHub release with a tag like `v0.3.0` (and bump `version` in package.json to match) to announce a version. The release notes are what See What's New shows.
+- While the repository is private, set `GITHUB_TOKEN` in `.env`: a fine-grained token for this repository only, with Contents: Read-only.
+- Problems (GitHub unreachable, token refused) show in Settings › Data › Updates and in Settings › Logs.
+
 ## Turning Plaid, AI and API keys on or off
 
 Each of the Settings tabs **Plaid**, **AI** and **API keys** starts with an on/off switch (saved right away).

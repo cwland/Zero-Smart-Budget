@@ -203,7 +203,7 @@ export default function BudgetPage() {
     <div className="mx-auto flex max-w-[1140px] flex-col gap-6 px-3 pb-16 sm:px-6 min-[1100px]:flex-row">
       {/* Budget column */}
       <div className="w-full min-w-0 min-[1100px]:max-w-[620px] min-[1100px]:flex-1">
-        <div className="sticky top-0 z-20 bg-page pb-4 pt-4">
+        <div className="sticky top-[var(--top-bar,0px)] z-20 bg-page pb-4 pt-4">
           <MonthHeader value={ym} onChange={setYm} existing={months} />
           {budget && (
             <div className="mt-4">

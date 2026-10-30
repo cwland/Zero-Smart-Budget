@@ -155,6 +155,13 @@
       "when": 1793295000980,
       "tag": "0021_session_device",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793328072083,
+      "tag": "0022_dismissed_update",
+      "breakpoints": true
     }
   ]
 }

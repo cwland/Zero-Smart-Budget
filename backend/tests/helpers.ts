@@ -14,6 +14,7 @@ import { resetActiveMark } from "../src/lib/notifications.js";
 import { resetSessionTouches } from "../src/lib/sessions.js";
 import type { EmailConfig, MailMessage } from "../src/lib/mail.js";
 import type { PlaidFetch } from "../src/lib/plaid.js";
+import type { UpdateFetch } from "../src/lib/updates.js";
 import type { AiFetch } from "../src/lib/ai.js";
 
 // Tests use their own database so they never touch your real budget.
@@ -21,7 +22,7 @@ import type { AiFetch } from "../src/lib/ai.js";
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/corysdollar_test";
 if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a test database");
 
-export async function setupTestApp(opts: { email?: boolean; backupKey?: string; jwtSecret?: string; oauthFetch?: typeof fetch } = {}) {
+export async function setupTestApp(opts: { email?: boolean; backupKey?: string; jwtSecret?: string; oauthFetch?: typeof fetch; githubToken?: string } = {}) {
   const { db, pool } = createDb(url);
   await db.execute(sql`drop schema if exists public cascade`);
   await db.execute(sql`drop schema if exists drizzle cascade`);
@@ -62,12 +63,28 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
     const r = await ai.respond(url, body, init.headers);
     return { ok: r.status < 300, status: r.status, json: async () => r.json };
   };
+  // Fake GitHub releases: answer with github.respond(url, headers) -> { status, json }; down = unreachable
+  const github = {
+    calls: [] as { url: string; headers: Record<string, string> }[],
+    down: false,
+    token: null as string | null,
+    respond: (_url: string, _headers: Record<string, string>): { status: number; json: unknown } => ({ status: 404, json: { message: "Not Found" } }),
+  };
+  const updateFetch: UpdateFetch = async (url, init) => {
+    if (github.down) throw new Error("ECONNREFUSED");
+    github.calls.push({ url, headers: init.headers });
+    const r = github.respond(url, init.headers);
+    return { status: r.status, json: async () => r.json };
+  };
   // The app's clock ("today"); tests can set clock.date
   const clock = { date: null as Date | null };
   const app = buildApp({
     now: () => clock.date ?? new Date(),
     aiFetch,
     plaidFetch,
+    updateFetch,
+    updateRepo: "cwland/Corys_Dollar",
+    githubToken: opts.githubToken ?? null,
     db,
     jwtSecret: opts.jwtSecret ?? "test-secret-that-is-long-enough",
     backupDir,
@@ -109,6 +126,7 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
     failNext,
     plaid,
     ai,
+    github,
     clock,
     async reset() {
       clock.date = null;
@@ -118,6 +136,9 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       ai.calls.length = 0;
       ai.down = false;
       ai.respond = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
+      github.calls.length = 0;
+      github.down = false;
+      github.respond = () => ({ status: 404, json: { message: "Not Found" } });
       plaid.down = false;
       plaid.respond = () => ({ status: 200, json: { link_token: "link-sandbox-test" } });
       await db.execute(sql`truncate users, password_resets, app_settings, plaid_items, api_keys, budget_months, sinking_funds, transactions, manual_accounts, notification_log, sessions, login_events, app_log, passkeys restart identity cascade`);

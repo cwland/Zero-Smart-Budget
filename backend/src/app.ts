@@ -8,6 +8,8 @@ import { apiKeys, users } from "./db/schema.js";
 import { logEvent } from "./lib/appLog.js";
 import logRoutes from "./routes/logs.js";
 import featureRoutes from "./routes/features.js";
+import updateRoutes from "./routes/updates.js";
+import { UpdateService, type UpdateFetch } from "./lib/updates.js";
 import { isOn } from "./lib/features.js";
 import passkeyRoutes from "./routes/passkeys.js";
 import oauthRoutes from "./routes/oauth.js";
@@ -44,6 +46,7 @@ declare module "fastify" {
     mail: MailService;
     plaid: PlaidService;
     ai: AiService;
+    updates: UpdateService;
     now: () => Date; // the clock (tests set the date)
   }
   interface FastifyRequest {
@@ -63,6 +66,9 @@ export interface AppOptions {
   mailTransport?: TransportFactory; // tests swap in a fake
   plaidFetch?: PlaidFetch; // tests swap in a fake Plaid
   aiFetch?: AiFetch; // tests swap in a fake AI
+  updateFetch?: UpdateFetch; // tests swap in a fake GitHub
+  updateRepo?: string; // where releases are published (UPDATE_REPO)
+  githubToken?: string | null; // GITHUB_TOKEN: needed while that repository is private
   now?: () => Date; // tests set "today"
 }
 
@@ -84,7 +90,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/oauth/finish",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, oauthFetch, emailEnv = null, mailTransport, plaidFetch, aiFetch, now = () => new Date() }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, oauthFetch, emailEnv = null, mailTransport, plaidFetch, aiFetch, updateFetch, updateRepo = process.env.UPDATE_REPO || "cwland/Corys_Dollar", githubToken = process.env.GITHUB_TOKEN || null, now = () => new Date() }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -104,6 +110,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.decorate("plaid", new PlaidService(db, jwtSecret, plaidFetch));
   app.decorate("ai", new AiService(db, jwtSecret, aiFetch));
   app.decorate("now", now);
+  app.decorate("updates", new UpdateService(db, updateRepo, githubToken, updateFetch, now));
 
   // Every /api route needs a login token or an API key, except the public ones
   app.addHook("onRequest", async (req) => {
@@ -179,6 +186,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(keyRoutes);
   app.register(logRoutes);
   app.register(featureRoutes);
+  app.register(updateRoutes);
   app.register(passkeyRoutes);
   app.register(oauthRoutes);
   app.register(budgetRoutes);

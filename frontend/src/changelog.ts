@@ -27,6 +27,7 @@ export const CHANGELOG: Release[] = [
       "Email: an on/off switch, a Send test email pop-up, and notifications (Wrap-Up reminder, come-back nudge).",
       "Month Wrap-Up, savings goals with a target date, and an Accounts page with manual accounts and assets (counted in your total balance).",
       "Accounts: click an account to open its details on the side, under your Total Balance, where you can turn importing its transactions on or off.",
+      "A bar at the top tells you when a newer version is released on GitHub, with its notes a click away. Dismiss it until the next one, or turn it off in Settings › Data › Updates.",
       "Signing in always opens this month's budget. The version number (bottom left) shows these notes again.",
     ],
   },

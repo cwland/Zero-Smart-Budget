@@ -1,4 +1,5 @@
 import { FeatureSwitch } from "./FeatureSwitch";
+import { UpdatesSettings } from "./UpdateBar";
 import { useEffect, useState } from "react";
 import BudgetSettings from "./BudgetSettings";
 import DataSettings from "./DataSettings";
@@ -107,7 +108,12 @@ export default function SettingsPage() {
             <AiSettings />
           </FeatureSwitch>
         )}
-        {tab === "data" && <DataSettings />}
+        {tab === "data" && (
+          <>
+            <DataSettings />
+            <UpdatesSettings />
+          </>
+        )}
         {tab === "logs" && <LogsSettings />}
       </div>
     </div>

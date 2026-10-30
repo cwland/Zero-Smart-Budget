@@ -107,6 +107,15 @@ const notify = () =>
 setTimeout(notify, 2 * 60 * 1000);
 setInterval(notify, 60 * 60 * 1000);
 
+// Release watcher: look for a newer release on GitHub every few hours (UPDATE_CHECK_HOURS=0 turns
+// the schedule off; Settings > Data > Updates turns checking off altogether)
+const updateHours = Number(process.env.UPDATE_CHECK_HOURS ?? 3);
+if (updateHours > 0) {
+  const checkUpdates = () => app.updates.check().catch((err) => app.log.error(err));
+  setTimeout(checkUpdates, 30 * 1000);
+  setInterval(checkUpdates, updateHours * 60 * 60 * 1000);
+}
+
 const port = Number(process.env.PORT ?? 4000);
 
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

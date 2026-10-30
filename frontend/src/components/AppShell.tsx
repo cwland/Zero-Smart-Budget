@@ -11,6 +11,7 @@ import { isNewer } from "../changelog";
 import { useSession } from "../session";
 import { api } from "../api";
 import WhatsNew from "./WhatsNew";
+import UpdateBar from "./UpdateBar";
 import { BankIcon, BudgetIcon, GearIcon, GoalIcon, Logo, PiggyIcon } from "./Icons";
 
 type Page = "budget" | "accounts" | "funds" | "goals" | "settings";
@@ -52,9 +53,10 @@ export default function AppShell() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   return (
-    <div className="flex min-h-screen bg-page">
+    <div className="flex min-h-screen bg-page pt-[var(--top-bar,0px)]">
+      <UpdateBar />
       {/* Left icon nav */}
-      <nav className="sticky top-0 z-40 hidden h-screen w-14 shrink-0 flex-col items-center bg-white py-4 sm:flex">
+      <nav className="sticky top-[var(--top-bar,0px)] z-40 hidden h-[calc(100vh-var(--top-bar,0px))] w-14 shrink-0 flex-col items-center bg-white py-4 sm:flex">
         <span title="Zero Smart Budget: AI-Powered Zero-Based Budgeting">
           <Logo className="size-8" />
         </span>
