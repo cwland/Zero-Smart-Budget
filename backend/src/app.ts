@@ -32,7 +32,8 @@ import devResetRoutes from "./routes/devReset.js"; // TEMPORARY testing tool
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
 import { PlaidService, type PlaidFetch } from "./lib/plaid.js";
 import { AiService, type AiFetch } from "./lib/ai.js";
-import { markActive } from "./lib/notifications.js";
+import { markActive, notifyNewSignIn } from "./lib/notifications.js";
+import { setNewDeviceHandler } from "./lib/sessions.js";
 import { sessionForToken } from "./lib/sessions.js";
 
 declare module "fastify" {
@@ -108,6 +109,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.decorate("backupSecrets", () => ({ jwtSecret, backupKey: bk.key }));
   app.decorate("backupKeep", backupKeep);
   app.decorate("mail", new MailService(db, jwtSecret, emailEnv, mailTransport));
+  setNewDeviceHandler((s) => notifyNewSignIn(db, app.mail, s)); // the new sign-in email
   app.decorate("plaid", new PlaidService(db, jwtSecret, plaidFetch));
   app.decorate("ai", new AiService(db, jwtSecret, aiFetch));
   app.decorate("now", now);

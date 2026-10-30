@@ -1,8 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
-import { setupTestApp, type TestApp } from "./helpers.js";
+import { ONLY_FIRST_TWO, setupTestApp, type TestApp } from "./helpers.js";
 import { runNotifications } from "../src/lib/notifications.js";
 import { logEvent } from "../src/lib/appLog.js";
+
+// The sample notification is about the current month
+const thisMonth = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -19,14 +22,14 @@ describe("logs", () => {
   it("emails: each one sent or failed, with its type and subject (never the message)", async () => {
     await t.api("POST", "/api/settings/notifications/test");
     await t.api("POST", "/api/months/2026/9", { mode: "blank" });
-    await t.api("PUT", "/api/settings/notifications", { enabled: true, nudge: false });
+    await t.api("PUT", "/api/settings/notifications", { enabled: true, nudge: false, ...ONLY_FIRST_TWO });
     await runNotifications(t.db, t.app.mail, new Date(2026, 8, 26, 9));
     t.failNext.value = "535 Authentication failed";
     await t.api("POST", "/api/settings/notifications/test");
     expect((await logs("?category=email")).map((r) => [r.level, r.source, r.event])).toEqual([
-      ["error", "Notification test", 'Couldn\'t send "Zero Smart Budget notifications are working" to cory@example.com'],
+      ["error", "Notification test", `Couldn't send "[Test] Time to wrap up ${thisMonth}" to cory@example.com`],
       ["info", "Wrap-Up reminder", 'Sent "Time to wrap up September 2026" to cory@example.com'],
-      ["info", "Notification test", 'Sent "Zero Smart Budget notifications are working" to cory@example.com'],
+      ["info", "Notification test", `Sent "[Test] Time to wrap up ${thisMonth}" to cory@example.com`],
     ]);
     expect((await logs("?category=email"))[0].detail).toMatch(/535 Authentication failed/);
     expect(JSON.stringify(await logs())).not.toMatch(/almost over|This is a test/);

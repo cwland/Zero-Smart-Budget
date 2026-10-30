@@ -4,6 +4,7 @@ import type { Db } from "../db/index.js";
 import { appSettings } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
 import { decryptSecret, encryptSecret } from "./secrets.js";
+import type { RenderedEmail } from "./emailLayout.js";
 
 // starttls: plain connection upgraded to TLS (required) - usually port 587
 // ssl:      TLS from the start - usually port 465
@@ -33,6 +34,7 @@ export interface MailMessage {
   subject: string;
   text: string;
   html?: string;
+  attachments?: { filename: string; content: Buffer; cid?: string; contentType?: string }[];
 }
 
 export interface Transport {
@@ -75,7 +77,7 @@ export function emailConfigFromEnv(env: NodeJS.ProcessEnv): EmailConfig | null {
 export const fromHeader = (c: EmailConfig) =>
   c.fromName ? `"${c.fromName.replace(/["\\\\]/g, "")}" <${c.fromAddress}>` : c.fromAddress;
 
-export type EmailKind = "test" | "notification-test" | "password-reset" | "month-close" | "nudge" | "summary" | "other";
+export type EmailKind = "test" | "notification-test" | "password-reset" | "month-close" | "nudge" | "summary" | "bank" | "over-budget" | "weekly" | "goal" | "large-purchase" | "next-month" | "sign-in" | "other";
 const EMAIL_KIND_LABELS: Record<EmailKind, string> = {
   test: "Test email",
   "notification-test": "Notification test",
@@ -83,6 +85,13 @@ const EMAIL_KIND_LABELS: Record<EmailKind, string> = {
   "month-close": "Wrap-Up reminder",
   nudge: "Come-back nudge",
   summary: "Monthly summary",
+  bank: "Bank needs attention",
+  "over-budget": "Over budget",
+  weekly: "Weekly check-in",
+  goal: "Goal milestone",
+  "large-purchase": "Large purchase",
+  "next-month": "Next month reminder",
+  "sign-in": "New sign-in",
   other: "Email",
 };
 
@@ -158,6 +167,11 @@ export class MailService {
       await this.log(kind, msg, false, (err as Error).message);
       throw err;
     }
+  }
+
+  // Send a branded email from renderEmail()
+  async sendRendered(to: string, e: RenderedEmail, kind: EmailKind, config?: EmailConfig) {
+    await this.send({ to, subject: e.subject, text: e.text, html: e.html, attachments: e.attachments }, config, kind);
   }
 
   private async log(kind: EmailKind, msg: MailMessage, success: boolean, error?: string) {

@@ -37,6 +37,7 @@ describe("reports", () => {
     const r = (await t.api("GET", "/api/reports?from=2026-08&to=2026-10")).body;
     expect(r.months).toEqual([{ year: 2026, month: 8 }, { year: 2026, month: 9 }, { year: 2026, month: 10 }]);
     expect(r.years).toEqual([2026]);
+    expect(r.firstMonth).toEqual({ year: 2026, month: 9 });
     expect(r.spending).toEqual(
       expect.arrayContaining([
         { year: 2026, month: 9, group: "Food", item: "Groceries", cents: 11000 },

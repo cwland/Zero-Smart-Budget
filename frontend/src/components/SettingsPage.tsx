@@ -3,6 +3,7 @@ import ThemePicker from "./ThemePicker";
 import { UpdatesSettings } from "./UpdateBar";
 import { useEffect, useState } from "react";
 import BudgetSettings from "./BudgetSettings";
+import NotificationSettings from "./NotificationSettings";
 import DataSettings from "./DataSettings";
 import EmailSettings from "./EmailSettings";
 import AiSettings from "./AiSettings";
@@ -15,6 +16,7 @@ import { ApiKeys, ChangePassword, Devices, Passkeys, SignInHistory } from "./Sec
 const TABS = [
   { id: "profile", label: "Profile" },
   { id: "budget", label: "Budget" },
+  { id: "notifications", label: "Notifications" },
   { id: "security", label: "Security" },
   { id: "api", label: "API keys" },
   { id: "email", label: "Email" },
@@ -71,6 +73,7 @@ export default function SettingsPage() {
           </>
         )}
         {tab === "budget" && <BudgetSettings />}
+        {tab === "notifications" && <NotificationSettings />}
         {tab === "security" && (
           <>
             <ChangePassword />

@@ -20,9 +20,19 @@ export function deviceIdOf(req: FastifyRequest) {
  * reuses that browser's row (with a new token; the old one stops working), so Signed-in devices
  * shows one row per browser.
  */
+// Called when a browser or device signs in for the first time (the new sign-in email)
+type NewDeviceHandler = (s: { sessionId: number; userAgent: string | null; ip: string; how: string; at: Date }) => Promise<unknown>;
+let onNewDevice: NewDeviceHandler | null = null;
+export const setNewDeviceHandler = (fn: NewDeviceHandler | null) => {
+  onNewDevice = fn;
+};
+let lastAlert: Promise<unknown> = Promise.resolve();
+export const signInAlertSettled = () => lastAlert; // for tests
+
 export async function startSession(db: Db, secret: string, req: FastifyRequest, user: { id: number; tokenVersion: number }, how: string, now = new Date()) {
   const tokenId = crypto.randomBytes(16).toString("base64url");
   const deviceId = deviceIdOf(req);
+  const seenBefore = deviceId ? (await db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.userId, user.id), eq(sessions.deviceId, deviceId)))).length > 0 : true;
   const values = { tokenId, tokenVersion: user.tokenVersion, how, userAgent: ua(req), ip: req.ip, lastIp: req.ip, createdAt: now, lastSeenAt: now, expiresAt: new Date(now.getTime() + TOKEN_LIFETIME_MS), revokedAt: null };
   const [row] = deviceId
     ? await db
@@ -35,6 +45,8 @@ export async function startSession(db: Db, secret: string, req: FastifyRequest, 
         .values({ userId: user.id, ...values })
         .returning();
   touched.delete(row.id);
+  // Not for the very first sign-in (setting up the account); sent in the background
+  if (!seenBefore && how !== "account set up" && onNewDevice) lastAlert = onNewDevice({ sessionId: row.id, userAgent: row.userAgent, ip: req.ip, how, at: now }).catch(() => {});
   return { token: signToken(user.id, user.tokenVersion, secret, tokenId), session: row };
 }
 

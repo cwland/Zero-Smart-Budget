@@ -2,6 +2,8 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { budgetMonths, categoryGroups, fundEntries, incomeItems, lineItems, sinkingFunds, transactions, transactionSplits } from "../db/schema.js";
 import { monthDateRange } from "./calc.js";
+import type { ActiveService, AiService } from "./ai.js";
+import { monthName as label } from "./monthClose.js";
 
 // Report data for a range of budget months (Reports page, CSV export and the AI summary).
 // Money counts in the budget month of the item it's assigned to (like the budget page does),
@@ -118,10 +120,14 @@ export async function reportData(db: Db, from: YM, to: YM) {
   // Years with a budget, for the earlier-year choices in the date filter
   const years = (await db.selectDistinct({ year: budgetMonths.year }).from(budgetMonths).orderBy(asc(budgetMonths.year))).map((r) => r.year);
 
+  // Your first budget month (the page says when a period reaches back before it)
+  const [first0] = await db.select({ year: budgetMonths.year, month: budgetMonths.month }).from(budgetMonths).orderBy(asc(budgetMonths.year), asc(budgetMonths.month)).limit(1);
+
   const num = <T extends { cents: string }>(rows: T[]) => rows.map((r) => ({ ...r, cents: Number(r.cents) }));
   return {
     months,
     years,
+    firstMonth: first0 ?? null,
     spending: num(spendRows),
     planned: num(plannedRows),
     income: num(incomeRows),
@@ -171,3 +177,52 @@ export async function cashFlow(db: Db, ym: YM) {
   }
   return { year: ym.year, month: ym.month, days: [...days.values()] };
 }
+
+// ---------- AI summary (Reports › Unusual Spending, and the monthly summary email) ----------
+
+const dollars = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+
+const SUMMARY_SYSTEM = `You write a short, friendly summary of someone's household budget for a period.
+Use plain words and real numbers from the data. 3 to 5 short bullet points, each starting with "- ".
+Cover: how spending compared to income, the biggest spending areas, anything that changed a lot or
+cost more than usual, and one practical suggestion. No greeting, no headings, no advice to see a
+professional. Under 120 words.`;
+
+/** A few plain-English bullet points about the period from your AI service. Throws AiError. */
+export async function aiSummary(ai: AiService, services: ActiveService[], timeoutSec: number, data: ReportData) {
+  const sumBy = <T>(rows: T[], keyOf: (r: T) => string, cents: (r: T) => number) => {
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(keyOf(r), (m.get(keyOf(r)) ?? 0) + cents(r));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  };
+  const perMonth = data.months.map((m) => {
+    const inc = data.income.filter((i) => i.year === m.year && i.month === m.month).reduce((t, i) => t + i.cents, 0);
+    const out = data.spending.filter((s) => s.year === m.year && s.month === m.month).reduce((t, s) => t + s.cents, 0);
+    return `${label(m)}: income ${dollars(inc)}, spent ${dollars(out)}`;
+  });
+  const groups = sumBy(data.spending, (s) => s.group, (s) => s.cents).map(([g, c]) => `${g} ${dollars(c)}`);
+  const planned = sumBy(data.planned, (s) => s.group, (s) => s.cents);
+  const spentBy = new Map(sumBy(data.spending, (s) => s.group, (s) => s.cents));
+  const overPlan = planned.filter(([g, p]) => (spentBy.get(g) ?? 0) > p).map(([g, p]) => `${g} spent ${dollars(spentBy.get(g)!)} of ${dollars(p)} planned`);
+  const unusual = unusualSpending(data).slice(0, 6).map((u) => `${u.item} (${u.group}) ${dollars(u.cents)} vs usual ${dollars(u.usualCents)}`);
+  const merchants = data.merchants.slice(0, 5).map((m) => `${m.name} ${dollars(m.cents)} (${m.visits} visits)`);
+  const user = [
+    `Period: ${label(data.months[0])} to ${label(data.months[data.months.length - 1])}`,
+    `By month:\n${perMonth.join("\n")}`,
+    `Spending by group: ${groups.join(", ")}`,
+    overPlan.length ? `Over plan: ${overPlan.join("; ")}` : "No group went over its plan.",
+    unusual.length ? `Higher than usual in ${label(data.months[data.months.length - 1])}: ${unusual.join("; ")}` : "",
+    merchants.length ? `Top merchants: ${merchants.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const r = await ai.chatWithFailover(services, SUMMARY_SYSTEM, user, 400, timeoutSec * 1000);
+  return { text: r.text.trim(), service: r.service.name, model: r.service.model };
+}
+
+/** "- one\n- two" -> ["one", "two"] (plain lines when the AI didn't use bullets) */
+export const summaryBullets = (text: string) =>
+  text
+    .split("\n")
+    .map((l) => l.trim().replace(/^[-*•]\s+/, "").replace(/\*\*/g, ""))
+    .filter(Boolean);

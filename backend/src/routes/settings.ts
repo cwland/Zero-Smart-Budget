@@ -8,7 +8,9 @@ import type { EmailConfig } from "../lib/mail.js";
 import { getBudgetPrefs, saveBudgetPrefs } from "../lib/prefs.js";
 import { PlaidError, explainPlaidError, type PlaidKeys } from "../lib/plaid.js";
 import { AI_PROVIDERS, AiError, type AiConfig } from "../lib/ai.js";
-import { getNotificationPrefs, saveNotificationPrefs } from "../lib/notifications.js";
+import { getNotificationPrefs, NOTIFICATION_KINDS, NOTIFICATION_NAMES, renderForRecipient, sampleNotification, saveNotificationPrefs } from "../lib/notifications.js";
+import { previewHtml, renderEmail } from "../lib/emailLayout.js";
+import { emailWorks } from "../lib/emails.js";
 
 function requireLogin(req: FastifyRequest): number {
   if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
@@ -262,6 +264,17 @@ export default async function settingsRoutes(app: FastifyInstance) {
         nudge: z.boolean().optional(),
         nudgeDays: z.number().int().min(1).max(90).optional(),
         monthlySummary: z.boolean().optional(),
+        monthlySummaryAi: z.boolean().optional(),
+        bankAttention: z.boolean().optional(),
+        overBudget: z.boolean().optional(),
+        weekly: z.boolean().optional(),
+        weeklyDay: z.number().int().min(0).max(6).optional(),
+        goalMilestones: z.boolean().optional(),
+        largePurchase: z.boolean().optional(),
+        largePurchaseCents: z.number().int().min(100, "Pick at least $1").max(100_000_000).optional(),
+        nextMonth: z.boolean().optional(),
+        nextMonthDays: z.number().int().min(1).max(14).optional(),
+        newSignIn: z.boolean().optional(),
       })
       .strict()
       .parse(req.body);
@@ -272,22 +285,29 @@ export default async function settingsRoutes(app: FastifyInstance) {
     await saveNotificationPrefs(db, body);
     return notifyStatus(userId);
   });
-  // A sample of each notification, to see what they look like
+  // A sample of a notification, with your real numbers where there are some. Subject starts "[Test]".
+  const kindParam = z.object({ kind: z.enum(NOTIFICATION_KINDS).default("month-close") });
   app.post("/api/settings/notifications/test", async (req) => {
     const userId = requireLogin(req);
+    const { kind } = kindParam.parse(req.body ?? {});
     const to = await accountEmail(userId);
     if (!to) throw new HttpError(400, "Add your email address in Settings > Profile first.");
     if (!(await mail.active())) throw new HttpError(400, "Set up email first in Settings > Email.");
+    const email = await renderForRecipient(db, mail, await sampleNotification(db, kind, new Date(), app.ai), NOTIFICATION_NAMES[kind]);
     try {
-      await mail.send({
-        to,
-        subject: "Zero Smart Budget notifications are working",
-        text: "This is a test. You'll get emails like this when it's time to wrap up a month, or when transactions are waiting for you after a while away.\n\nYou can turn these emails off in Settings > Budget > Notifications.",
-      }, undefined, "notification-test");
+      await mail.sendRendered(to, email, "notification-test");
     } catch (err) {
       throw new HttpError(502, `Couldn't send: ${(err as Error).message.replace(/\s+/g, " ").slice(0, 300)}`);
     }
-    return { ok: true, to };
+    return { ok: true, to, subject: email.subject };
+  });
+
+  // See a notification in the browser without sending it
+  app.get("/api/settings/notifications/preview", async (req, reply) => {
+    requireLogin(req);
+    const { kind } = kindParam.parse(req.query ?? {});
+    const email = await renderForRecipient(db, mail, await sampleNotification(db, kind, new Date(), app.ai), NOTIFICATION_NAMES[kind]);
+    return reply.type("text/html; charset=utf-8").header("content-security-policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'").send(previewHtml(email));
   });
 
   // Budget preferences (Quick Assign, Month Wrap-Up...)
@@ -347,15 +367,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
     try {
       await mail.verify(config);
-      await mail.send(
-        {
-          to,
-          subject: "Zero Smart Budget test email",
-          text: "Email from Zero Smart Budget is working. Password reset links will arrive like this one.",
-        },
-        config,
-        "test"
-      );
+      const [u] = await db.select({ theme: users.theme }).from(users).where(eq(users.id, userId));
+      await mail.sendRendered(to, renderEmail(emailWorks(), { theme: u?.theme, appUrl: config.appUrl, test: { what: "an email from Zero Smart Budget" } }), "test", config);
     } catch (err) {
       req.log.warn(err);
       const msg = (err as Error).message.replace(/\s+/g, " ").slice(0, 300);

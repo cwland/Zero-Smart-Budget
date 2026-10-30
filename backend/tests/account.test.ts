@@ -140,7 +140,9 @@ describe("password reset by email", () => {
     await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
     const res = await t.api("POST", "/api/settings/email/test", {});
     expect(res.body).toMatchObject({ ok: true, to: "cory@example.com" });
-    expect(t.sent[0].subject).toContain("test email");
+    expect(t.sent[0].subject).toBe("[Test] Zero Smart Budget email is working");
+    expect(t.sent[0].html).toContain("Test email.");
+    expect(t.sent[0].attachments?.[0]).toMatchObject({ cid: "zsb-logo", contentType: "image/png" });
   });
 });
 

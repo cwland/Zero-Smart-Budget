@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { renderEmail } from "../lib/emailLayout.js";
+import { passwordReset } from "../lib/emails.js";
 import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { checkPassword, generateResetToken, hashApiKey, hashPassword } from "../lib/auth.js";
 import { describeDevice, logSignIn, pruneLoginLog, renewSession, revokeAll, startSession } from "../lib/sessions.js";
@@ -233,12 +235,7 @@ export default async function authRoutes(app: FastifyInstance) {
       await db.insert(passwordResets).values({ userId: user.id, tokenHash: hash, expiresAt: new Date(now + RESET_LIFETIME_MS) });
       const link = `${active.config.appUrl}/#/reset?token=${token}`;
       try {
-        await app.mail.send({
-          to: user.email,
-          subject: "Reset your Zero Smart Budget password",
-          text: `Someone (hopefully you) asked to reset the password for "${user.username}".\n\nReset it here (this link works once, for 1 hour):\n${link}\n\nIf this wasn't you, you can ignore this email. Your password won't change.`,
-          html: `<p>Someone (hopefully you) asked to reset the password for <strong>${user.username.replace(/[<>&]/g, "")}</strong>.</p><p><a href="${link}">Reset your password</a> (this link works once, for 1 hour).</p><p>If this wasn't you, you can ignore this email. Your password won't change.</p>`,
-        }, undefined, "password-reset");
+        await app.mail.sendRendered(user.email, renderEmail(passwordReset(user.username, link), { theme: user.theme, appUrl: active.config.appUrl }), "password-reset");
       } catch (err) {
         req.log.error(err);
         throw new HttpError(502, "Couldn't send the email. Check the email settings on the server.");

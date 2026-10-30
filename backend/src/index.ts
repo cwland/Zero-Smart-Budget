@@ -94,7 +94,7 @@ setInterval(autoClose, 6 * 60 * 60 * 1000);
 
 // Email notifications (Month Close reminder, "come back" nudge): checked every hour
 const notify = () =>
-  runNotifications(db, app.mail)
+  runNotifications(db, app.mail, new Date(), app.ai)
     .then(async (r) => {
       if (!r.sent.length) return; // runs hourly: only runs that sent something are logged
       app.log.info(`Sent ${r.sent.map((x) => x.kind).join(", ")} email`);

@@ -8,11 +8,16 @@ import { Card, CashFlowCalendar, FundProgress, PlannedVsSpent, SavingsRate, sele
 
 // Reports: where the money went over a period. One date filter sets the period for every card.
 
-type RangeId = "ytd" | "3" | "6" | "9" | "12" | `y${number}`;
+type RangeId = "month" | "last" | "ytd" | "3" | "6" | "9" | "12" | `y${number}`;
 const RANGE_KEY = "zsb-report-range";
 
 function rangeMonths(id: RangeId): { from: YearMonth; to: YearMonth } {
   const now = currentYearMonth();
+  if (id === "month") return { from: now, to: now };
+  if (id === "last") {
+    const last = addMonths(now, -1);
+    return { from: last, to: last };
+  }
   if (id === "ytd") return { from: { year: now.year, month: 1 }, to: now };
   if (id.startsWith("y")) {
     const year = Number(id.slice(1));
@@ -29,6 +34,8 @@ function thisYearSpan() {
 }
 
 function rangeLabel(id: RangeId) {
+  if (id === "month") return "this month";
+  if (id === "last") return "last month";
   if (id === "ytd") return "this year";
   if (id.startsWith("y")) return id.slice(1);
   return `past ${id} months`;
@@ -207,13 +214,30 @@ export default function ReportsPage() {
   const incomeColor = "var(--color-success)";
   const spentColor = palette[2];
   const { from, to } = rangeMonths(range);
-  const fileTag = range === "ytd" ? `this-year-${now.year}` : range.startsWith("y") ? range.slice(1) : `past-${range}-months`;
+  const fileTag = range === "month" || range === "last" ? `${from.year}-${String(from.month).padStart(2, "0")}` : range === "ytd" ? `this-year-${now.year}` : range.startsWith("y") ? range.slice(1) : `past-${range}-months`;
+  // The period reaches back before your first budget month: say what it really covers
+  const startNote = (() => {
+    const first = data.firstMonth;
+    const idx = (m: YearMonth) => m.year * 12 + m.month - 1;
+    const name = (m: YearMonth) => `${MONTH_NAMES[m.month - 1]} ${m.year}`;
+    const short = (m: YearMonth) => MONTH_NAMES[m.month - 1].slice(0, 3);
+    if (!first) return "There's no budget yet, so there's nothing to report. Make your first month on the Budget page.";
+    if (idx(to) < idx(first)) return `Your budget starts in ${name(first)}, so there's nothing in this period.`;
+    if (idx(from) >= idx(first)) return null;
+    const span = idx(first) === idx(to) ? name(first) : `${short(first)}${first.year !== to.year ? ` ${first.year}` : ""}–${short(to)} ${to.year}`;
+    return `Your budget starts in ${name(first)}, so this covers ${span}.`;
+  })();
   const seriesCsv = (name: string, series: Series[]) =>
     downloadCsv(`${name}-${fileTag}.csv`, [["Month", ...series.map((x) => x.label), "Total"], ...r.fullLabels.map((l, i) => [l, ...series.map((x) => csvDollars(x.values[i])), csvDollars(series.reduce((t, x) => t + x.values[i], 0))])]);
   const empty = (msg: string) => <p className="flex h-64 items-center justify-center text-center text-subtle">{msg}</p>;
 
   return (
     <Page range={range} setRange={setRange} pastYears={pastYears}>
+      {startNote && (
+        <p role="note" className="mb-4 rounded-xl bg-brand-subtle px-4 py-3 text-sm text-ink">
+          {startNote}
+        </p>
+      )}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Spending Totals" onCsv={() => downloadCsv(`spending-totals-${fileTag}.csv`, [[totalsGroup ? "Item" : "Group", "Spent", "%"], ...totalsSlices.map((x) => [x.label, csvDollars(x.cents), totalsSum ? Math.round((x.cents / totalsSum) * 1000) / 10 : 0])])}>
           <select aria-label="Spending Totals group" value={totalsGroup} onChange={(e) => setTotalsGroup(e.target.value)} className={`${select} mx-auto mb-5 w-full max-w-xs`}>
@@ -331,6 +355,8 @@ function Page({ range, setRange, pastYears, children }: { range: RangeId; setRan
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
         <h1 className="text-2xl font-semibold">Reports</h1>
         <select aria-label="Period" value={range} onChange={(e) => setRange(e.target.value as RangeId)} className={`${select} min-w-52`}>
+          <option value="month">This month ({MONTH_NAMES[currentYearMonth().month - 1]})</option>
+          <option value="last">Last month ({MONTH_NAMES[addMonths(currentYearMonth(), -1).month - 1]})</option>
           <option value="ytd">This year ({thisYearSpan()})</option>
           <option value="3">Past 3 months</option>
           <option value="6">Past 6 months</option>

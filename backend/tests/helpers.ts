@@ -22,6 +22,9 @@ import type { AiFetch } from "../src/lib/ai.js";
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/corysdollar_test";
 if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a test database");
 
+// Notification settings with only the Wrap-Up reminder and nudge (for tests about those two)
+export const ONLY_FIRST_TWO = { monthlySummary: false, bankAttention: false, overBudget: false, weekly: false, goalMilestones: false, largePurchase: false, nextMonth: false, newSignIn: false };
+
 export async function setupTestApp(opts: { email?: boolean; backupKey?: string; jwtSecret?: string; oauthFetch?: typeof fetch; githubToken?: string } = {}) {
   const { db, pool } = createDb(url);
   await db.execute(sql`drop schema if exists public cascade`);
@@ -114,7 +117,14 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       payload: body as object,
       headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers },
     });
-    return { status: res.statusCode, body: res.body ? res.json() : undefined };
+    const json = () => {
+      try {
+        return res.json();
+      } catch {
+        return undefined; // not JSON (an HTML preview, say): see .text
+      }
+    };
+    return { status: res.statusCode, body: res.body ? json() : undefined, text: res.body, headers: res.headers };
   };
 
   return {

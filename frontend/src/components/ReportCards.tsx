@@ -9,6 +9,7 @@ import { csvDollars, downloadCsv, Legend, Lines, SignedBars, TipRow, type Series
 export interface ReportData {
   months: YearMonth[];
   years: number[];
+  firstMonth: YearMonth | null; // your first budget month
   spending: { year: number; month: number; group: string; item: string; cents: number }[];
   planned: { year: number; month: number; group: string; item: string; cents: number }[];
   income: { year: number; month: number; source: string; cents: number }[];
