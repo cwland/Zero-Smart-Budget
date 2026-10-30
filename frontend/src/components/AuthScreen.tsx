@@ -40,7 +40,8 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ForgotPassword({ onBack }: { onBack: () => void }) {
+function ForgotPassword({ onBack, initialWho }: { onBack: () => void; initialWho: string }) {
+  const [who, setWho] = useState(initialWho);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,7 +50,7 @@ function ForgotPassword({ onBack }: { onBack: () => void }) {
     setBusy(true);
     setError("");
     try {
-      await api("POST", "/api/auth/forgot", {});
+      await api("POST", "/api/auth/forgot", who.trim() ? { who: who.trim() } : {});
       setSent(true);
     } catch (e) {
       setError((e as Error).message);
@@ -68,8 +69,12 @@ function ForgotPassword({ onBack }: { onBack: () => void }) {
       ) : (
         <>
           <p className="mt-2 text-subtle">We'll email a reset link to the address on your account.</p>
+          <label className="mt-4 block text-sm font-medium text-subtle">
+            Your username or email
+            <input value={who} onChange={(e) => setWho(e.target.value)} autoComplete="username" autoFocus className="mt-1 w-full rounded border border-muted/60 bg-white px-3 py-2.5 outline-none focus:border-action focus:ring-2 focus:ring-action/20" />
+          </label>
           {error && <p role="alert" className="mt-3 rounded bg-error-subtle px-3 py-2 text-sm text-error">{error}</p>}
-          <button onClick={send} disabled={busy} className="mt-5 w-full rounded bg-primary py-3 font-semibold text-white hover:bg-primary-pressed disabled:opacity-60">
+          <button onClick={send} disabled={busy || !who.trim()} className="mt-5 w-full rounded bg-primary py-3 font-semibold text-white hover:bg-primary-pressed disabled:opacity-60">
             {busy ? "Sending…" : "Email me a reset link"}
           </button>
         </>
@@ -160,7 +165,7 @@ export default function AuthScreen({ mode, resetAvailable, oauth = null, passwor
   if (forgot) {
     return (
       <AuthFrame>
-        <ForgotPassword onBack={() => setForgot(false)} />
+        <ForgotPassword initialWho={username} onBack={() => setForgot(false)} />
       </AuthFrame>
     );
   }
@@ -169,7 +174,7 @@ export default function AuthScreen({ mode, resetAvailable, oauth = null, passwor
     <AuthFrame>
       <form data-password-form onSubmit={submit}>
         <h1 className="text-lg font-semibold">{setup ? "Create your account" : "Sign in"}</h1>
-        {setup && <p className="mt-1 text-sm text-subtle">First time here. This will be the only login for this app.</p>}
+        {setup && <p className="mt-1 text-sm text-subtle">First time here. You'll be the owner. You can invite others later in Settings › Profile.</p>}
 
         {!showForm && (
           <>

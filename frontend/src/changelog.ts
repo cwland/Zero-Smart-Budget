@@ -34,6 +34,7 @@ export const CHANGELOG: Release[] = [
       "Emails now come in your theme's colors with the logo (Wrap-Up reminder, nudge, password reset, test emails). Each notification has Preview and Send a sample, and samples are marked [Test] in the subject.",
       "New Settings › Notifications tab with 9 more emails, each with its own switch: monthly summary (optionally with a few lines from AI), monthly insights (trends, plans that keep missing, subscription changes, wins and one focus), weekly check-in, over budget, goal milestones, large purchase, next month isn't set up, bank needs attention and new sign-in.",
       "Reports: This month and Last month in the period list, and a note when a period starts before your budget does.",
+      "Shared access: invite people to your budget from Settings › Profile, as an Admin (everything but inviting people) or a User (the budget without the app's setup). Each person has their own sign-in, notifications and toss animation, and gets their own emails.",
       "New months made from suggested categories start with a fresh set of groups (Home, Food, Getting Around, Bills & Subscriptions…).",
       "Signing in always opens this month's budget. The version number (bottom left) shows these notes again.",
     ],

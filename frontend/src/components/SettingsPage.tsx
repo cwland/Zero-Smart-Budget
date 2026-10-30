@@ -9,6 +9,7 @@ import EmailSettings from "./EmailSettings";
 import AiSettings from "./AiSettings";
 import PlaidSettings from "./PlaidSettings";
 import ProfileSettings from "./ProfileSettings";
+import SharedAccess from "./SharedAccess";
 import LogsSettings from "./LogsSettings";
 import SignInSettings from "./SignInSettings";
 import { ApiKeys, ChangePassword, Devices, Passkeys, SignInHistory } from "./SecuritySettings";
@@ -70,6 +71,7 @@ export default function SettingsPage() {
           <>
             <ProfileSettings />
             <ThemePicker />
+            <SharedAccess />
           </>
         )}
         {tab === "budget" && <BudgetSettings />}

@@ -4,6 +4,7 @@ import { api, ApiError, getToken, setToken } from "./api";
 import AuthScreen from "./components/AuthScreen";
 import AppShell from "./components/AppShell";
 import ResetPasswordScreen from "./components/ResetPasswordScreen";
+import InviteScreen from "./components/InviteScreen";
 import { SessionContext, type User } from "./session";
 
 type AuthState =
@@ -28,6 +29,8 @@ function takeOAuthReturn() {
 
 // "#/reset?token=..." from a password reset email
 const resetTokenFromHash = () => (window.location.hash.startsWith("#/reset") ? new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("token") : null);
+// "#/invite?token=..." from a shared access invite
+const inviteTokenFromHash = () => (window.location.hash.startsWith("#/invite") ? new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("token") : null);
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
@@ -37,6 +40,7 @@ export default function App() {
     if (userTheme) applyTheme(userTheme);
   }, [userTheme]);
   const [resetToken, setResetToken] = useState(resetTokenFromHash);
+  const [inviteToken, setInviteToken] = useState(inviteTokenFromHash);
 
   const signedInRef = useRef<(token: string, user: User) => void>(() => {});
   const check = useCallback(async () => {
@@ -69,7 +73,10 @@ export default function App() {
   useEffect(() => {
     check();
     const onLogout = () => check();
-    const onHash = () => setResetToken(resetTokenFromHash());
+    const onHash = () => {
+      setResetToken(resetTokenFromHash());
+      setInviteToken(inviteTokenFromHash());
+    };
     window.addEventListener("corysdollar:logout", onLogout);
     window.addEventListener("hashchange", onHash);
     return () => {
@@ -87,6 +94,24 @@ export default function App() {
   };
   signedInRef.current = signedIn;
 
+
+  // An invite link signs you up as a new person (even if this browser is signed in as someone else)
+  if (inviteToken) {
+    return (
+      <InviteScreen
+        token={inviteToken}
+        onDone={(token, user) => {
+          setInviteToken(null);
+          signedIn(token, user);
+        }}
+        onCancel={() => {
+          window.location.hash = "";
+          setInviteToken(null);
+          check();
+        }}
+      />
+    );
+  }
 
   if (resetToken) {
     return (

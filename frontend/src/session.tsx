@@ -7,7 +7,12 @@ export interface User {
   email: string | null;
   seenVersion?: string | null; // the version whose "What's new" was dismissed
   theme?: string | null; // Settings › Profile › Theme (null: the default)
+  role?: "owner" | "admin" | "user"; // shared access (see backend/src/lib/roles.ts)
+  tossAnimation?: boolean; // this person's own setting (Settings › Budget)
 }
+
+/** Can change the app's setup (everyone but a "user") */
+export const canManage = (u: User) => u.role !== "user";
 
 export interface Session {
   user: User;
