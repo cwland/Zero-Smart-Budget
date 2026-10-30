@@ -59,4 +59,78 @@ describe("reports", () => {
     expect((await t.api("GET", "/api/reports?from=2026-10&to=2026-09")).status).toBe(400);
     expect((await t.api("GET", "/api/reports?from=2026-13&to=2026-12")).status).toBe(400);
   });
+
+  it("planned amounts, top merchants and fund balances", async () => {
+    const fund = (await t.api("POST", "/api/funds", { name: "Car", startingBalanceCents: 10000 })).body;
+    const sep = await month(2026, 9);
+    await t.api("PATCH", `/api/items/${sep.dining.id}`, { sinkingFundId: fund.id });
+    const oct = (await t.api("POST", "/api/months/2026/10", { mode: "copy" })).body;
+    const octDining = oct.groups[0].items.find((i: { name: string }) => i.name === "Dining Out");
+    const shop = (date: string, merchant: string, cents: number, lineItemId: number, type = "expense") =>
+      t.api("POST", "/api/transactions", { date, merchant, amountCents: cents, type, splits: [{ lineItemId, amountCents: cents }] });
+    await shop("2026-09-10", "Costco", 8000, sep.groceries.id);
+    await shop("2026-10-03", "Costco", 6000, octDining.id);
+    await shop("2026-10-04", "Costco", 1000, octDining.id, "income"); // a return
+    await shop("2026-10-05", "Taco Bell", 1500, octDining.id);
+    await t.api("POST", "/api/transactions", { date: "2026-10-06", merchant: "Transfer", amountCents: 99900, splits: [] }); // unassigned: not a merchant
+
+    const r = (await t.api("GET", "/api/reports?from=2026-09&to=2026-10")).body;
+    expect(r.planned).toEqual(
+      expect.arrayContaining([
+        { year: 2026, month: 9, group: "Food", item: "Groceries", cents: 50000 },
+        { year: 2026, month: 10, group: "Food", item: "Dining Out", cents: 20000 },
+      ])
+    );
+    expect(r.merchants).toEqual([
+      { name: "Costco", visits: 2, cents: 13000, lastDate: "2026-10-04" },
+      { name: "Taco Bell", visits: 1, cents: 1500, lastDate: "2026-10-05" },
+    ]);
+    // Car: 100 to start, +200 planned in Sep, +200 in Oct, -65 spent in Oct (60 - 10 return + 15)
+    expect(r.funds).toEqual([{ id: fund.id, name: "Car", kind: "sinking", targetCents: null, balances: [30000, 43500] }]);
+    expect(r.aiAvailable).toBe(false);
+  });
+
+  it("flags items that cost a lot more than usual in the last month", async () => {
+    for (const [m, cents] of [[7, 10000], [8, 12000], [9, 11000], [10, 20000]]) {
+      const b = await month(2026, m);
+      await tx(`2026-${String(m).padStart(2, "0")}-05`, cents, [{ lineItemId: b.groceries.id, amountCents: cents }]);
+      await tx(`2026-${String(m).padStart(2, "0")}-06`, 3000, [{ lineItemId: b.dining.id, amountCents: 3000 }]);
+    }
+    const r = (await t.api("GET", "/api/reports?from=2026-07&to=2026-10")).body;
+    expect(r.unusual).toEqual([{ group: "Food", item: "Groceries", cents: 20000, usualCents: 11000, overCents: 9000, pct: 82 }]);
+  });
+
+  it("cash flow by day, by the transaction date", async () => {
+    const oct = await month(2026, 10);
+    await tx("2026-10-01", 250000, [{ incomeItemId: oct.inc.id, amountCents: 250000 }], "income");
+    await tx("2026-10-01", 4000, [{ lineItemId: oct.dining.id, amountCents: 4000 }]);
+    await tx("2026-10-15", 9000, []);
+    const r = (await t.api("GET", "/api/reports/cashflow?month=2026-10")).body;
+    expect(r.days).toEqual([
+      { date: "2026-10-01", inCents: 250000, outCents: 4000, items: [{ merchant: "Shop", cents: 250000, type: "income" }, { merchant: "Shop", cents: 4000, type: "expense" }] },
+      { date: "2026-10-15", inCents: 0, outCents: 9000, items: [{ merchant: "Shop", cents: 9000, type: "expense" }] },
+    ]);
+  });
+
+  it("AI summary: needs AI on, and sends the period's numbers", async () => {
+    const oct = await month(2026, 10);
+    await tx("2026-10-02", 4000, [{ lineItemId: oct.dining.id, amountCents: 4000 }]);
+    expect((await t.api("POST", "/api/reports/summary", { from: "2026-10", to: "2026-10" })).status).toBe(409);
+
+    let sent = "";
+    t.ai.respond = (_url: string, body: { messages: { content: string }[] }) => {
+      sent = body.messages.map((m) => m.content).join("\n");
+      return { status: 200, json: { choices: [{ message: { content: "- You spent $40 on Food." } }] } };
+    };
+    await t.api("PUT", "/api/settings/ai", { enabled: true, provider: "openai", model: "tiny", apiKey: "k", mode: "manual", maxPerRun: 50 });
+    const r = await t.api("POST", "/api/reports/summary", { from: "2026-10", to: "2026-10" });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ text: "- You spent $40 on Food.", model: "tiny" });
+    expect(sent).toContain("Spending by group: Food $40");
+    expect(sent).toContain("October 2026: income $0, spent $40");
+    expect((await t.api("GET", "/api/reports?from=2026-10&to=2026-10")).body.aiAvailable).toBe(true);
+
+    t.ai.respond = () => ({ status: 500, json: { error: { message: "boom" } } });
+    expect((await t.api("POST", "/api/reports/summary", { from: "2026-10", to: "2026-10" })).status).toBe(502);
+  });
 });

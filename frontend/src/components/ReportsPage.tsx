@@ -3,16 +3,10 @@ import { api } from "../api";
 import { addMonths, currentYearMonth, MONTH_NAMES, type YearMonth } from "../dates";
 import { formatCents, formatWholeDollars } from "../money";
 import { useTheme } from "../themes";
-import { Legend, Lines, Ring, StackedBars, type Series } from "./charts";
+import { csvDollars, downloadCsv, Legend, Lines, Ring, StackedBars, type Series } from "./charts";
+import { Card, CashFlowCalendar, FundProgress, PlannedVsSpent, SavingsRate, select, TopMerchants, UnusualSpending, type ReportData } from "./ReportCards";
 
 // Reports: where the money went over a period. One date filter sets the period for every card.
-
-interface ReportData {
-  months: YearMonth[];
-  years: number[];
-  spending: { year: number; month: number; group: string; item: string; cents: number }[];
-  income: { year: number; month: number; source: string; cents: number }[];
-}
 
 type RangeId = "ytd" | "3" | "6" | "9" | "12" | `y${number}`;
 const RANGE_KEY = "zsb-report-range";
@@ -27,8 +21,15 @@ function rangeMonths(id: RangeId): { from: YearMonth; to: YearMonth } {
   return { from: addMonths(now, -(Number(id) - 1)), to: now };
 }
 
+// "Jan–Oct" (just "Jan" in January)
+function thisYearSpan() {
+  const m = currentYearMonth().month;
+  const short = (n: number) => MONTH_NAMES[n - 1].slice(0, 3);
+  return m === 1 ? short(1) : `${short(1)}–${short(m)}`;
+}
+
 function rangeLabel(id: RangeId) {
-  if (id === "ytd") return "year to date";
+  if (id === "ytd") return "this year";
   if (id.startsWith("y")) return id.slice(1);
   return `past ${id} months`;
 }
@@ -36,7 +37,6 @@ function rangeLabel(id: RangeId) {
 const ymParam = ({ year, month }: YearMonth) => `${year}-${String(month).padStart(2, "0")}`;
 const key = (year: number, month: number) => year * 12 + month - 1;
 const sortByTotal = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
-const select = "rounded-lg border border-muted/50 bg-white px-3 py-2 outline-none focus:border-action focus:ring-2 focus:ring-action/15 disabled:bg-page disabled:text-subtle";
 const OTHER = "Other";
 // Biggest first, "Other" last, so legends read in the same order as the Spending Totals list
 const bySize = (series: Series[]) =>
@@ -53,15 +53,6 @@ const foldName = (names: string[], palette: string[]) => {
   const keep = new Set(names.slice(0, palette.length - 1));
   return (n: string) => (keep.has(n) ? n : OTHER);
 };
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section aria-label={title} className="flex flex-col rounded-2xl bg-white p-5 sm:p-6">
-      <h2 className="mb-4 text-center text-xl font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
 
 export default function ReportsPage() {
   const palette = useTheme().groups;
@@ -215,12 +206,16 @@ export default function ReportsPage() {
   const spentTotal = r.spentByMonth.reduce((a, b) => a + b, 0);
   const incomeColor = "var(--color-success)";
   const spentColor = palette[2];
+  const { from, to } = rangeMonths(range);
+  const fileTag = range === "ytd" ? `this-year-${now.year}` : range.startsWith("y") ? range.slice(1) : `past-${range}-months`;
+  const seriesCsv = (name: string, series: Series[]) =>
+    downloadCsv(`${name}-${fileTag}.csv`, [["Month", ...series.map((x) => x.label), "Total"], ...r.fullLabels.map((l, i) => [l, ...series.map((x) => csvDollars(x.values[i])), csvDollars(series.reduce((t, x) => t + x.values[i], 0))])]);
   const empty = (msg: string) => <p className="flex h-64 items-center justify-center text-center text-subtle">{msg}</p>;
 
   return (
     <Page range={range} setRange={setRange} pastYears={pastYears}>
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="Spending Totals">
+        <Card title="Spending Totals" onCsv={() => downloadCsv(`spending-totals-${fileTag}.csv`, [[totalsGroup ? "Item" : "Group", "Spent", "%"], ...totalsSlices.map((x) => [x.label, csvDollars(x.cents), totalsSum ? Math.round((x.cents / totalsSum) * 1000) / 10 : 0])])}>
           <select aria-label="Spending Totals group" value={totalsGroup} onChange={(e) => setTotalsGroup(e.target.value)} className={`${select} mx-auto mb-5 w-full max-w-xs`}>
             <option value="">All Groups</option>
             {r.groups.map((g) => (
@@ -249,7 +244,7 @@ export default function ReportsPage() {
           </p>
         </Card>
 
-        <Card title="Spending Details">
+        <Card title="Spending Details" onCsv={() => seriesCsv("spending-details", detailSeries)}>
           <div className="mx-auto mb-5 grid w-full max-w-sm grid-cols-2 gap-3">
             <select
               aria-label="Spending Details group"
@@ -280,7 +275,7 @@ export default function ReportsPage() {
           )}
         </Card>
 
-        <Card title="Monthly Income">
+        <Card title="Monthly Income" onCsv={() => seriesCsv("monthly-income", incomeSeries)}>
           {incomeSeries.length === 0 ? (
             empty("No income received in this period")
           ) : (
@@ -291,7 +286,7 @@ export default function ReportsPage() {
           )}
         </Card>
 
-        <Card title="Income vs. Spent">
+        <Card title="Income vs. Spent" onCsv={() => downloadCsv(`income-vs-spent-${fileTag}.csv`, [["Month", "Income", "Spent"], ...r.fullLabels.map((l, i) => [l, csvDollars(r.incomeByMonth[i]), csvDollars(r.spentByMonth[i])])])}>
           {incomeTotal === 0 && spentTotal === 0 ? (
             empty("Nothing received or spent in this period")
           ) : (
@@ -318,6 +313,13 @@ export default function ReportsPage() {
             </>
           )}
         </Card>
+
+        <PlannedVsSpent data={data} groups={r.groups} fileTag={fileTag} />
+        <TopMerchants data={data} fileTag={fileTag} />
+        <SavingsRate labels={r.labels} fullLabels={r.fullLabels} incomeByMonth={r.incomeByMonth} spentByMonth={r.spentByMonth} fileTag={fileTag} />
+        <FundProgress data={data} labels={r.labels} fullLabels={r.fullLabels} palette={palette} fileTag={fileTag} />
+        <UnusualSpending data={data} from={from} to={to} fileTag={fileTag} />
+        <CashFlowCalendar months={data.months} />
       </div>
     </Page>
   );
@@ -329,7 +331,7 @@ function Page({ range, setRange, pastYears, children }: { range: RangeId; setRan
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
         <h1 className="text-2xl font-semibold">Reports</h1>
         <select aria-label="Period" value={range} onChange={(e) => setRange(e.target.value as RangeId)} className={`${select} min-w-52`}>
-          <option value="ytd">Year to date</option>
+          <option value="ytd">This year ({thisYearSpan()})</option>
           <option value="3">Past 3 months</option>
           <option value="6">Past 6 months</option>
           <option value="9">Past 9 months</option>

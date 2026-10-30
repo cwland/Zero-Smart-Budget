@@ -286,3 +286,83 @@ export function Legend({ items }: { items: { key: string; label: string; color: 
     </ul>
   );
 }
+
+// One bar per month that can go below zero (Savings Rate). `format` turns a value into its label.
+export function SignedBars({ labels, fullLabels, values, format, colorFor, label, detail }: { labels: string[]; fullLabels: string[]; values: (number | null)[]; format: (v: number) => string; colorFor: (v: number) => string; label: string; detail?: (i: number) => ReactNode }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const nums = values.filter((v): v is number => v !== null);
+  const hi = Math.max(0, ...nums);
+  const lo = Math.min(0, ...nums);
+  const step = (() => {
+    const span = Math.max(hi - lo, 1);
+    const raw = span / 4;
+    const mag = 10 ** Math.floor(Math.log10(raw));
+    return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s * 4 >= span) ?? 10 * mag;
+  })();
+  const top = Math.ceil(hi / step) * step || (lo < 0 ? 0 : step);
+  const bottom = Math.floor(lo / step) * step;
+  const ticks: number[] = [];
+  for (let v = bottom; v <= top + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100);
+  const yAt = (v: number) => PAD.top + ((top - v) / (top - bottom || 1)) * plotH;
+  const slot = plotW / labels.length;
+  const barW = Math.min(36, slot * 0.6);
+
+  return (
+    <div className="relative" onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={label}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={PAD.left} x2={W - PAD.right} y1={yAt(t)} y2={yAt(t)} stroke={t === 0 ? "var(--color-strong)" : "var(--color-line)"} strokeWidth={1} />
+            <text x={PAD.left - 8} y={yAt(t) + 4} textAnchor="end" fontSize="12" fill="var(--color-muted)">
+              {format(t)}
+            </text>
+          </g>
+        ))}
+        {hover !== null && <rect x={PAD.left + slot * hover} y={PAD.top} width={slot} height={plotH} fill="var(--color-pressed)" />}
+        {values.map((v, i) => {
+          if (v === null || v === 0) return null;
+          const x = PAD.left + slot * i + (slot - barW) / 2;
+          const y0 = yAt(0);
+          const y1 = yAt(v);
+          const h = Math.abs(y1 - y0);
+          // rounded at the end away from zero
+          return v > 0 ? (
+            <path key={i} d={roundedTop(x, y1, barW, h, 4)} fill={colorFor(v)} />
+          ) : (
+            <path key={i} d={roundedTop(x, y0, barW, h, 4)} transform={`translate(0 ${2 * y0 + h}) scale(1 -1)`} fill={colorFor(v)} />
+          );
+        })}
+        {labels.map((_, i) => (
+          <rect key={i} x={PAD.left + slot * i} y={PAD.top} width={slot} height={plotH} fill="transparent" onMouseEnter={() => setHover(i)} onClick={() => setHover(i)} />
+        ))}
+        <XLabels labels={labels} />
+      </svg>
+      {hover !== null && (
+        <Tooltip xPct={((PAD.left + slot * (hover + 0.5)) / W) * 100}>
+          <p className="mb-1 font-semibold">{fullLabels[hover]}</p>
+          {values[hover] === null ? <p className="text-subtle">No income this month</p> : detail ? detail(hover) : <p>{format(values[hover]!)}</p>}
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+export { TipRow };
+
+// Save rows as a .csv file
+export function downloadCsv(filename: string, rows: (string | number)[][]) {
+  const cell = (v: string | number) => {
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const blob = new Blob([rows.map((r) => r.map(cell).join(",")).join("\n") + "\n"], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+export const csvDollars = (cents: number) => (cents / 100).toFixed(2);
