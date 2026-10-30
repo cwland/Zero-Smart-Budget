@@ -14,7 +14,7 @@ beforeEach(async () => {
 afterAll(async () => t.close());
 
 const run = (d: Date) => runNotifications(t.db, t.app.mail, d, t.app.ai);
-const NONE = { monthCloseReminder: false, nudge: false, monthlySummary: false, bankAttention: false, overBudget: false, weekly: false, goalMilestones: false, largePurchase: false, nextMonth: false, newSignIn: false };
+const NONE = { monthCloseReminder: false, nudge: false, monthlySummary: false, monthlyInsights: false, bankAttention: false, overBudget: false, weekly: false, goalMilestones: false, largePurchase: false, nextMonth: false, newSignIn: false };
 const only = (changes: object) => t.api("PUT", "/api/settings/notifications", { enabled: true, ...NONE, ...changes });
 
 async function month(year: number, m: number) {
@@ -33,7 +33,7 @@ const earn = (date: string, cents: number, incomeItemId: number) =>
 describe("more notifications", () => {
   it("settings: every notification has a switch, and the amounts are checked", async () => {
     const s = (await t.api("GET", "/api/settings/notifications")).body.settings;
-    expect(s).toMatchObject({ monthlySummary: true, monthlySummaryAi: true, bankAttention: true, overBudget: true, weekly: true, weeklyDay: 0, goalMilestones: true, largePurchase: true, largePurchaseCents: 50000, nextMonth: true, nextMonthDays: 3, newSignIn: true });
+    expect(s).toMatchObject({ monthlySummary: true, monthlySummaryAi: true, monthlyInsights: true, bankAttention: true, overBudget: true, weekly: true, weeklyDay: 0, goalMilestones: true, largePurchase: true, largePurchaseCents: 50000, nextMonth: true, nextMonthDays: 3, newSignIn: true });
     expect((await t.api("PUT", "/api/settings/notifications", { weeklyDay: 7 })).status).toBe(400);
     expect((await t.api("PUT", "/api/settings/notifications", { largePurchaseCents: 50 })).status).toBe(400);
     expect((await t.api("PUT", "/api/settings/notifications", { largePurchaseCents: 25000, weeklyDay: 5 })).body.settings).toMatchObject({ largePurchaseCents: 25000, weeklyDay: 5 });
@@ -70,6 +70,43 @@ describe("more notifications", () => {
     t.ai.respond = () => ({ status: 500, json: { error: { message: "down" } } });
     expect((await run(new Date(2026, 9, 1, 9))).sent).toHaveLength(1);
     expect(t.sent.at(-1)!.text).not.toContain("In short");
+  });
+
+  it("monthly insights: on the 2nd, trends, plans that keep missing, subscription changes, wins and a focus", async () => {
+    const m = { 8: await month(2026, 8), 9: await month(2026, 9), 10: await month(2026, 10) };
+    const day = (mo: number, d: number) => `2026-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    for (const [mo, dining, groceries] of [[8, 10000, 60000], [9, 14000, 62000], [10, 20000, 61000]] as const) {
+      await spend(day(mo, 5), dining, m[mo].dining.id, "Bistro");
+      await spend(day(mo, 6), groceries, m[mo].groceries.id, "Market");
+      await earn(day(mo, 1), 300000, m[mo].inc.id);
+    }
+    await spend(day(8, 10), 1549, null, "Netflix");
+    await spend(day(9, 10), 1549, null, "Netflix");
+    await spend(day(10, 10), 1799, null, "Netflix"); // price went up
+    await spend(day(9, 12), 1199, null, "Spotify");
+    await spend(day(10, 12), 1199, null, "Spotify"); // new, now repeating
+    await only({ monthlyInsights: true });
+    expect((await run(new Date(2026, 10, 1, 9))).sent).toEqual([]); // the 1st is the summary's day
+    const r = await run(new Date(2026, 10, 2, 9));
+    expect(r.sent.map((x) => x.subject)).toEqual(["Your October 2026 insights"]);
+    const text = t.sent.at(-1)!.text;
+    expect(text).toContain("TRENDING UP\n- Dining Out (Food · $100 → $140 → $200): +$100");
+    expect(text).toContain("- Groceries (Planned $500, spent $600, $620, $610): Plan $610");
+    expect(text).toContain("- Netflix (Price went up from $15.49): $17.99");
+    expect(text).toContain("- Spotify (New monthly charge): $11.99/mo");
+    expect(text).toContain("Focus for November 2026: Plan $610 for Groceries in November 2026");
+    expect((await run(new Date(2026, 10, 3, 9))).sent).toEqual([]); // once
+
+    // With AI on: its intro and focus (the numbers stay the app's)
+    await t.db.execute(sql`delete from notification_log`);
+    t.ai.respond = () => ({ status: 200, json: { choices: [{ message: { content: '{"intro": "Eating out keeps climbing.", "focus": "Plan $610 for groceries."}' } }] } });
+    await t.api("PUT", "/api/settings/ai", { enabled: true, provider: "openai", model: "tiny", apiKey: "k", mode: "manual", maxPerRun: 50 });
+    await run(new Date(2026, 10, 2, 9));
+    const ai = t.sent.at(-1)!.text;
+    expect(ai).toContain("Eating out keeps climbing.");
+    expect(ai).toContain("Focus for November 2026: Plan $610 for groceries.");
+    expect(ai).toContain("+$100"); // still the app's numbers
+    expect(t.ai.calls.at(-1)!.body.messages.map((x: { content: string }) => x.content).join("\n")).toContain("Rising 3 months in a row: Dining Out (Food) $100 -> $140 -> $200.");
   });
 
   it("bank needs attention: once per problem, and again after it was fixed and broke again", async () => {
@@ -182,7 +219,7 @@ describe("more notifications", () => {
   });
 
   it("every notification has a sample, marked [Test]", async () => {
-    for (const kind of ["summary", "bank", "over-budget", "weekly", "goal", "large-purchase", "next-month", "sign-in"]) {
+    for (const kind of ["summary", "insights", "bank", "over-budget", "weekly", "goal", "large-purchase", "next-month", "sign-in"]) {
       const r = await t.api("POST", "/api/settings/notifications/test", { kind });
       expect(r.status, kind).toBe(200);
       expect(t.sent.at(-1)!.subject, kind).toMatch(/^\[Test\] /);

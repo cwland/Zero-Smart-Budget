@@ -265,6 +265,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         nudgeDays: z.number().int().min(1).max(90).optional(),
         monthlySummary: z.boolean().optional(),
         monthlySummaryAi: z.boolean().optional(),
+        monthlyInsights: z.boolean().optional(),
         bankAttention: z.boolean().optional(),
         overBudget: z.boolean().optional(),
         weekly: z.boolean().optional(),

@@ -23,7 +23,7 @@ const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/corysd
 if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a test database");
 
 // Notification settings with only the Wrap-Up reminder and nudge (for tests about those two)
-export const ONLY_FIRST_TWO = { monthlySummary: false, bankAttention: false, overBudget: false, weekly: false, goalMilestones: false, largePurchase: false, nextMonth: false, newSignIn: false };
+export const ONLY_FIRST_TWO = { monthlySummary: false, monthlyInsights: false, bankAttention: false, overBudget: false, weekly: false, goalMilestones: false, largePurchase: false, nextMonth: false, newSignIn: false };
 
 export async function setupTestApp(opts: { email?: boolean; backupKey?: string; jwtSecret?: string; oauthFetch?: typeof fetch; githubToken?: string } = {}) {
   const { db, pool } = createDb(url);

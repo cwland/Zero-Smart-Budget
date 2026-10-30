@@ -273,3 +273,55 @@ export function newSignIn(d: { device: string; ip: string; when: string; how: st
     button: { label: "Review signed-in devices", url: "/#/settings/security" },
   };
 }
+
+export function monthlyInsights(d: {
+  monthName: string;
+  nextMonthName: string;
+  intro?: string | null;
+  focus?: string | null;
+  aiService?: string | null;
+  trends: { item: string; group: string; amounts: number[] }[];
+  plan: { item: string; plannedCents: number; spent: number[]; suggestCents: number; direction: "more" | "less" }[];
+  subscriptions: { merchant: string; cents: number; wasCents: number | null }[];
+  wins: { underItems: { item: string; leftCents: number }[]; savingsRate: number | null; lastRate: number | null; goals: { name: string; addedCents: number; pct: number | null }[] };
+}): EmailContent {
+  const blocks: EmailContent["blocks"] = [];
+  if (d.intro) blocks.push({ type: "p", text: d.intro });
+  if (d.trends.length) blocks.push({ type: "rows", title: "Trending up", rows: d.trends.map((t) => ({ label: t.item, note: `${t.group} · ${t.amounts.map(whole).join(" → ")}`, value: `+${whole(t.amounts[2] - t.amounts[0])}`, tone: "bad" })) });
+  if (d.plan.length)
+    blocks.push({
+      type: "rows",
+      title: "Plan these differently",
+      rows: d.plan.map((p) => ({ label: p.item, note: `Planned ${whole(p.plannedCents)}, spent ${p.spent.map(whole).join(", ")}`, value: `Plan ${whole(p.suggestCents)}`, tone: p.direction === "more" ? "warn" : "good" })),
+    });
+  if (d.subscriptions.length)
+    blocks.push({
+      type: "rows",
+      title: "Subscriptions",
+      rows: d.subscriptions.map((s) => (s.wasCents ? { label: s.merchant, note: `Price went up from ${money(s.wasCents)}`, value: money(s.cents), tone: "bad" as const } : { label: s.merchant, note: "New monthly charge", value: `${money(s.cents)}/mo`, tone: "warn" as const })),
+    });
+  const wins: string[] = [];
+  if (d.wins.savingsRate !== null && d.wins.savingsRate > 0)
+    wins.push(
+      d.wins.lastRate !== null && d.wins.savingsRate > d.wins.lastRate
+        ? `You saved **${d.wins.savingsRate}%** of your income, up from ${d.wins.lastRate}% the month before.`
+        : `You saved **${d.wins.savingsRate}%** of your income.`
+    );
+  for (const u of d.wins.underItems) wins.push(`**${u.item}** came in ${whole(u.leftCents)} under plan.`);
+  for (const g of d.wins.goals) wins.push(`**${g.name}** grew by ${whole(g.addedCents)}${g.pct !== null ? ` (now ${g.pct}% of the way)` : ""}.`);
+  if (wins.length) {
+    blocks.push({ type: "p", text: "**Wins**" });
+    blocks.push({ type: "bullets", items: wins });
+  }
+  if (d.focus) blocks.push({ type: "callout", text: `**Focus for ${d.nextMonthName}:** ${d.focus}` });
+  if (d.aiService) blocks.push({ type: "p", text: `The numbers come from your budget; ${d.aiService} wrote the wording. Check before acting on it.` });
+  if (!blocks.length) blocks.push({ type: "p", text: "Nothing stood out this month: no rising trends, no plans that keep missing and no subscription changes." });
+  return {
+    ...base,
+    subject: `Your ${d.monthName} insights`,
+    preheader: d.focus ? `Focus for ${d.nextMonthName}: ${d.focus}` : `What stood out in ${d.monthName}.`,
+    title: `What stood out in ${d.monthName}`,
+    blocks,
+    button: { label: "See your reports", url: "/#/reports" },
+  };
+}

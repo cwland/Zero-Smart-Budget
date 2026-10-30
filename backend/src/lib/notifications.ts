@@ -3,7 +3,8 @@ import type { Db } from "../db/index.js";
 import { appSettings, budgetMonths, notificationLog, plaidAccounts, plaidItems, sinkingFunds, transactions, transactionSplits, users } from "../db/schema.js";
 import type { EmailKind, MailService } from "./mail.js";
 import { renderEmail, type EmailContent } from "./emailLayout.js";
-import { bankAttention, goalBehind, goalMilestone, largePurchase, monthCloseReminder, monthlySummary, newSignIn, nextMonthSetup, nudge, overBudget, weeklyCheckIn } from "./emails.js";
+import { computeInsights, hasInsights, insightsWords, plainFocus } from "./insights.js";
+import { bankAttention, monthlyInsights, goalBehind, goalMilestone, largePurchase, monthCloseReminder, monthlySummary, newSignIn, nextMonthSetup, nudge, overBudget, weeklyCheckIn } from "./emails.js";
 import { loadBudget, loadFunds } from "./budget.js";
 import { goalPlan } from "./goals.js";
 import { isOn } from "./features.js";
@@ -19,6 +20,8 @@ import { monthIndex, nextMonth, previousMonth } from "./calc.js";
 //  - Wrap-Up reminder: when a month's Wrap Up button appears (once per month)
 //  - Nudge: you haven't used the app for X days and transactions are waiting (at most every X days)
 //  - Monthly summary: on the 1st, last month's income, spending, groups and anything unusual
+//  - Monthly insights: on the 2nd, trends, plans that keep missing, subscription changes, wins and
+//    one focus for next month (numbers from the app, wording from AI when it's on)
 //  - Bank needs attention: a bank connection needs signing in again or stopped updating
 //  - Over budget: an item spends more than planned this month (once per item per month)
 //  - Weekly check-in: on the day you pick, the week's spending and what's left
@@ -34,6 +37,7 @@ export interface NotificationPrefs {
   nudgeDays: number;
   monthlySummary: boolean;
   monthlySummaryAi: boolean; // add the AI's few lines when AI is on
+  monthlyInsights: boolean;
   bankAttention: boolean;
   overBudget: boolean;
   weekly: boolean;
@@ -52,6 +56,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   nudgeDays: 7,
   monthlySummary: true,
   monthlySummaryAi: true,
+  monthlyInsights: true,
   bankAttention: true,
   overBudget: true,
   weekly: true,
@@ -119,12 +124,13 @@ async function nudgeContent(db: Db, waiting: number, days: number): Promise<Emai
   return nudge({ waiting, days, examples: await waitingExamples(db) });
 }
 
-export const NOTIFICATION_KINDS = ["month-close", "nudge", "summary", "bank", "over-budget", "weekly", "goal", "large-purchase", "next-month", "sign-in"] as const;
+export const NOTIFICATION_KINDS = ["month-close", "nudge", "summary", "insights", "bank", "over-budget", "weekly", "goal", "large-purchase", "next-month", "sign-in"] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 export const NOTIFICATION_NAMES: Record<NotificationKind, string> = {
   "month-close": "the Wrap-Up reminder",
   nudge: "the transactions-waiting nudge",
   summary: "the monthly summary",
+  insights: "the monthly insights email",
   bank: "the bank-needs-attention alert",
   "over-budget": "the over-budget alert",
   weekly: "the weekly check-in",
@@ -224,6 +230,13 @@ async function summaryContent(db: Db, ym: { year: number; month: number }, ai: A
   });
 }
 
+async function insightsContent(db: Db, ym: { year: number; month: number }, ai: AiService | undefined): Promise<EmailContent | null> {
+  const i = await computeInsights(db, ym);
+  if (!hasInsights(i)) return null;
+  const words = await insightsWords(ai, i);
+  return monthlyInsights({ ...i, intro: words?.intro ?? null, focus: words?.focus || plainFocus(i), aiService: words?.service ?? null });
+}
+
 async function weeklyContent(db: Db, now: Date): Promise<EmailContent> {
   const weekAgo = new Date(now.getTime() - 6 * DAY);
   const rows = await db
@@ -301,6 +314,23 @@ async function sampleOther(db: Db, kind: Exclude<NotificationKind, "month-close"
       return (
         real ??
         monthlySummary({ monthName: monthName(previousMonth(cur.year, cur.month)), incomeCents: 640000, spentCents: 571250, plannedCents: 600000, groups: [{ name: "Home", spentCents: 210000, plannedCents: 210000 }, { name: "Food", spentCents: 98000, plannedCents: 85000 }], unusual: [] })
+      );
+    }
+    case "insights": {
+      const last = previousMonth(cur.year, cur.month);
+      const real = (await findMonth(db, last)) ? await insightsContent(db, last, ai) : null;
+      return (
+        real ??
+        monthlyInsights({
+          monthName: monthName(last),
+          nextMonthName: monthName(cur),
+          intro: "Spending was steady overall, but eating out keeps climbing.",
+          focus: "Plan $300 for Dining Out and move the $50 it saves to your emergency fund.",
+          trends: [{ item: "Dining Out", group: "Food", amounts: [18000, 24000, 31000] }],
+          plan: [{ item: "Groceries", plannedCents: 60000, spent: [71200, 69800, 73000], suggestCents: 71000, direction: "more" }],
+          subscriptions: [{ merchant: "Streaming service", cents: 1799, wasCents: 1549 }],
+          wins: { underItems: [{ item: "Fuel", leftCents: 4200 }], savingsRate: 14, lastRate: 9, goals: [] },
+        })
       );
     }
     case "bank": {
@@ -439,6 +469,15 @@ export async function runNotifications(db: Db, mail: MailService, now = new Date
     if (!(await findMonth(db, last)) || (await logged(key))) return;
     const content = await summaryContent(db, last, ai, prefs.monthlySummaryAi);
     if (content) await send(key, "summary", content);
+  });
+
+  // Monthly insights: last month, on the 2nd (the day after the summary)
+  if (prefs.monthlyInsights && now.getDate() >= 2 && now.getDate() <= 6 && morning) await section(async () => {
+    const last = previousMonth(cur.year, cur.month);
+    const key = `insights:${ymKey(last)}`;
+    if (!(await findMonth(db, last)) || (await logged(key))) return;
+    const content = await insightsContent(db, last, ai);
+    if (content) await send(key, "insights", content);
   });
 
   // Bank needs attention: once per problem; when a bank is fixed, the next problem is new again

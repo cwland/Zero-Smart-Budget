@@ -14,6 +14,7 @@ export interface NotifyPrefs {
   nudgeDays: number;
   monthlySummary: boolean;
   monthlySummaryAi: boolean;
+  monthlyInsights: boolean;
   bankAttention: boolean;
   overBudget: boolean;
   weekly: boolean;
@@ -224,6 +225,18 @@ export default function NotificationSettings() {
                     Add a few lines from AI {aiReady ? "" : <span className="text-muted">(when AI is on in Settings › AI)</span>}
                   </label>
                 ),
+              })}
+              {row({
+                title: "Monthly insights",
+                text: (
+                  <>
+                    On the 2nd: spending that keeps rising, plans that keep missing (with a better amount), subscriptions that went up or just started, your wins, and one focus for next month.{" "}
+                    {aiReady ? "AI writes the wording; the numbers come from your budget." : <span className="text-muted">Works without AI; with AI on in Settings › AI it also writes a short intro and the focus.</span>}
+                  </>
+                ),
+                checked: s.monthlyInsights,
+                set: (v) => update({ monthlyInsights: v }),
+                kind: "insights",
               })}
             </>
           )}
