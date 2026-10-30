@@ -172,9 +172,10 @@ export default function SharedAccess() {
     api<{ people: Person[]; invites: Invite[]; emailReady: boolean }>("GET", "/api/users")
       .then(setData)
       .catch((e) => setError(errorText(e)));
+  const owner = user.role === "owner";
   useEffect(() => {
-    load();
-  }, []);
+    if (owner) load();
+  }, [owner]);
 
   const act = async (fn: () => Promise<unknown>) => {
     setError("");
@@ -190,7 +191,7 @@ export default function SharedAccess() {
     }
   };
 
-  if (user.role !== "owner") return null;
+  if (!owner) return null;
   const others = data?.people.filter((p) => p.role !== "owner") ?? [];
 
   return (

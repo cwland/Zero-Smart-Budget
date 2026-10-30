@@ -2,6 +2,7 @@ import { FeatureSwitch } from "./FeatureSwitch";
 import ThemePicker from "./ThemePicker";
 import { UpdatesSettings } from "./UpdateBar";
 import { useEffect, useState } from "react";
+import { canManage, useSession } from "../session";
 import BudgetSettings from "./BudgetSettings";
 import NotificationSettings from "./NotificationSettings";
 import DataSettings from "./DataSettings";
@@ -14,35 +15,38 @@ import LogsSettings from "./LogsSettings";
 import SignInSettings from "./SignInSettings";
 import { ApiKeys, ChangePassword, Devices, Passkeys, SignInHistory } from "./SecuritySettings";
 
+// setup: the app's setup, hidden from a "user" (shared access; the server refuses it too)
 const TABS = [
-  { id: "profile", label: "Profile" },
-  { id: "budget", label: "Budget" },
-  { id: "notifications", label: "Notifications" },
-  { id: "security", label: "Security" },
-  { id: "api", label: "API keys" },
-  { id: "email", label: "Email" },
-  { id: "plaid", label: "Plaid" },
-  { id: "ai", label: "AI" },
-  { id: "data", label: "Data" },
-  { id: "logs", label: "Logs" },
+  { id: "profile", label: "Profile", setup: false },
+  { id: "budget", label: "Budget", setup: false },
+  { id: "notifications", label: "Notifications", setup: false },
+  { id: "security", label: "Security", setup: false },
+  { id: "api", label: "API keys", setup: true },
+  { id: "email", label: "Email", setup: true },
+  { id: "plaid", label: "Plaid", setup: true },
+  { id: "ai", label: "AI", setup: true },
+  { id: "data", label: "Data", setup: true },
+  { id: "logs", label: "Logs", setup: true },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-// "#/settings/security" -> "security"
-const tabFromHash = (): Tab => {
+// "#/settings/security" -> "security" (a tab this person can't see opens Profile)
+const tabFromHash = (tabs: readonly (typeof TABS)[number][]): Tab => {
   const t = window.location.hash.split("?")[0].split("/")[2];
   if (t === "signin") return "security"; // OAuth sign-in moved into Security
-  return (TABS.find((x) => x.id === t)?.id ?? "profile") as Tab;
+  return (tabs.find((x) => x.id === t)?.id ?? "profile") as Tab;
 };
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>(tabFromHash);
+  const manage = canManage(useSession().user);
+  const tabs = TABS.filter((t) => manage || !t.setup);
+  const [tab, setTab] = useState<Tab>(() => tabFromHash(tabs));
 
   useEffect(() => {
-    const onHash = () => setTab(tabFromHash());
+    const onHash = () => setTab(tabFromHash(TABS.filter((t) => manage || !t.setup)));
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+  }, [manage]);
 
   return (
     <div className="mx-auto max-w-[760px] px-3 pb-16 pt-4 sm:px-6">
@@ -50,7 +54,7 @@ export default function SettingsPage() {
 
       <nav aria-label="Settings sections" className="no-scrollbar -mx-3 mt-3 overflow-x-auto border-b border-line px-3 sm:mx-0 sm:px-0">
         <div role="tablist" className="flex min-w-max">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <a
               key={t.id}
               role="tab"
@@ -80,12 +84,12 @@ export default function SettingsPage() {
           <>
             <ChangePassword />
             <Passkeys />
-            <SignInSettings />
+            {manage && <SignInSettings />}
             <Devices />
             <SignInHistory />
           </>
         )}
-        {tab === "api" && (
+        {manage && tab === "api" && (
           <FeatureSwitch
             feature="apiKeys"
             title="API keys"
@@ -95,8 +99,8 @@ export default function SettingsPage() {
             <ApiKeys />
           </FeatureSwitch>
         )}
-        {tab === "email" && <EmailSettings />}
-        {tab === "plaid" && (
+        {manage && tab === "email" && <EmailSettings />}
+        {manage && tab === "plaid" && (
           <FeatureSwitch
             feature="plaid"
             title="Bank syncing with Plaid"
@@ -109,7 +113,7 @@ export default function SettingsPage() {
             </p>
           </FeatureSwitch>
         )}
-        {tab === "ai" && (
+        {manage && tab === "ai" && (
           <FeatureSwitch
             feature="ai"
             title="AI"
@@ -119,13 +123,13 @@ export default function SettingsPage() {
             <AiSettings />
           </FeatureSwitch>
         )}
-        {tab === "data" && (
+        {manage && tab === "data" && (
           <>
             <DataSettings />
             <UpdatesSettings />
           </>
         )}
-        {tab === "logs" && <LogsSettings />}
+        {manage && tab === "logs" && <LogsSettings />}
       </div>
     </div>
   );

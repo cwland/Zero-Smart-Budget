@@ -3,6 +3,7 @@ import { api } from "../api";
 import { centsToInput, parseMoney } from "../money";
 import { SettingCard, Toggle } from "./BudgetSettings";
 import EmailPreview from "./EmailPreview";
+import { canManage, useSession } from "../session";
 
 // Settings › Notifications: every email the app can send, each with its own switch,
 // Preview (see it without sending) and Send a sample (to you, marked [Test]).
@@ -49,6 +50,7 @@ function NumberField({ label, value, min, max, onSave, disabled, money }: { labe
 }
 
 export default function NotificationSettings() {
+  const manage = canManage(useSession().user);
   const [data, setData] = useState<Status | null>(null);
   const [monthCloseOn, setMonthCloseOn] = useState(true);
   const [aiReady, setAiReady] = useState(false);
@@ -63,10 +65,16 @@ export default function NotificationSettings() {
     api<{ monthCloseEnabled: boolean }>("GET", "/api/settings/budget")
       .then((b) => setMonthCloseOn(b.monthCloseEnabled))
       .catch(() => {});
-    api<{ settings: { enabled: boolean; ready: boolean; available: boolean } | null }>("GET", "/api/settings/ai")
-      .then((r) => setAiReady(!!r.settings?.enabled && !!r.settings?.ready && r.settings?.available !== false))
-      .catch(() => {});
-  }, []);
+    if (manage)
+      api<{ settings: { enabled: boolean; ready: boolean; available: boolean } | null }>("GET", "/api/settings/ai")
+        .then((r) => setAiReady(!!r.settings?.enabled && !!r.settings?.ready && r.settings?.available !== false))
+        .catch(() => {});
+    // A "user" can't see the AI settings: just whether AI is on
+    else
+      api<{ enabled: boolean }>("GET", "/api/ai/status")
+        .then((r) => setAiReady(r.enabled))
+        .catch(() => {});
+  }, [manage]);
 
   async function run(fn: () => Promise<void>) {
     setMsg(null);
@@ -141,6 +149,8 @@ export default function NotificationSettings() {
         text={
           !data ? (
             "Emails about your budget."
+          ) : !data.emailReady && !manage ? (
+            "Email isn't set up on this server yet, so nothing can be sent. Ask the account owner to set it up. You can still preview each email below."
           ) : !data.emailReady ? (
             <>
               Turn on and set up email first in{" "}

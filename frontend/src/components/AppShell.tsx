@@ -9,7 +9,7 @@ import AccountMenu from "./AccountMenu";
 import DevResetButton from "./DevReset"; // TEMPORARY testing tool
 import { APP_VERSION, showWhatsNew, versionLabel } from "../version";
 import { isNewer } from "../changelog";
-import { useSession } from "../session";
+import { canManage, useSession } from "../session";
 import { api } from "../api";
 import WhatsNew from "./WhatsNew";
 import UpdateBar from "./UpdateBar";
@@ -56,7 +56,7 @@ export default function AppShell() {
   }, []);
   return (
     <div className="flex min-h-screen bg-page pt-[var(--top-bar,0px)]">
-      <UpdateBar />
+      {canManage(user) && <UpdateBar />}
       {/* Left icon nav */}
       <nav className="sticky top-[var(--top-bar,0px)] z-40 hidden h-[calc(100vh-var(--top-bar,0px))] w-14 shrink-0 flex-col items-center bg-white py-4 sm:flex">
         <span title="Zero Smart Budget: AI-Powered Zero-Based Budgeting">
@@ -77,7 +77,7 @@ export default function AppShell() {
           ))}
         </div>
         <div className="mt-auto flex flex-col items-center gap-2">
-          <DevResetButton /> {/* TEMPORARY testing tool */}
+          {canManage(user) && <DevResetButton />} {/* TEMPORARY testing tool */}
           <AccountMenu variant="rail" />
           <button type="button" onClick={showWhatsNew} className="rounded px-1 text-[10px] leading-none text-muted hover:text-link hover:underline" title="What's new in this version">
             {versionLabel}

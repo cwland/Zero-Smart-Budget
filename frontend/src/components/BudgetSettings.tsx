@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { Notice } from "./settingsUi";
 import { setTossEnabled } from "../toss";
+import { canManage, useSession } from "../session";
 
 interface BudgetPrefs {
   quickAssign: boolean;
@@ -98,15 +99,18 @@ export default function BudgetSettings() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [showAiInfo, setShowAiInfo] = useState(false);
+  const { user } = useSession();
+  const manage = canManage(user);
 
   useEffect(() => {
     api<BudgetPrefs>("GET", "/api/settings/budget")
       .then(setPrefs)
       .catch((e) => setMsg({ ok: false, text: (e as Error).message }));
-    api<{ settings: AiUsage | null }>("GET", "/api/settings/ai")
-      .then((r) => setAi(r.settings))
-      .catch(() => setAi(null));
-  }, []);
+    if (manage)
+      api<{ settings: AiUsage | null }>("GET", "/api/settings/ai")
+        .then((r) => setAi(r.settings))
+        .catch(() => setAi(null));
+  }, [manage]);
 
   async function run(fn: () => Promise<void>) {
     setMsg(null);
@@ -131,6 +135,23 @@ export default function BudgetSettings() {
   const aiOff = !!ai && !ai.available; // Settings > AI switched off: greyed out here
   const aiReady = !!ai?.ready && !aiOff;
   const aiOn = !!ai?.enabled && aiReady;
+
+  // A "user" (shared access) only has their own toss animation here; the rest is the owner's setup
+  const toss = (
+    <SettingCard
+      title="Toss animation"
+      text={`When you accept a suggestion, the transaction is tossed in an arc into its budget item. Turn it off and accepted transactions move to Assigned without the animation.${manage ? " This is just for you; everyone you share the budget with has their own." : ""}`}
+      toggle={prefs && <Toggle label="Toss animation" checked={prefs.tossAnimation} disabled={busy} onChange={(tossAnimation) => update({ tossAnimation })} />}
+    />
+  );
+  if (!manage)
+    return (
+      <>
+        {toss}
+        <p className="px-1 text-sm text-subtle">Quick Assign, AI categorization and Month Wrap-Up are set by the account owner.</p>
+        <Notice msg={msg} />
+      </>
+    );
 
   return (
     <>
@@ -250,11 +271,7 @@ export default function BudgetSettings() {
       </SettingCard>
 
 
-      <SettingCard
-        title="Toss animation"
-        text="When you accept a suggestion, the transaction is tossed in an arc into its budget item. Turn it off and accepted transactions move to Assigned without the animation."
-        toggle={prefs && <Toggle label="Toss animation" checked={prefs.tossAnimation} disabled={busy} onChange={(tossAnimation) => update({ tossAnimation })} />}
-      />
+      {toss}
       <Notice msg={msg} />
     </>
   );

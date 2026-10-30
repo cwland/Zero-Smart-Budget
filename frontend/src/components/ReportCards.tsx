@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api";
+import { canManage, useSession } from "../session";
 import { MONTH_NAMES, type YearMonth } from "../dates";
 import { formatCents, formatWholeDollars } from "../money";
 import { csvDollars, downloadCsv, Legend, Lines, SignedBars, TipRow, type Series } from "./charts";
@@ -259,6 +260,7 @@ function Bullets({ text }: { text: string }) {
 
 export function UnusualSpending({ data, from, to, fileTag }: { data: ReportData; from: YearMonth; to: YearMonth; fileTag: string }) {
   const last = data.months[data.months.length - 1];
+  const { user } = useSession();
   const [summary, setSummary] = useState<{ text: string; service: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -336,7 +338,13 @@ export function UnusualSpending({ data, from, to, fileTag }: { data: ReportData;
             </>
           ) : (
             <p className="mt-1 text-sm text-subtle">
-              Turn on AI in <a href="#/settings/ai" className="text-link hover:underline">Settings › AI</a> to get a short written summary of each period.
+              {canManage(user) ? (
+                <>
+                  Turn on AI in <a href="#/settings/ai" className="text-link hover:underline">Settings › AI</a> to get a short written summary of each period.
+                </>
+              ) : (
+                "When the account owner turns on AI, you can get a short written summary of each period here."
+              )}
             </p>
           )}
         </div>

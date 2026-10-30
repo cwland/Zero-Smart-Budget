@@ -6,6 +6,7 @@ import { PlusIcon } from "./Icons";
 import { Popup } from "./Popup";
 import { Toggle } from "./BudgetSettings";
 import { CloseIcon } from "./Icons";
+import { canManage, useSession } from "../session";
 
 // The Accounts page: one card per bank (connected through Plaid) with its
 // accounts and balances, plus accounts you keep track of by hand.
@@ -301,7 +302,9 @@ function AccountPanel({
   onEdit,
   onChanged,
   onError,
+  manage,
 }: {
+  manage: boolean; // a "user" sees the accounts but can't change them
   data: AccountsData;
   selected: { kind: "bank" | "manual"; id: number };
   onClose: () => void;
@@ -361,7 +364,12 @@ function AccountPanel({
           : `${TYPE_LABELS[manual!.type]} · updated ${ago(manual!.balanceUpdatedAt)}`}
       </p>
 
-      {bank && (
+      {bank && !manage && (
+        <p className="mt-6 rounded-2xl bg-page p-5 text-sm text-subtle">
+          {bank.importTransactions ? `New transactions from this account come in each time ${inst!.institutionName} syncs.` : "Transactions from this account aren't imported."} The account owner manages bank connections.
+        </p>
+      )}
+      {bank && manage && (
         <div className="mt-6 rounded-2xl bg-page p-5">
           <Toggle
             label="Import transactions"
@@ -380,10 +388,10 @@ function AccountPanel({
 
       {manual && (
         <div className="mt-6 rounded-2xl bg-page p-5">
-          <p className="text-sm text-subtle">{isAsset ? "Counts toward your total balance, never part of your budget." : "You keep this balance up to date yourself."}</p>
-          <button onClick={() => onEdit(manual)} className="mt-3 rounded bg-primary px-4 py-2.5 font-semibold text-white hover:bg-primary-pressed">
+          <p className="text-sm text-subtle">{isAsset ? "Counts toward your total balance, never part of your budget." : manage ? "You keep this balance up to date yourself." : "The account owner keeps this balance up to date."}</p>
+          {manage && <button onClick={() => onEdit(manual)} className="mt-3 rounded bg-primary px-4 py-2.5 font-semibold text-white hover:bg-primary-pressed">
             {isAsset ? "Edit asset" : "Update balance"}
-          </button>
+          </button>}
         </div>
       )}
     </aside>
@@ -391,6 +399,7 @@ function AccountPanel({
 }
 
 export default function AccountsPage() {
+  const manage = canManage(useSession().user);
   const [data, setData] = useState<AccountsData | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState("");
@@ -518,9 +527,13 @@ export default function AccountsPage() {
                   ) : (
                     <p role="alert" className="text-error">
                       {inst.status === "login_required" ? "Needs you to sign in again." : inst.errorMessage ?? "There's a problem with this connection."}{" "}
-                      <button onClick={() => reconnect(inst)} disabled={!!busy} className="font-semibold text-link hover:underline">
-                        {busy === `reconnect-${inst.id}` ? "Opening…" : "Reconnect"}
-                      </button>
+                      {manage ? (
+                        <button onClick={() => reconnect(inst)} disabled={!!busy} className="font-semibold text-link hover:underline">
+                          {busy === `reconnect-${inst.id}` ? "Opening…" : "Reconnect"}
+                        </button>
+                      ) : (
+                        <span className="text-subtle">Ask the account owner to reconnect it.</span>
+                      )}
                     </p>
                   )}
                 </div>
@@ -528,9 +541,13 @@ export default function AccountsPage() {
                   label={`${inst.institutionName} options`}
                   items={[
                     ...(inst.active ? [{ label: busy === "sync" ? "Syncing…" : "Sync now", icon: "↻", onClick: update }] : []),
-                    ...(data.plaidOn ? [{ label: "Reconnect", icon: "🔑", onClick: () => reconnect(inst) }] : []),
-                    { label: "Import Settings", icon: "⚙", onClick: () => setPopup({ kind: "import", inst }) },
-                    { label: "Disconnect bank", icon: "🗑", danger: true, onClick: () => setPopup({ kind: "remove", inst, force: false }) },
+                    ...(manage
+                      ? [
+                          ...(data.plaidOn ? [{ label: "Reconnect", icon: "🔑", onClick: () => reconnect(inst) }] : []),
+                          { label: "Import Settings", icon: "⚙", onClick: () => setPopup({ kind: "import", inst }) },
+                          { label: "Disconnect bank", icon: "🗑", danger: true, onClick: () => setPopup({ kind: "remove", inst, force: false }) },
+                        ]
+                      : []),
                   ]}
                 />
               </div>
@@ -557,7 +574,7 @@ export default function AccountsPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-2xl font-bold">Manual Accounts</h2>
-                  <p className="text-subtle">Balances you update yourself.</p>
+                  <p className="text-subtle">{manage ? "Balances you update yourself." : "Balances the account owner updates."}</p>
                 </div>
               </div>
               <ul className="divide-y divide-line">
@@ -587,7 +604,7 @@ export default function AccountsPage() {
             </section>
           )}
 
-          {data && (
+          {data && manage && (
             <div className="flex flex-wrap items-center gap-x-10 gap-y-3 px-6">
               {data.plaidReady && (
                 <button onClick={connect} disabled={!!busy} className="flex items-center gap-2 text-lg font-semibold text-action hover:underline disabled:opacity-50">
@@ -605,7 +622,7 @@ export default function AccountsPage() {
               </button>
             </div>
           )}
-          {data && !data.plaidReady && (
+          {data && manage && !data.plaidReady && (
             <p className="px-6 text-sm text-subtle">
               {data.plaidOn ? "To connect a bank, add your Plaid keys in " : "Bank syncing is turned off. To connect or sync banks, turn it on in "}
               <a href="#/settings/plaid" className="font-semibold text-link hover:underline">Settings › Plaid</a>.
@@ -641,6 +658,7 @@ export default function AccountsPage() {
             </aside>
             {selected && (
               <AccountPanel
+                manage={manage}
                 data={data}
                 selected={selected}
                 onClose={() => setSelected(null)}
