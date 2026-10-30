@@ -29,6 +29,7 @@ export const CHANGELOG: Release[] = [
       "Accounts: click an account to open its details on the side, under your Total Balance, where you can turn importing its transactions on or off.",
       "A bar at the top tells you when a newer version is released on GitHub, with its notes a click away. Dismiss it until the next one, or turn it off in Settings › Data › Updates.",
       "New look: five color themes (Harbor, Midnight & Coral, Plum & Amber, Terracotta & Sage, Slate & Rose). Pick one in Settings › Profile › Theme.",
+      "New Reports page: Spending Totals, Spending Details, Monthly Income and Income vs. Spent, for this year, the past 3–12 months or any earlier year.",
       "New months made from suggested categories start with a fresh set of groups (Home, Food, Getting Around, Bills & Subscriptions…).",
       "Signing in always opens this month's budget. The version number (bottom left) shows these notes again.",
     ],

@@ -1,6 +1,7 @@
 // App icons from Lucide (lucide.dev, open source, ISC license). Each wrapper keeps the app's own
 // name and default size, so screens just use <BankIcon /> etc.
 import {
+  ChartColumn,
   ChartPie,
   Check as LucideCheck,
   ChevronDown as LucideChevronDown,
@@ -42,6 +43,7 @@ export const BudgetIcon = icon(Wallet, "size-5", 1.8);
 export const LogoutIcon = icon(LogOut, "size-5", 1.8);
 export const PieIcon = icon(ChartPie, "size-4", 2);
 export const BankIcon = icon(Landmark, "size-5", 1.8);
+export const ReportsIcon = icon(ChartColumn, "size-5", 1.8);
 export const GoalIcon = icon(Target, "size-5", 1.9);
 export const PlusIcon = icon(Plus, "size-5");
 export const PiggyIcon = icon(PiggyBank, "size-5", 1.8);

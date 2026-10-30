@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import BudgetPage from "./BudgetPage";
 import FundsPage from "./FundsPage";
 import GoalsPage from "./GoalsPage";
+import ReportsPage from "./ReportsPage";
 import AccountsPage from "./AccountsPage";
 import SettingsPage from "./SettingsPage";
 import AccountMenu from "./AccountMenu";
@@ -12,12 +13,12 @@ import { useSession } from "../session";
 import { api } from "../api";
 import WhatsNew from "./WhatsNew";
 import UpdateBar from "./UpdateBar";
-import { BankIcon, BudgetIcon, GearIcon, GoalIcon, Logo, PiggyIcon } from "./Icons";
+import { BankIcon, BudgetIcon, GearIcon, GoalIcon, Logo, PiggyIcon, ReportsIcon } from "./Icons";
 
-type Page = "budget" | "accounts" | "funds" | "goals" | "settings";
+type Page = "budget" | "accounts" | "funds" | "goals" | "reports" | "settings";
 const pageFromHash = (): Page => {
   const h = window.location.hash.replace("#/", "").split("/")[0];
-  return h === "accounts" || h === "funds" || h === "goals" || h === "settings" ? h : "budget";
+  return h === "accounts" || h === "funds" || h === "goals" || h === "reports" || h === "settings" ? h : "budget";
 };
 
 const PAGES: { id: Page; label: string; icon: JSX.Element }[] = [
@@ -25,6 +26,7 @@ const PAGES: { id: Page; label: string; icon: JSX.Element }[] = [
   { id: "accounts", label: "Accounts", icon: <BankIcon /> },
   { id: "funds", label: "Funds", icon: <PiggyIcon /> },
   { id: "goals", label: "Goals", icon: <GoalIcon /> },
+  { id: "reports", label: "Reports", icon: <ReportsIcon /> },
   { id: "settings", label: "Settings", icon: <GearIcon /> },
 ];
 
@@ -84,7 +86,7 @@ export default function AppShell() {
       </nav>
 
       <main className="min-w-0 flex-1 pb-16 sm:pb-0">
-        {page === "accounts" ? <AccountsPage /> : page === "funds" ? <FundsPage /> : page === "goals" ? <GoalsPage /> : page === "settings" ? <SettingsPage /> : <BudgetPage />}
+        {page === "accounts" ? <AccountsPage /> : page === "funds" ? <FundsPage /> : page === "goals" ? <GoalsPage /> : page === "reports" ? <ReportsPage /> : page === "settings" ? <SettingsPage /> : <BudgetPage />}
       </main>
 
       {/* Bottom bar on phones */}

@@ -21,6 +21,7 @@ import authRoutes from "./routes/auth.js";
 import keyRoutes from "./routes/keys.js";
 import budgetRoutes from "./routes/budget.js";
 import transactionRoutes from "./routes/transactions.js";
+import reportRoutes from "./routes/reports.js";
 import fundRoutes from "./routes/funds.js";
 import exportRoutes from "./routes/export.js";
 import profileRoutes from "./routes/profile.js";
@@ -192,6 +193,7 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(budgetRoutes);
   app.register(transactionRoutes);
   app.register(fundRoutes);
+  app.register(reportRoutes);
   app.register(exportRoutes);
   app.register(profileRoutes);
   app.register(settingsRoutes);
