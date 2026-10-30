@@ -97,8 +97,8 @@ Money is always in whole cents (`$10.50` = `1050`). Dates are `YYYY-MM-DD`.
 
 ## Favorites
 
-Star any budget item from its details panel to pin it to a **Favorites** card right below Income
-(like EveryDollar). It's the same item, not a copy: edit the planned amount there or in its group.
+Star any budget item from its details panel to pin it to a **Favorites** card right below Income.
+It's the same item, not a copy: edit the planned amount there or in its group.
 Favorites carry into a copied month and show first in the Add Transaction picker.
 
 ## Suggestions (learned categories)
@@ -109,7 +109,7 @@ Favorites carry into a copied month and show first in the Add Transaction picker
 - The Add Transaction form autocompletes past merchants and pre-picks their item.
 - API: send `"autoAssign": true` with `POST /api/transactions` to put known merchants straight on their item.
 
-Turn this off with **Settings > Budget > Fast Track**. While it's off there are no suggestion chips and nothing is auto-assigned.
+Turn this off with **Settings > Budget > Quick Assign**. While it's off there are no suggestion chips and nothing is auto-assigned.
 
 ## Accounts and passwords
 

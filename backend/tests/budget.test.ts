@@ -35,7 +35,7 @@ describe("months", () => {
     expect((await t.api("GET", "/api/months/2026/13")).status).toBe(400);
   });
 
-  it("calculates left to budget", async () => {
+  it("calculates what's still to plan", async () => {
     const { month } = await makeOctober();
     const budget = (await t.api("GET", "/api/months/2026/10")).body;
     expect(budget.exists).toBe(true);
@@ -68,9 +68,9 @@ describe("months", () => {
   it("template mode adds starter income and groups", async () => {
     const res = await t.api("POST", "/api/months/2026/10", { mode: "template" });
     expect(res.status).toBe(201);
-    expect(res.body.income.map((i: { name: string }) => i.name)).toEqual(["Paycheck 1", "Paycheck 2"]);
-    expect(res.body.groups[0].name).toBe("Giving");
-    expect(res.body.groups.find((g: { name: string }) => g.name === "Food").items.map((i: { name: string }) => i.name)).toEqual(["Groceries", "Restaurants"]);
+    expect(res.body.income.map((i: { name: string }) => i.name)).toEqual(["Paycheck", "Other Income"]);
+    expect(res.body.groups[0].name).toBe("Home");
+    expect(res.body.groups.find((g: { name: string }) => g.name === "Food").items.map((i: { name: string }) => i.name)).toEqual(["Groceries", "Dining Out", "Coffee & Snacks"]);
     expect(res.body.totals.leftToBudgetCents).toBe(0);
   });
 

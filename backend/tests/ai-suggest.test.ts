@@ -60,7 +60,7 @@ describe("AI suggestions", () => {
     const vet = await add({ date: "2026-10-09", merchant: "Banfield Pet Hospital", amountCents: 12000, note: "Rex checkup" });
     const pay = await add({ date: "2026-10-15", merchant: "ACME CORP PAYROLL", amountCents: 250000, type: "income" });
     const weird = await add({ date: "2026-10-16", merchant: "XQZ*7781", amountCents: 999 });
-    rules = { "Banfield Pet Hospital": "Pet Care", "ACME CORP PAYROLL": "Paycheck 1", "XQZ*7781": null };
+    rules = { "Banfield Pet Hospital": "Pets", "ACME CORP PAYROLL": "Paycheck", "XQZ*7781": null };
 
     const r = await run();
     expect(r).toMatchObject({ asked: 3, suggested: 2, noMatch: 1 });
@@ -68,8 +68,8 @@ describe("AI suggestions", () => {
     // What was sent
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("Budget items for 2026-10");
-    expect(prompts[0]).toContain("Pets > Pet Care".replace("Pets", "Lifestyle"));
-    expect(prompts[0]).toContain("Income > Paycheck 1");
+    expect(prompts[0]).toContain("Family & Pets > Pets");
+    expect(prompts[0]).toContain("Income > Paycheck");
     expect(prompts[0]).toContain('"merchant":"Banfield Pet Hospital"');
     expect(prompts[0]).toContain('"note":"Rex checkup"');
     expect(prompts[0]).toContain('"direction":"money in"');
@@ -80,8 +80,8 @@ describe("AI suggestions", () => {
     expect(by(known.id).suggestion).toMatchObject({ itemName: "Groceries" });
     expect(by(known.id).aiSuggestion).toBeNull(); // history wins
     expect(by(vet.id).suggestion).toBeNull();
-    expect(by(vet.id).aiSuggestion).toMatchObject({ itemName: "Pet Care", groupName: "Lifestyle", reason: "guess for Banfield Pet Hospital", model: "tiny" });
-    expect(by(pay.id).aiSuggestion).toMatchObject({ itemName: "Paycheck 1", groupName: "Income" });
+    expect(by(vet.id).aiSuggestion).toMatchObject({ itemName: "Pets", groupName: "Family & Pets", reason: "guess for Banfield Pet Hospital", model: "tiny" });
+    expect(by(pay.id).aiSuggestion).toMatchObject({ itemName: "Paycheck", groupName: "Income" });
     expect(by(weird.id).aiSuggestion).toBeNull(); // no fit
     // Nothing assigned
     expect(rows.every((x: any) => x.merchant === "Trader Joe's" && x.date === "2026-10-01" ? true : x.splits.length === 0)).toBe(true);
@@ -96,18 +96,18 @@ describe("AI suggestions", () => {
     const tj = await add({ date: "2026-10-08", merchant: "Trader Joe's", amountCents: 4000 });
     const vet = await add({ date: "2026-10-09", merchant: "Banfield", amountCents: 12000 });
     const gym = await add({ date: "2026-10-10", merchant: "Planet Fitness", amountCents: 2500 });
-    rules = { Banfield: "Pet Care", "Planet Fitness": "Gym" };
+    rules = { Banfield: "Pets", "Planet Fitness": "Fitness" };
     await run();
-    expect((await t.api("POST", `/api/transactions/${gym.id}/accept-suggestion`)).body.splits[0].lineItemId).toBe(item(oct, "Gym").id);
+    expect((await t.api("POST", `/api/transactions/${gym.id}/accept-suggestion`)).body.splits[0].lineItemId).toBe(item(oct, "Fitness").id);
     expect((await t.api("POST", "/api/transactions/accept-suggestions", { ids: [tj.id, vet.id] })).body).toEqual({ assigned: 2 });
     const rows = await list();
-    expect(rows.find((x: any) => x.id === vet.id).splits[0].lineItemId).toBe(item(oct, "Pet Care").id);
+    expect(rows.find((x: any) => x.id === vet.id).splits[0].lineItemId).toBe(item(oct, "Pets").id);
     // Next Banfield visit: history now knows it, so the AI isn't asked
     const again = await add({ date: "2026-10-20", merchant: "Banfield", amountCents: 5000 });
     prompts = [];
     const r = await run({ ids: [again.id] });
     expect(r.asked).toBe(0);
-    expect((await list()).find((x: any) => x.id === again.id).suggestion).toMatchObject({ itemName: "Pet Care" });
+    expect((await list()).find((x: any) => x.id === again.id).suggestion).toMatchObject({ itemName: "Pets" });
   });
 
   it("only accepts codes from the right month and kind", async () => {
@@ -143,14 +143,14 @@ describe("AI suggestions", () => {
     raw = "I cannot help with that";
     expect(await run()).toMatchObject({ asked: 1, suggested: 0, noMatch: 0 });
     raw = null;
-    rules = { Shop: "Miscellaneous" };
+    rules = { Shop: "Spending Money" };
     expect(await run()).toMatchObject({ asked: 1, suggested: 1 }); // unanswered ones are asked again
-    expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toMatchObject({ itemName: "Miscellaneous" });
+    expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toMatchObject({ itemName: "Spending Money" });
   });
 
   it("editing the merchant clears the AI's guess; auto mode asks in the background", async () => {
     const a = await add({ date: "2026-10-09", merchant: "Shop", amountCents: 100 });
-    rules = { Shop: "Miscellaneous", "Better Name": "Gym" };
+    rules = { Shop: "Spending Money", "Better Name": "Fitness" };
     await run();
     await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-09", merchant: "Better Name", amountCents: 100 });
     expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toBeNull();
@@ -159,14 +159,14 @@ describe("AI suggestions", () => {
     expect((await t.api("GET", "/api/ai/status")).body).toEqual({ enabled: true, mode: "auto" });
     const b = await add({ date: "2026-10-10", merchant: "Shop", amountCents: 200 });
     for (let i = 0; i < 20 && !(await list()).find((x: any) => x.id === b.id).aiSuggestion; i++) await new Promise((r) => setTimeout(r, 50));
-    expect((await list()).find((x: any) => x.id === b.id).aiSuggestion).toMatchObject({ itemName: "Miscellaneous" });
+    expect((await list()).find((x: any) => x.id === b.id).aiSuggestion).toMatchObject({ itemName: "Spending Money" });
   });
 
   it("× removes an AI guess; automatic runs leave it alone, Ask AI can ask again", async () => {
     const a = await add({ date: "2026-10-09", merchant: "Shop", amountCents: 100 });
-    rules = { Shop: "Miscellaneous" };
+    rules = { Shop: "Spending Money" };
     await run();
-    expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toMatchObject({ itemName: "Miscellaneous" });
+    expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toMatchObject({ itemName: "Spending Money" });
     expect((await t.api("DELETE", `/api/transactions/${a.id}/ai-suggestion`)).status).toBe(204);
     expect((await list()).find((x: any) => x.id === a.id).aiSuggestion).toBeNull();
     expect((await t.api("POST", `/api/transactions/${a.id}/accept-suggestion`)).status).toBe(400); // nothing to accept

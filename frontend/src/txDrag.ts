@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { Transaction } from "./api";
 
-// Dragging a transaction from the side panel onto a budget item (like EveryDollar).
+// Dragging a transaction from the side panel onto a budget item.
 // Uses the browser's own drag-and-drop, separate from dnd-kit (which reorders groups and items),
 // so the two never get in each other's way. This tiny store says what's being dragged.
 

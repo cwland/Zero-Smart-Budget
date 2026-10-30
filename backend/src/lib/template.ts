@@ -1,15 +1,15 @@
 // Starter categories for a brand-new budget ("Start with suggested categories")
-export const STARTER_INCOME = ["Paycheck 1", "Paycheck 2"];
+export const STARTER_INCOME = ["Paycheck", "Other Income"];
 
 export const STARTER_GROUPS: { name: string; items: string[] }[] = [
-  { name: "Giving", items: ["Church", "Charity"] },
-  { name: "Savings", items: ["Emergency Fund"] },
-  { name: "Housing", items: ["Mortgage/Rent", "Water", "Natural Gas", "Electricity", "Internet", "Trash"] },
-  { name: "Transportation", items: ["Gas", "Maintenance"] },
-  { name: "Food", items: ["Groceries", "Restaurants"] },
-  { name: "Personal", items: ["Clothing", "Phone", "Fun Money", "Hair/Cosmetics", "Subscriptions"] },
-  { name: "Lifestyle", items: ["Pet Care", "Child Care", "Entertainment", "Miscellaneous"] },
-  { name: "Health", items: ["Gym", "Medicine/Vitamins", "Doctor Visits"] },
-  { name: "Insurance", items: ["Health Insurance", "Life Insurance", "Auto Insurance", "Homeowner/Renter"] },
-  { name: "Debt", items: ["Car Payment", "Credit Card", "Student Loan"] },
+  { name: "Home", items: ["Rent or Mortgage", "Home or Renters Insurance", "Electric", "Water & Sewer", "Heating Gas", "Internet", "Trash & Recycling", "Home Repairs"] },
+  { name: "Food", items: ["Groceries", "Dining Out", "Coffee & Snacks"] },
+  { name: "Getting Around", items: ["Fuel", "Car Payment", "Car Insurance", "Car Repairs", "Parking & Transit"] },
+  { name: "Bills & Subscriptions", items: ["Phone", "Streaming", "Apps & Software"] },
+  { name: "Health", items: ["Health Insurance", "Doctor & Dentist", "Prescriptions", "Fitness"] },
+  { name: "Family & Pets", items: ["Childcare", "Kids' Activities", "Pets", "Life Insurance"] },
+  { name: "Personal & Fun", items: ["Clothing", "Haircuts & Personal Care", "Hobbies", "Entertainment", "Spending Money"] },
+  { name: "Saving", items: ["Emergency Savings", "Retirement", "Travel", "Gifts"] },
+  { name: "Debt", items: ["Credit Card", "Student Loan", "Personal Loan"] },
+  { name: "Giving", items: ["Donations"] },
 ];

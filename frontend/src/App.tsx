@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { applyTheme } from "./themes";
 import { api, ApiError, getToken, setToken } from "./api";
 import AuthScreen from "./components/AuthScreen";
 import AppShell from "./components/AppShell";
@@ -30,6 +31,11 @@ const resetTokenFromHash = () => (window.location.hash.startsWith("#/reset") ? n
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+  // The account's theme (Settings › Profile) wins over the one this browser remembered
+  const userTheme = auth.status === "in" ? auth.user.theme : undefined;
+  useEffect(() => {
+    if (userTheme) applyTheme(userTheme);
+  }, [userTheme]);
   const [resetToken, setResetToken] = useState(resetTokenFromHash);
 
   const signedInRef = useRef<(token: string, user: User) => void>(() => {});

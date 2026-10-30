@@ -35,6 +35,7 @@ export const users = pgTable("users", {
   tokenVersion: integer("token_version").notNull().default(0),
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }), // last time the app was used (for the "come back" nudge)
   seenVersion: text("seen_version"), // the app version whose "What's new" was dismissed
+  theme: text("theme"), // Settings > Profile > Theme (null: the default)
   dismissedUpdate: text("dismissed_update"), // the newer version whose top bar was dismissed
   // The OAuth / OpenID Connect identity linked to this account (Settings > Security)
   oauthIssuer: text("oauth_issuer"),

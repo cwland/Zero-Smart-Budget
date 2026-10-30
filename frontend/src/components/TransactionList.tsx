@@ -7,7 +7,7 @@ import { isUnassigned } from "./budgetLookup";
 import { setDraggedTransaction } from "../txDrag";
 import { flash, setTossEnabled, targetOf as tossTarget, toss, tossOn } from "../toss";
 
-// The transactions tab, laid out like EveryDollar's: the month you're viewing first, then the month
+// The transactions tab: the month you're viewing first, then the month
 // before, then "Load <month> transactions" to reach further back. Search looks through everything.
 
 interface Props {
@@ -146,7 +146,7 @@ function UnassignedRow({
       label={accountText(t)}
       onOpen={onOpen}
       draggable={draggable}
-      leading={<input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${t.merchant}`} className="size-4 cursor-pointer accent-[#0073b9]" />}
+      leading={<input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${t.merchant}`} className="size-4 cursor-pointer accent-action" />}
       trailing={
         chip ? (
           <span className="flex items-center gap-0.5">
@@ -598,7 +598,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
                       return next;
                     })
                   }
-                  className="size-4 cursor-pointer accent-[#0073b9]"
+                  className="size-4 cursor-pointer accent-action"
                 />
               )}
               {monthTitle(ym)}

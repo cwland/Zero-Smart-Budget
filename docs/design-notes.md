@@ -1,99 +1,92 @@
 # Design Notes
 
-Reference: the EveryDollar web app budget screen (everydollar.com/app/budget), Oct 2026,
-measured from its live styles. Goal: same look, feel and density.
-Zero Smart Budget keeps its own name and logo, and doesn't copy theirs.
+Zero Smart Budget's own look: a calm, dense budgeting screen built from simple cards, with
+amounts you can edit in place. These are the sizes, colors and layout rules the app uses.
 
 ## Font
 
-EveryDollar uses **Gibson** (`canada-type-gibson`), a paid Adobe font.
-We use **Figtree** instead: free, similar rounded geometric shapes, bundled with the app
+**Figtree**: free, rounded and easy to read at small sizes, bundled with the app
 (`@fontsource/figtree`) so it works offline.
 
 | Element | Size | Weight | Color |
 |---|---|---|---|
-| Month ("October") | 24px | 600 | text-base |
-| Year ("2026") | 24px | 300 | text-subtle |
-| Left-to-budget banner | 18px | 400, amount 500 | amount red/green |
-| Group title ("Income", "Housing") | 16px | 600 | text-subtle |
-| Column labels ("Planned", "Spent ▾") | 14px | 400 | text-subtle |
-| Item name (editable input) | 18px | 400 | text-base |
-| Planned amount (editable) | 18px | 400 | text-action (blue) |
-| Spent / Remaining / Received | 16px | 400 | text-base |
-| "Add Item" link | 16px | 400 | `#0091d9` |
-| "Add Group" button | 16px | 600 | text-action |
+| Month ("October") | 24px | 600 | ink |
+| Year ("2026") | 24px | 300 | subtle |
+| "Still to plan" banner | 18px | 400, amount 500 | amount red/green |
+| Group title ("Income", "Home") | 16px | 600 | subtle |
+| Column labels ("Planned", "Spent ▾") | 14px | 400 | subtle |
+| Item name (editable) | 18px | 400 | ink |
+| Planned amount (editable) | 18px | 400 | action |
+| Spent / Remaining / Received | 16px | 400 | ink |
+| "Add Item" link | 16px | 400 | link |
+| "Add Group" button | 16px | 600 | action |
 
 ## Color tokens
 
-Copied from their theme variables (`--theme-*`). We'll use the same token names in Tailwind.
+Defined in `frontend/src/index.css` (`@theme`, holding the default theme's values) and used
+through Tailwind classes (`bg-page`, `text-action`, ...). Themes in `frontend/src/themes.ts` set
+the same tokens at runtime; pick one in Settings › Profile › Theme. Never hard-code a color in a
+component: use a token, so every theme works.
 
-| Token | Hex | Use |
-|---|---|---|
-| bg-page | `#f5f7f8` | page background |
-| bg-container | `#ffffff` | cards, left nav |
-| bg-base | `#e8eced` | segmented control track |
-| bg-strong | `#d5d9db` | progress bar track |
-| bg-brand | `#35bd59` | brand green |
-| bg-brand-subtle | `#eaf8ee` | green tint |
-| bg-success | `#24a344` | progress fill, "zero-based" state |
-| bg-error | `#cc392f` | overspent progress fill |
-| bg-error-subtle | `#fdded8` | |
-| bg-warning | `#faab19` | |
-| bg-pressed | `#ebf4fa` | hover/pressed rows |
-| bg-active | `#d8f1fc` | selected row |
-| action-primary | `#003561` | primary buttons (navy) |
-| action-primary-pressed | `#002342` | |
-| action-tertiary / text-action | `#0073b9` | links, editable amounts, nav arrows |
-| action-danger | `#cc392f` | delete |
-| border-base | `#e8eced` | dividers |
-| border-strong | `#d5d9db` | "Add Group" dotted border |
-| border-form | `#69757a` | input borders |
-| text-base | `#1f2426` | main text |
-| text-subtle | `#495257` | labels, year |
-| text-inactive | `#8e999e` | disabled |
-| text-placeholder | `#69757a` | |
-| text-error | `#cc392f` | "over budget" amount |
+| Theme | Logo (brand) | Buttons (primary) | Amounts (action) | Links |
+|---|---|---|---|---|
+| Harbor (default) | `#14a3a0` | `#0d3b45` | `#0b7a85` | `#0b8fa0` |
+| Midnight & Coral | `#ff6b57` | `#1e1b4b` | `#4338ca` | `#4f46e5` |
+| Plum & Amber | `#f0a500` | `#3d1f4f` | `#7b3fa0` | `#8e4bb8` |
+| Terracotta & Sage | `#6f9f7c` | `#3e2a22` | `#b4532a` | `#c2410c` |
+| Slate & Rose | `#f43f5e` | `#2b2d42` | `#be185d` | `#db2777` |
+
+| Token | Use |
+|---|---|
+| page | page background |
+| container | cards, side nav |
+| line | dividers, segmented control track |
+| strong | progress bar track, dotted "Add Group" border |
+| brand / brand-subtle | logo, brand tint |
+| success / success-subtle | progress fill, "zero-based" state |
+| error / error-subtle | overspent, delete |
+| warning | reminders |
+| pressed / active | hovered and selected rows |
+| primary / primary-pressed | main buttons, dark banners |
+| action | editable amounts, arrows, secondary buttons |
+| link | text links |
+| ink / subtle / muted / inactive | text, from strongest to faintest |
+
+Each theme also has its own group colors (the chart and the group list), used in order.
+The logo, the sign-in lockup and the browser tab icon follow the theme's brand color; the files in
+`frontend/public/brand` are fixed-color copies in the default theme.
 
 ## Layout
 
 ```
 ┌────┬──────────────────────────────┬──────────────────────┐
 │    │ October 2026 ▾          ‹ ›  │                      │  sticky header
-│ L  │ ┌──────────────────────────┐ │   Summary rail       │
-│ e  │ │  $172.91 over budget     │ │   [chart] [$] tabs   │  sticky banner card
-│ f  │ └──────────────────────────┘ │                      │
-│ t  │ ┌──────────────────────────┐ │   ( INCOME $6,985 )  │  donut chart
+│ s  │ ┌──────────────────────────┐ │   Summary panel      │
+│ i  │ │  $172.91 still to plan   │ │   [chart] [$] tabs   │  sticky banner card
+│ d  │ └──────────────────────────┘ │                      │
+│ e  │ ┌──────────────────────────┐ │   ( INCOME $6,985 )  │  donut chart
 │    │ │ Income ^   Planned  Rec▾ │ │                      │
-│ n  │ │ Paycheck 1  $3,240  $0   │ │  PLANNED SPENT REMAIN│  tabs
-│ a  │ │ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬ │ │  Housing $2,718 (39%)│  list by group,
-│ v  │ │ Add Income      $6,985   │ │  Food    $1,105 (16%)│  each group colored
+│ n  │ │ Paycheck    $3,240  $0   │ │  PLANNED SPENT REMAIN│  tabs
+│ a  │ │ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬ │ │  Home    $2,718 (39%)│  one row per group,
+│ v  │ │ Add Income      $6,985   │ │  Food    $1,105 (16%)│  each in its color
 │    │ └──────────────────────────┘ │  ...                 │
-│    │ ┌ Housing card ───────────┐ │                      │
+│    │ ┌ Home card ──────────────┐ │                      │
 │    │ ...                          │                      │
 │    │ ┌┄┄┄┄┄ Add Group ┄┄┄┄┄┄┄┄┄┐ │                      │
 └────┴──────────────────────────────┴──────────────────────┘
  56px   ~510px column                 ~510px (stacks under on narrow screens)
 ```
 
-- **Left nav**: 56px wide, white, icon-only (Budget, Accounts, Goals, Insights, Settings, account initials at the bottom). The logo goes at the top.
-- **Header** (sticky): "October **2026** ▾" title on the left; ‹ › month arrows in a small outlined button pair on the right; thin divider under it.
-- **Summary banner** (sticky under the header): white card, 16px corners, soft shadow (`0 4px 12px rgba(31,36,38,0.06)`), ~46px tall, centered text:
-  - "$172.91 **over budget**" with the amount in red
-  - "$X **left to budget**" with the amount in green
-  - "It's a zero-based budget!" with a check at $0 (EveryDollar's wording is "It's an EveryDollar budget!", so we use our own)
-- **Group cards**: white, **16px corners**, no border or shadow, 24px gap between cards.
-  - Header: padding 24px 24px 8px. Group name (with a collapse ^ caret) on the left, two column labels on the right: "Planned" and a **dropdown** ("Spent ▾" / "Remaining ▾"; for income "Received ▾"). That dropdown sets what the second column shows across the budget.
-  - Rows: 58px tall, padding 0 24px. Name is an inline input that looks like plain text until focused. Planned is a blue inline input. Second column is plain text.
-  - Under each row: a **4px progress bar** with 4px corners, gray `#d5d9db` track, green `#24a344` fill for spent ÷ planned, red `#cc392f` when overspent.
-  - Footer: padding 16px 24px 24px. "Add Item" (or "Add Income") link on the left, group totals on the right.
-  - Groups can be dragged to reorder, and there's a "Delete Group" action in the header.
-- **Add Group**: a full-width button with a dotted gray border, 8px corners, 24px padding, blue semibold text.
-- **Summary rail** (right): a white card with two tabs (a chart icon and a "$" icon; the $ tab is transactions).
-  - Chart tab: a donut chart of planned spending by group, with the total income in the middle ("INCOME $6,985"). Below it, **PLANNED / SPENT / REMAINING** tabs and a list of groups with amount and % of income. Each group has its own color.
-- **Responsive**: below ~1180px wide, the summary rail moves under the budget list.
-
-## Not copied
-
-- The EveryDollar name, logo, wordmark and "It's an EveryDollar budget!" phrase
-- Gibson font (licensed)
-- Ramsey-specific nav items (RamseyTrusted, Coaching, Ramsey+, My Feed)
+- **Side nav**: 56px wide, white, icons only (Budget, Accounts, Funds, Goals, Settings), the account button and version at the bottom, the logo at the top.
+- **Header** (sticky): "October **2026** ▾" on the left, ‹ › month arrows on the right, a thin divider under it.
+- **Banner** (sticky under the header): a white card with 16px corners and a soft shadow, centered:
+  - "$X **still to plan**" in green, "$X **planned beyond your income**" in red, or "Balanced! All of your income has a plan." with a check at $0.
+- **Group cards**: white, 16px corners, no border, 24px apart.
+  - Header: group name with a collapse caret; "Planned" and a dropdown ("Spent ▾" / "Remaining ▾", or "Received ▾" for income) that sets the second column everywhere.
+  - Rows: 58px tall; the name and the planned amount are inline inputs that look like text until focused.
+  - Under each row: a 4px progress bar (spent ÷ planned), red when over.
+  - Footer: "Add Item" on the left, group totals on the right.
+  - Groups and items drag to reorder.
+- **Add Group**: a full-width button with a dotted border.
+- **Summary panel** (right): a chart tab (a donut of planned spending by group, total income in the middle, Planned / Spent / Remaining tabs and a list of groups with amount and % of income) and a transactions tab.
+- **Narrow screens**: below ~1180px wide, the summary panel moves under the budget; on phones the side nav becomes a bottom bar.

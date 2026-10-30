@@ -32,7 +32,7 @@ describe("transactions", () => {
     expect(item(b, ids.groceries)).toMatchObject({ plannedCents: 60000, spentCents: 12345, remainingCents: 47655 });
     expect(b.groups[0]).toMatchObject({ spentCents: 12345, remainingCents: 220000 - 12345 });
     expect(b.totals.spentCents).toBe(12345);
-    // Spending doesn't change left to budget
+    // Spending doesn't change what's still to plan
     expect(b.totals.leftToBudgetCents).toBe(80000);
   });
 

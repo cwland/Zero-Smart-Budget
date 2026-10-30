@@ -13,7 +13,7 @@ import { CloseIcon, PiggyIcon } from "./Icons";
 
 // One line saying what a close did
 export function resultSummary(r: MonthCloseResult, monthName: string, nextName: string) {
-  if (r.totalCents === 0) return "Every dollar was spent as planned.";
+  if (r.totalCents === 0) return "All your money went where you planned.";
   if (r.leftover) {
     const l = r.leftover;
     if (l.to === "fund") return `${formatCents(l.amountCents)} went to ${l.fundName}${l.keptCents ? `; ${formatCents(l.keptCents)} stayed in ${monthName}` : ""}.`;
@@ -194,7 +194,7 @@ export function MonthCloseDialog({ monthId, onClose, onDone }: { monthId: number
 
   const option = (value: Choice, label: string, sub: string) => (
     <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${choice === value ? "border-action bg-pressed" : "border-line hover:bg-page"}`}>
-      <input type="radio" name="close-choice" checked={choice === value} onChange={() => setChoice(value)} className="mt-1 size-4 accent-[#0073b9]" />
+      <input type="radio" name="close-choice" checked={choice === value} onChange={() => setChoice(value)} className="mt-1 size-4 accent-action" />
       <span>
         <span className="block font-semibold">{label}</span>
         <span className="block text-sm text-subtle">{sub}</span>

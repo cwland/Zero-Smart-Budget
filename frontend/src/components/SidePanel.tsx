@@ -1,3 +1,4 @@
+import { useTheme } from "../themes";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type Budget, type MonthResponse, type Transaction } from "../api";
@@ -10,10 +11,6 @@ import { formatCents, formatWholeDollars } from "../money";
 import { PieIcon } from "./Icons";
 
 // One color per group, in order
-export const GROUP_COLORS = [
-  "#00b2f6", "#e64b40", "#faab19", "#35bd59", "#634fb3", "#e66f20",
-  "#0073b9", "#24a344", "#f26552", "#b88907", "#003561", "#8e999e",
-];
 
 type Metric = "planned" | "spent" | "remaining";
 
@@ -26,7 +23,7 @@ function Donut({ values, colors, centerLabel, centerValue }: { values: number[];
   return (
     <div className="relative mx-auto size-48">
       <svg viewBox="0 0 180 180" className="size-full -rotate-90">
-        <circle cx="90" cy="90" r={r} fill="none" stroke="#e8eced" strokeWidth="18" />
+        <circle cx="90" cy="90" r={r} fill="none" stroke="var(--color-line)" strokeWidth="18" />
         {total > 0 &&
           values.map((v, i) => {
             const len = (Math.max(0, v) / total) * c;
@@ -57,9 +54,10 @@ function Donut({ values, colors, centerLabel, centerValue }: { values: number[];
 
 export function SummaryChart({ budget }: { budget: Budget }) {
   const [metric, setMetric] = useState<Metric>("planned");
+  const groupColors = useTheme().groups; // each group's color comes from the theme
 
   const income = budget.totals.incomePlannedCents;
-  const colors = budget.groups.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length]);
+  const colors = budget.groups.map((_, i) => groupColors[i % groupColors.length]);
   const valueOf = (g: Budget["groups"][number]) =>
     metric === "planned" ? g.plannedCents : metric === "spent" ? g.spentCents : g.remainingCents;
   const values = budget.groups.map(valueOf);
@@ -224,7 +222,7 @@ export default function SidePanel({ budget, transactions, unassignedCount, view,
         <button onClick={() => onView({ kind: "summary" })} aria-label="Summary chart" className={tabClass(shown.kind === "summary")}>
           <PieIcon className="size-6" />
         </button>
-        {/* Like EveryDollar: the count of new transactions takes the place of the $ */}
+        {/* The count of new transactions takes the place of the $ */}
         <button
           onClick={() => onView({ kind: "transactions" })}
           aria-label={unassignedCount > 0 ? `Transactions, ${unassignedCount} new` : "Transactions"}

@@ -5,31 +5,31 @@
 @import "@fontsource/figtree/600.css";
 @import "@fontsource/figtree/700.css";
 
-/* Color tokens from docs/design-notes.md */
+/* Color tokens: the default theme (Harbor). Themes (src/themes.ts) replace them at runtime. */
 @theme {
   --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
 
-  --color-page: #f5f7f8;
+  --color-page: #f4f7f7;
   --color-container: #ffffff;
-  --color-line: #e8eced;
-  --color-strong: #d5d9db;
-  --color-brand: #35bd59;
-  --color-brand-subtle: #eaf8ee;
-  --color-success: #24a344;
-  --color-success-subtle: #d9fae1;
-  --color-error: #cc392f;
-  --color-error-subtle: #fdded8;
-  --color-warning: #faab19;
-  --color-pressed: #ebf4fa;
-  --color-active: #d8f1fc;
-  --color-primary: #003561;
-  --color-primary-pressed: #002342;
-  --color-action: #0073b9;
-  --color-link: #0091d9;
-  --color-ink: #1f2426;
-  --color-subtle: #495257;
-  --color-muted: #69757a;
-  --color-inactive: #8e999e;
+  --color-line: #e3eaea;
+  --color-strong: #cfd9d9;
+  --color-brand: #14a3a0;
+  --color-brand-subtle: #e2f5f4;
+  --color-success: #1f9d55;
+  --color-success-subtle: #dcf5e5;
+  --color-error: #d1433b;
+  --color-error-subtle: #fde2df;
+  --color-warning: #f2a20c;
+  --color-pressed: #e8f4f4;
+  --color-active: #d2eeee;
+  --color-primary: #0d3b45;
+  --color-primary-pressed: #082a31;
+  --color-action: #0b7a85;
+  --color-link: #0b8fa0;
+  --color-ink: #1b2629;
+  --color-subtle: #47575b;
+  --color-muted: #66777b;
+  --color-inactive: #8fa0a3;
 }
 
 @layer base {
@@ -51,12 +51,12 @@
 
 /* Toss animation: the budget item "catches" an accepted transaction */
 @keyframes toss-catch {
-  0% { box-shadow: inset 0 0 0 0 rgba(0, 115, 185, 0); }
-  30% { background-color: #e6f1f8; box-shadow: inset 0 0 0 2px rgba(0, 115, 185, 0.45); }
-  100% { box-shadow: inset 0 0 0 0 rgba(0, 115, 185, 0); }
+  0% { box-shadow: inset 0 0 0 0 transparent; }
+  30% { background-color: var(--color-pressed); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-action) 45%, transparent); }
+  100% { box-shadow: inset 0 0 0 0 transparent; }
 }
 .toss-catch { animation: toss-catch 0.6s ease-out; }
-@keyframes toss-bump { 40% { color: #24a344; transform: translateY(-2px); } }
+@keyframes toss-bump { 40% { color: var(--color-success); transform: translateY(-2px); } }
 .toss-bump { animation: toss-bump 0.45s ease-out; display: inline-block; }
 @media (prefers-reduced-motion: reduce) {
   .toss-catch, .toss-bump { animation: none; }

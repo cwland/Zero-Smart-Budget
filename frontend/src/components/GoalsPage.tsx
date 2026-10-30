@@ -6,7 +6,7 @@ import FundHistory, { AdjustmentForm } from "./FundHistory";
 import { GoalIcon, PlusIcon } from "./Icons";
 import { useLockBodyScroll } from "../scrollLock";
 
-// Personal Goals, like EveryDollar's: a target amount, the month to reach it by, and what's
+// Personal Goals: a target amount, the month to reach it by, and what's
 // already saved. A new goal is added to this month's budget (a "Goals" line saving the monthly
 // amount needed). Goals stop at their target; sinking funds (Funds page) can keep growing.
 
@@ -275,7 +275,7 @@ export default function GoalsPage() {
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <p className="text-lg text-subtle">Choose a target and a date, and we'll work out how much to set aside each month.</p>
         <label className="flex items-center gap-2 text-sm text-subtle">
-          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="size-4 accent-[#0073b9]" />
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="size-4 accent-action" />
           Show archived
         </label>
       </div>

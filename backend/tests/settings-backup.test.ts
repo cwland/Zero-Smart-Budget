@@ -24,7 +24,7 @@ const setUp = async () => {
   await t.api("PUT", "/api/settings/email", gmail);
   await t.api("PUT", "/api/settings/ai", ai);
   await t.api("PUT", "/api/settings/ai/usage", { enabled: true, mode: "manual" });
-  await t.api("PUT", "/api/settings/budget", { fastTrack: false });
+  await t.api("PUT", "/api/settings/budget", { quickAssign: false });
 };
 
 describe("settings in backups", () => {
@@ -34,7 +34,7 @@ describe("settings in backups", () => {
     const file = (await t.api("GET", "/api/export")).body;
     expect(file.exportVersion).toBe(4);
     expect(file.settings.secrets).toBe("encrypted");
-    expect(file.settings.values.budget).toMatchObject({ fastTrack: false });
+    expect(file.settings.values.budget).toMatchObject({ quickAssign: false });
     expect(file.settings.values.ai.services[0].apiKeyEnc).toMatch(/^v1:/);
     expect(file.settings.values.ai.services[1].apiKeyEnc).toBeNull(); // never had one
     const text = JSON.stringify(file);
@@ -47,14 +47,14 @@ describe("settings in backups", () => {
     const file = (await t.api("GET", "/api/export")).body;
     await t.api("DELETE", "/api/settings/ai");
     await t.api("DELETE", "/api/settings/email");
-    await t.api("PUT", "/api/settings/budget", { fastTrack: true });
+    await t.api("PUT", "/api/settings/budget", { quickAssign: true });
     const r = (await t.api("POST", "/api/import?confirm=replace", file)).body;
     expect(r.settings).toMatchObject({ settingsRestored: 3, secretsRestored: 2, secretsMissing: 0 });
     const s = (await t.api("GET", "/api/settings/ai")).body.settings;
     expect(s).toMatchObject({ enabled: true, mode: "manual" });
     expect(s.services.map((x: any) => x.apiKey)).toEqual(["sk-secret-123", null]);
     expect((await t.api("GET", "/api/settings/email/password")).body.password).toBe("app-password-123");
-    expect((await t.api("GET", "/api/settings/budget")).body).toMatchObject({ fastTrack: false });
+    expect((await t.api("GET", "/api/settings/budget")).body).toMatchObject({ quickAssign: false });
   });
 
   it("moves to a server with a different JWT_SECRET when BACKUP_KEY matches; a wrong key brings nothing back", async () => {
@@ -105,11 +105,11 @@ describe("settings in backups", () => {
 
     const restore = (key?: string) => t.app.inject({ method: "POST", url: "/api/import?confirm=replace", payload: file, headers: { authorization: `Bearer ${t.getToken()}`, ...(key ? { "x-backup-key": key } : {}) } }).then((r) => ({ status: r.statusCode, body: r.json() }));
     // Wrong key: refused before anything changes
-    await t.api("PUT", "/api/settings/budget", { fastTrack: false });
+    await t.api("PUT", "/api/settings/budget", { quickAssign: false });
     const wrong = await restore("not-the-right-key-000");
     expect(wrong.status).toBe(400);
     expect(wrong.body.error).toMatch(/doesn't match this file/);
-    expect((await t.api("GET", "/api/settings/budget")).body.fastTrack).toBe(false);
+    expect((await t.api("GET", "/api/settings/budget")).body.quickAssign).toBe(false);
     // Right key: keys come back
     const ok = await restore("the-other-servers-key-123");
     expect(ok.body.settings).toMatchObject({ secretsRestored: 1, secretsMissing: 0 });

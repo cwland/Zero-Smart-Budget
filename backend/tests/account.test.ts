@@ -22,6 +22,13 @@ describe("profile", () => {
     for (const email of ["", null, "  "]) expect((await t.api("PATCH", "/api/profile", { email })).body.details[0].message).toMatch(/email address is required/);
   });
 
+  it("saves the theme with the account", async () => {
+    expect((await t.api("GET", "/api/auth/me")).body.user.theme).toBeNull();
+    expect((await t.api("PATCH", "/api/profile", { theme: "plum-amber" })).body.theme).toBe("plum-amber");
+    expect((await t.api("GET", "/api/auth/me")).body.user.theme).toBe("plum-amber");
+    expect((await t.api("PATCH", "/api/profile", { theme: "everydollar" })).status).toBe(400);
+  });
+
   it("validates email, and API keys can't change it", async () => {
     expect((await t.api("PATCH", "/api/profile", { email: "nope" })).status).toBe(400);
     const key = (await t.api("POST", "/api/keys", { name: "x" })).body.key;

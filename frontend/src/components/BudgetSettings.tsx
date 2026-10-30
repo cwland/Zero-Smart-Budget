@@ -4,7 +4,7 @@ import { Notice } from "./settingsUi";
 import { setTossEnabled } from "../toss";
 
 interface BudgetPrefs {
-  fastTrack: boolean;
+  quickAssign: boolean;
   tossAnimation: boolean;
   monthCloseDays: number;
   monthCloseEnabled: boolean;
@@ -268,7 +268,7 @@ export default function BudgetSettings() {
       <SettingCard
         title="Quick Assign"
         text="Use the budget items you picked for a merchant before to suggest one for each new transaction."
-        toggle={prefs && <Toggle label="Quick Assign" checked={prefs.fastTrack} disabled={busy} onChange={(fastTrack) => update({ fastTrack })} />}
+        toggle={prefs && <Toggle label="Quick Assign" checked={prefs.quickAssign} disabled={busy} onChange={(quickAssign) => update({ quickAssign })} />}
       />
 
       <SettingCard

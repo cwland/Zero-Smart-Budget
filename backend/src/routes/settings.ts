@@ -290,13 +290,14 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return { ok: true, to };
   });
 
-  // Budget preferences (Fast Track)
+  // Budget preferences (Quick Assign, Month Wrap-Up...)
   app.get("/api/settings/budget", async () => getBudgetPrefs(db));
 
   app.put("/api/settings/budget", async (req) => {
     requireLogin(req);
-    const body = z.object({ fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional(), monthCloseDays: z.number().int().min(0).max(27).optional(), monthCloseEnabled: z.boolean().optional(), monthCloseAuto: z.boolean().optional() }).strict().parse(req.body);
-    return saveBudgetPrefs(db, body);
+    // (fastTrack: Quick Assign's old name, still accepted from older scripts)
+    const { fastTrack, ...body } = z.object({ quickAssign: z.boolean().optional(), fastTrack: z.boolean().optional(), tossAnimation: z.boolean().optional(), monthCloseDays: z.number().int().min(0).max(27).optional(), monthCloseEnabled: z.boolean().optional(), monthCloseAuto: z.boolean().optional() }).strict().parse(req.body);
+    return saveBudgetPrefs(db, { ...(fastTrack !== undefined && body.quickAssign === undefined ? { quickAssign: fastTrack } : {}), ...body });
   });
 
   // The saved password, only when you click Show (signed in only; never in the normal settings read)

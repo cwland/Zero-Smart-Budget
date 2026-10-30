@@ -27,6 +27,8 @@ export default async function profileRoutes(app: FastifyInstance) {
           .email("That doesn't look like an email address")
           .max(200)
           .optional(),
+        // Settings > Profile > Theme (the list is in frontend/src/themes.ts)
+        theme: z.enum(["harbor", "midnight-coral", "plum-amber", "terracotta-sage", "slate-rose"]).optional(),
       })
       .parse(req.body);
 
@@ -40,9 +42,10 @@ export default async function profileRoutes(app: FastifyInstance) {
         username: body.username,
         displayName: body.displayName === undefined ? undefined : body.displayName || null,
         email: body.email,
+        theme: body.theme,
       })
       .where(eq(users.id, userId))
       .returning();
-    return { id: user.id, username: user.username, displayName: user.displayName, email: user.email, seenVersion: user.seenVersion };
+    return { id: user.id, username: user.username, displayName: user.displayName, email: user.email, seenVersion: user.seenVersion, theme: user.theme };
   });
 }

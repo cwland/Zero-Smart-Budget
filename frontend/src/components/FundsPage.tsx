@@ -201,7 +201,7 @@ export default function FundsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
         <h1 className="text-2xl font-semibold">Sinking Funds</h1>
         <label className="flex items-center gap-2 text-sm text-subtle">
-          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="size-4 accent-[#0073b9]" />
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="size-4 accent-action" />
           Show archived
         </label>
       </div>

@@ -56,7 +56,7 @@ export async function runAiSuggestions(db: Db, ai: AiService, opts: { ids?: numb
   skip("already assigned", rows.length - pool.length);
 
   // History always wins: never ask the AI about a merchant you've assigned before
-  const history = await suggestFor(db, pool, { ignoreFastTrack: true });
+  const history = await suggestFor(db, pool, { ignoreQuickAssign: true });
   skip("already have a suggestion from your history", pool.filter((r) => history.has(r.id)).length);
   pool = pool.filter((r) => !history.has(r.id));
 

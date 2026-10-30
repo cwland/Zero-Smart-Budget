@@ -113,7 +113,7 @@ describe("importing bank transactions", () => {
 
   it("a pending charge that posts updates the same row and keeps its budget item", async () => {
     const oct = (await t.api("POST", "/api/months/2026/10", { mode: "template" })).body;
-    const dining = oct.groups.flatMap((g: any) => g.items).find((i: any) => i.name === "Restaurants" || i.name === "Dining Out");
+    const dining = oct.groups.flatMap((g: any) => g.items).find((i: any) => i.name === "Dining Out");
     pages = [{ added: [tx("p1", 40, "2026-10-10", { pending: true, merchant_name: "Thai Place" })] }];
     await sync();
     const [row] = await list();
@@ -183,7 +183,7 @@ describe("importing bank transactions", () => {
     expect(res.items[0].status).toBe("login_required");
   });
 
-  it("banks from the other environment are skipped; Fast Track suggests on imports", async () => {
+  it("banks from the other environment are skipped; Quick Assign suggests on imports", async () => {
     // Teach a merchant, then import it
     const oct = (await t.api("POST", "/api/months/2026/10", { mode: "template" })).body;
     const groceries = oct.groups.flatMap((g: any) => g.items).find((i: any) => i.name === "Groceries");

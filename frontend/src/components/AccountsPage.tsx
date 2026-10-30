@@ -239,7 +239,7 @@ function ImportSettings({ inst, onChanged, onClose }: { inst: Institution; onCha
           {inst.accounts.map((a) => (
             <li key={a.id}>
               <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5">
-                <input type="checkbox" checked={!!on.get(a.id)} onChange={(e) => setOn((m) => new Map(m).set(a.id, e.target.checked))} aria-label={`Import transactions from ${a.name}`} className="size-4 accent-[#0073b9]" />
+                <input type="checkbox" checked={!!on.get(a.id)} onChange={(e) => setOn((m) => new Map(m).set(a.id, e.target.checked))} aria-label={`Import transactions from ${a.name}`} className="size-4 accent-action" />
                 <span className="min-w-0 flex-1 truncate">
                   {a.name}
                   {a.mask && <span className="text-subtle"> ••{a.mask}</span>}

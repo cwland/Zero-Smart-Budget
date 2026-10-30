@@ -1,4 +1,5 @@
 import { FeatureSwitch } from "./FeatureSwitch";
+import ThemePicker from "./ThemePicker";
 import { UpdatesSettings } from "./UpdateBar";
 import { useEffect, useState } from "react";
 import BudgetSettings from "./BudgetSettings";
@@ -63,7 +64,12 @@ export default function SettingsPage() {
       </nav>
 
       <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)!.label} className="mt-6 flex flex-col gap-6">
-        {tab === "profile" && <ProfileSettings />}
+        {tab === "profile" && (
+          <>
+            <ProfileSettings />
+            <ThemePicker />
+          </>
+        )}
         {tab === "budget" && <BudgetSettings />}
         {tab === "security" && (
           <>

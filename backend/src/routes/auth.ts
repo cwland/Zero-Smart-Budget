@@ -44,6 +44,7 @@ export const publicUser = (u: typeof users.$inferSelect) => ({
   displayName: u.displayName,
   email: u.email,
   seenVersion: u.seenVersion,
+  theme: u.theme,
 });
 
 export default async function authRoutes(app: FastifyInstance) {

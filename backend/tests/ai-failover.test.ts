@@ -51,7 +51,7 @@ beforeEach(async () => {
   await t.login();
   down = new Set();
   hang = new Set();
-  picks = { home: { Starbucks: "Restaurants" }, cloud: { Starbucks: "Restaurants", "Steam Games": "Entertainment" } };
+  picks = { home: { Starbucks: "Dining Out" }, cloud: { Starbucks: "Dining Out", "Steam Games": "Entertainment" } };
   t.ai.respond = reply as any;
   oct = (await t.api("POST", "/api/months/2026/10", { mode: "template" })).body;
 });
@@ -82,7 +82,7 @@ describe("backup AI services", () => {
     let r = (await t.api("POST", "/api/transactions/ai-suggest", {})).body;
     expect(r).toMatchObject({ suggested: 1, services: { "Home AI": 1 } });
     expect(r.warnings).toBeUndefined();
-    expect((await chips()).Starbucks).toBe("Restaurants by Home AI");
+    expect((await chips()).Starbucks).toBe("Dining Out by Home AI");
 
     down.add("home");
     r = (await t.api("POST", "/api/transactions/ai-suggest", { force: true })).body;
@@ -90,7 +90,7 @@ describe("backup AI services", () => {
     expect(r.warnings[0]).toMatch(/^Home AI: The AI service returned 503/);
     // ...and it's in Settings > Logs
     expect((await t.api("GET", "/api/logs?category=ai")).body[0]).toMatchObject({ level: "warning", source: "Home AI", event: "Home AI didn't answer, asking Cloud backup instead", detail: expect.stringMatching(/503/) });
-    expect((await chips()).Starbucks).toBe("Restaurants by Cloud backup");
+    expect((await chips()).Starbucks).toBe("Dining Out by Cloud backup");
   });
 
   it("moves on when a service hangs past the timeout", async () => {
@@ -117,13 +117,13 @@ describe("backup AI services", () => {
     // Off: Home AI's "no fit" stands
     await t.api("PUT", "/api/settings/ai", settings());
     await t.api("POST", "/api/transactions/ai-suggest", {});
-    expect(await chips()).toEqual({ Starbucks: "Restaurants by Home AI", "Steam Games": null });
+    expect(await chips()).toEqual({ Starbucks: "Dining Out by Home AI", "Steam Games": null });
 
     // On: Steam Games goes on to the cloud service
     await t.api("PUT", "/api/settings/ai", settings({ askNextOnNoMatch: true }));
     const r = (await t.api("POST", "/api/transactions/ai-suggest", { force: true })).body;
     expect(r).toMatchObject({ asked: 2, suggested: 2, noMatch: 0, services: { "Home AI": 1, "Cloud backup": 1 } });
-    expect(await chips()).toEqual({ Starbucks: "Restaurants by Home AI", "Steam Games": "Entertainment by Cloud backup" });
+    expect(await chips()).toEqual({ Starbucks: "Dining Out by Home AI", "Steam Games": "Entertainment by Cloud backup" });
 
     // Nobody knows it: "no fit" from the last one asked
     await add("Mystery Shop");

@@ -12,7 +12,7 @@ import { logEvent } from "./appLog.js";
 //  - Plaid amounts are positive for money out (expense) and negative for money in (income)
 //  - A pending charge that posts arrives as a new transaction pointing at the pending one
 //    (pending_transaction_id); we update the existing row so its budget assignment is kept
-//  - New transactions come in unassigned; Fast Track suggestions show on them as usual
+//  - New transactions come in unassigned; Quick Assign suggestions show on them as usual
 
 interface PlaidTx {
   transaction_id: string;

@@ -140,7 +140,7 @@ export default function GroupCard(props: Props) {
           </SortableContext>
           {drafting && !props.readOnly && <DraftRow onCreate={props.onAddItem} onClose={() => setDrafting(false)} />}
 
-          {/* Footer (the Favorites card has none, like EveryDollar) */}
+          {/* Footer (the Favorites card has none) */}
           {props.favorites ? <div className="pb-4" /> : <footer className="flex items-center gap-2 px-4 pb-6 pt-4 sm:px-6">
             {props.readOnly ? (
               <span className="flex-1" />

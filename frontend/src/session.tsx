@@ -6,6 +6,7 @@ export interface User {
   displayName: string | null;
   email: string | null;
   seenVersion?: string | null; // the version whose "What's new" was dismissed
+  theme?: string | null; // Settings › Profile › Theme (null: the default)
 }
 
 export interface Session {

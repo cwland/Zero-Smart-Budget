@@ -41,14 +41,22 @@ describe("suggestions", () => {
     expect(row.suggestion).toEqual({ lineItemId: find(nov, "Groceries").id, itemName: "Groceries", groupName: "Food" });
   });
 
-  it("Fast Track off: no suggestions, no auto-assign; back on restores them", async () => {
-    expect((await t.api("GET", "/api/settings/budget")).body).toEqual({ fastTrack: true, tossAnimation: true, monthCloseDays: 4, monthCloseEnabled: true, monthCloseAuto: true });
+  it("Quick Assign's old name (fastTrack) still works: saved settings, restored backups and the API", async () => {
+    await t.db.execute(sql`insert into app_settings (key, value) values ('budget', '{"fastTrack": false, "tossAnimation": true}')`);
+    expect((await t.api("GET", "/api/settings/budget")).body).toEqual({ quickAssign: false, tossAnimation: true, monthCloseDays: 4, monthCloseEnabled: true, monthCloseAuto: true });
+    expect((await t.api("PUT", "/api/settings/budget", { fastTrack: true })).body.quickAssign).toBe(true);
+    const [row] = (await t.db.execute(sql`select value from app_settings where key = 'budget'`)).rows as any[];
+    expect(row.value).not.toHaveProperty("fastTrack");
+  });
+
+  it("Quick Assign off: no suggestions, no auto-assign; back on restores them", async () => {
+    expect((await t.api("GET", "/api/settings/budget")).body).toEqual({ quickAssign: true, tossAnimation: true, monthCloseDays: 4, monthCloseEnabled: true, monthCloseAuto: true });
     const { oct, find } = await twoMonths();
     await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Trader Joe's", amountCents: 5000, splits: [{ lineItemId: find(oct, "Groceries").id, amountCents: 5000 }] });
     const created = (await t.api("POST", "/api/transactions", { date: "2026-11-03", merchant: "Trader Joe's", amountCents: 6100 })).body;
 
-    expect((await t.api("PUT", "/api/settings/budget", { fastTrack: false })).body).toEqual({ fastTrack: false, tossAnimation: true, monthCloseDays: 4, monthCloseEnabled: true, monthCloseAuto: true });
-    expect((await t.api("PUT", "/api/settings/budget", { tossAnimation: false })).body).toEqual({ fastTrack: false, tossAnimation: false, monthCloseDays: 4, monthCloseEnabled: true, monthCloseAuto: true });
+    expect((await t.api("PUT", "/api/settings/budget", { quickAssign: false })).body).toEqual({ quickAssign: false, tossAnimation: true, monthCloseDays: 4, monthCloseEnabled: true, monthCloseAuto: true });
+    expect((await t.api("PUT", "/api/settings/budget", { tossAnimation: false })).body).toEqual({ quickAssign: false, tossAnimation: false, monthCloseDays: 4, monthCloseEnabled: true, monthCloseAuto: true });
     expect((await t.api("PUT", "/api/settings/budget", { bogus: 1 })).status).toBe(400);
     const row = () => t.api("GET", "/api/transactions?year=2026&month=11").then((r) => r.body.find((x: any) => x.id === created.id));
     expect((await row()).suggestion).toBeNull();
@@ -58,24 +66,24 @@ describe("suggestions", () => {
     expect(auto.splits).toEqual([]);
     expect((await t.api("POST", `/api/transactions/${created.id}/accept-suggestion`)).status).toBe(400);
 
-    await t.api("PUT", "/api/settings/budget", { fastTrack: true });
+    await t.api("PUT", "/api/settings/budget", { quickAssign: true });
     expect((await row()).suggestion).toMatchObject({ itemName: "Groceries" });
   });
 
-  it("income: suggests Paycheck 2 for the repeat deposit", async () => {
+  it("income: suggests Other Income for the repeat deposit", async () => {
     const { octPay2, novPay2 } = await twoMonths();
     await t.api("POST", "/api/transactions", { date: "2026-10-13", merchant: "ACH CREDIT HOMEDEPOT PAYROLL *4986 10/13", type: "income", amountCents: 332881, splits: [{ incomeItemId: octPay2.id, amountCents: 332881 }] });
     const nov = (await t.api("POST", "/api/transactions", { date: "2026-11-10", merchant: "ACH CREDIT HOMEDEPOT PAYROLL *4986 11/10", type: "income", amountCents: 332881 })).body;
     const row = (await t.api("GET", "/api/transactions?unassigned=true")).body.find((x: any) => x.id === nov.id);
-    expect(row.suggestion).toMatchObject({ incomeItemId: novPay2.id, itemName: "Paycheck 2", groupName: "Income" });
+    expect(row.suggestion).toMatchObject({ incomeItemId: novPay2.id, itemName: "Other Income", groupName: "Income" });
   });
 
   it("re-categorizing sticks: the most recent month wins, and type must match", async () => {
     const { oct, nov, find } = await twoMonths();
     await t.api("POST", "/api/transactions", { date: "2026-10-01", merchant: "Costco", amountCents: 100, splits: [{ lineItemId: find(oct, "Groceries").id, amountCents: 100 }] });
-    await t.api("POST", "/api/transactions", { date: "2026-11-20", merchant: "Costco", amountCents: 100, splits: [{ lineItemId: find(nov, "Restaurants").id, amountCents: 100 }] });
+    await t.api("POST", "/api/transactions", { date: "2026-11-20", merchant: "Costco", amountCents: 100, splits: [{ lineItemId: find(nov, "Dining Out").id, amountCents: 100 }] });
     const res = (await t.api("GET", "/api/transactions/suggest?merchant=COSTCO%20%23443&date=2026-11-02")).body;
-    expect(res.suggestion.itemName).toBe("Restaurants");
+    expect(res.suggestion.itemName).toBe("Dining Out");
     expect((await t.api("GET", "/api/transactions/suggest?merchant=Costco&date=2026-11-02&type=income")).body.suggestion).toBeNull();
   });
 
@@ -87,9 +95,9 @@ describe("suggestions", () => {
     const on1 = (await t.api("GET", "/api/transactions/suggest?merchant=ACH%20CREDIT%20ACME%20PAYROLL%20*4986&date=2026-11-01&type=income")).body;
     const on14 = (await t.api("GET", "/api/transactions/suggest?merchant=ACH%20CREDIT%20ACME%20PAYROLL%20*4986&date=2026-11-14&type=income")).body;
     const on30 = (await t.api("GET", "/api/transactions/suggest?merchant=ACH%20CREDIT%20ACME%20PAYROLL%20*4986&date=2026-11-30&type=income")).body;
-    expect([on1.suggestion.itemName, on14.suggestion.itemName, on30.suggestion.itemName]).toEqual(["Paycheck 1", "Paycheck 2", "Paycheck 1"]);
+    expect([on1.suggestion.itemName, on14.suggestion.itemName, on30.suggestion.itemName]).toEqual(["Paycheck", "Other Income", "Paycheck"]);
 
-    // After accepting November's first paycheck, the 15th still goes to Paycheck 2
+    // After accepting November's first paycheck, the 15th still goes to Other Income
     const nov1 = (await t.api("POST", "/api/transactions", { date: "2026-11-01", merchant: "ACH CREDIT ACME PAYROLL *4986", type: "income", amountCents: 400000 })).body;
     const nov15 = (await t.api("POST", "/api/transactions", { date: "2026-11-15", merchant: "ACH CREDIT ACME PAYROLL *4986", type: "income", amountCents: 400000 })).body;
     await t.api("POST", `/api/transactions/${nov1.id}/accept-suggestion`);
@@ -119,10 +127,10 @@ describe("suggestions", () => {
 
   it("falls back to the first word when that word alone is a merchant you've used", async () => {
     const { oct, find } = await twoMonths();
-    await t.api("POST", "/api/transactions", { date: "2026-10-12", merchant: "Shell", amountCents: 100, splits: [{ lineItemId: find(oct, "Gas").id, amountCents: 100 }] });
-    expect((await t.api("GET", "/api/transactions/suggest?merchant=Shell%20Oil%205541&date=2026-11-20")).body.suggestion.itemName).toBe("Gas");
+    await t.api("POST", "/api/transactions", { date: "2026-10-12", merchant: "Shell", amountCents: 100, splits: [{ lineItemId: find(oct, "Fuel").id, amountCents: 100 }] });
+    expect((await t.api("GET", "/api/transactions/suggest?merchant=Shell%20Oil%205541&date=2026-11-20")).body.suggestion.itemName).toBe("Fuel");
     // Too short a word to trust, or only a longer merchant shares the word: no guess
-    await t.api("POST", "/api/transactions", { date: "2026-10-12", merchant: "BP", amountCents: 100, splits: [{ lineItemId: find(oct, "Gas").id, amountCents: 100 }] });
+    await t.api("POST", "/api/transactions", { date: "2026-10-12", merchant: "BP", amountCents: 100, splits: [{ lineItemId: find(oct, "Fuel").id, amountCents: 100 }] });
     expect((await t.api("GET", "/api/transactions/suggest?merchant=BP%20Amoco&date=2026-11-20")).body.suggestion).toBeNull();
     expect((await t.api("GET", "/api/transactions/suggest?merchant=Shellfish%20Market&date=2026-11-20")).body.suggestion).toBeNull();
   });
@@ -131,7 +139,7 @@ describe("suggestions", () => {
     const { oct, find } = await twoMonths();
     const add = (merchant: string, item: string) => t.api("POST", "/api/transactions", { date: "2026-10-30", merchant, amountCents: 100, splits: [{ lineItemId: find(oct, item).id, amountCents: 100 }] });
     await add("Sinking Fund: Travel", "Groceries");
-    await add("Sinking Fund: Home Repairs", "Miscellaneous");
+    await add("Sinking Fund: Home Repairs", "Spending Money");
     expect((await t.api("GET", "/api/transactions/suggest?merchant=Sinking%20Fund%3A%20Holiday%20Gifts&date=2026-11-30")).body.suggestion).toBeNull();
     // Exact merchants still match
     expect((await t.api("GET", "/api/transactions/suggest?merchant=Sinking%20Fund%3A%20Travel&date=2026-11-30")).body.suggestion.itemName).toBe("Groceries");
@@ -145,7 +153,7 @@ describe("suggestions", () => {
     const { oct, find } = await twoMonths();
     await t.api("POST", "/api/transactions", {
       date: "2026-10-16", merchant: "Costco Wholesale", amountCents: 21560,
-      splits: [{ lineItemId: find(oct, "Groceries").id, amountCents: 18000 }, { lineItemId: find(oct, "Miscellaneous").id, amountCents: 3560 }],
+      splits: [{ lineItemId: find(oct, "Groceries").id, amountCents: 18000 }, { lineItemId: find(oct, "Spending Money").id, amountCents: 3560 }],
     });
     expect((await t.api("GET", "/api/transactions/suggest?merchant=Costco%20Wholesale&date=2026-11-16")).body.suggestion.itemName).toBe("Groceries");
   });
@@ -155,8 +163,8 @@ describe("accepting suggestions", () => {
   it("accept one, accept all, and fund history follows", async () => {
     const { oct, nov, find } = await twoMonths();
     const fund = (await t.api("POST", "/api/funds", { name: "Car" })).body;
-    await t.api("PATCH", `/api/items/${find(nov, "Maintenance").id}`, { sinkingFundId: fund.id, plannedCents: 10000 });
-    for (const [m, item] of [["Jiffy Lube", "Maintenance"], ["Shell", "Gas"], ["WinCo", "Groceries"]] as const) {
+    await t.api("PATCH", `/api/items/${find(nov, "Car Repairs").id}`, { sinkingFundId: fund.id, plannedCents: 10000 });
+    for (const [m, item] of [["Jiffy Lube", "Car Repairs"], ["Shell", "Fuel"], ["WinCo", "Groceries"]] as const) {
       await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: m, amountCents: 100, splits: [{ lineItemId: find(oct, item).id, amountCents: 100 }] });
     }
     const ids: number[] = [];
@@ -166,7 +174,7 @@ describe("accepting suggestions", () => {
 
     const one = await t.api("POST", `/api/transactions/${ids[0]}/accept-suggestion`);
     expect(one.status).toBe(200);
-    expect(one.body.splits[0].lineItemId).toBe(find(nov, "Maintenance").id);
+    expect(one.body.splits[0].lineItemId).toBe(find(nov, "Car Repairs").id);
     expect((await t.api("GET", "/api/funds?year=2026&month=11")).body[0]).toMatchObject({ contributedCents: 10000, spentCents: 2500 });
 
     const all = await t.api("POST", "/api/transactions/accept-suggestions", { ids });
@@ -179,10 +187,10 @@ describe("accepting suggestions", () => {
 
   it("autoAssign on create (for n8n / imports)", async () => {
     const { oct, nov, find } = await twoMonths();
-    await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Netflix.com", amountCents: 1549, splits: [{ lineItemId: find(oct, "Subscriptions").id, amountCents: 1549 }] });
+    await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Netflix.com", amountCents: 1549, splits: [{ lineItemId: find(oct, "Streaming").id, amountCents: 1549 }] });
     const auto = (await t.api("POST", "/api/transactions", { date: "2026-11-05", merchant: "NETFLIX.COM", amountCents: 1549, autoAssign: true })).body;
     expect(auto.autoAssigned).toBe(true);
-    expect(auto.splits[0].lineItemId).toBe(find(nov, "Subscriptions").id);
+    expect(auto.splits[0].lineItemId).toBe(find(nov, "Streaming").id);
     const unknown = (await t.api("POST", "/api/transactions", { date: "2026-11-05", merchant: "Mystery", amountCents: 100, autoAssign: true })).body;
     expect(unknown.autoAssigned).toBe(false);
     expect(unknown.splits).toHaveLength(0);

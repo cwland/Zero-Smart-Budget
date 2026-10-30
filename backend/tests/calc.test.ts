@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { budgetTotals, fundBalance, monthDateRange, nextMonth, previousMonth } from "../src/lib/calc.js";
 
 describe("budget math", () => {
-  it("left to budget is planned income minus planned expenses", () => {
+  it("still to plan is planned income minus planned expenses", () => {
     const t = budgetTotals(
       [{ plannedCents: 300000, receivedCents: 150000 }, { plannedCents: 50000, receivedCents: 0 }],
       [{ plannedCents: 120000, spentCents: 120000 }, { plannedCents: 60000, spentCents: 4550 }]

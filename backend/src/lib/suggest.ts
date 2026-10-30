@@ -59,10 +59,10 @@ function choose(past: Past[], t: Target): Past | undefined {
 
 const lower = (s: string) => s.trim().toLowerCase();
 
-export async function suggestFor(db: Db, targets: Target[], opts: { ignoreFastTrack?: boolean } = {}): Promise<Map<number, Suggestion>> {
+export async function suggestFor(db: Db, targets: Target[], opts: { ignoreQuickAssign?: boolean } = {}): Promise<Map<number, Suggestion>> {
   const out = new Map<number, Suggestion>();
-  // Fast Track turned off in Settings (the AI still checks history, so it never guesses where history knows)
-  if (!opts.ignoreFastTrack && !(await getBudgetPrefs(db)).fastTrack) return out;
+  // Quick Assign turned off in Settings (the AI still checks history, so it never guesses where history knows)
+  if (!opts.ignoreQuickAssign && !(await getBudgetPrefs(db)).quickAssign) return out;
   const keys = [...new Set(targets.map((t) => t.merchantKey).filter((k): k is string => !!k))];
   if (!keys.length) return out;
 

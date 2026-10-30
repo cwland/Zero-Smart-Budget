@@ -1,4 +1,5 @@
 import { versionLabel } from "../version";
+import lockupSvg from "../assets/lockup.svg?raw"; // our own file (public/brand has the fixed-color versions)
 import WhatsNew from "./WhatsNew";
 import { KeyRound, LogIn } from "lucide-react";
 import { passkeyError, passkeysAvailable, signInWithPasskey, startPasskeyAutofill } from "../passkeys";
@@ -25,8 +26,8 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-page px-4 pb-10">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-[0_4px_12px_rgba(31,36,38,0.06)]">
-        {/* Logo: icon + wordmark (Figtree, outlined to shapes; all versions in public/brand) */}
-        <img src="/brand/lockup.svg" alt={`Zero Smart Budget: ${TAGLINE}`} className="mb-7 h-auto w-full" />
+        {/* Logo: icon + wordmark (Figtree, outlined to shapes), drawn inline so it takes the theme's colors */}
+        <div className="mb-7 w-full [&>svg]:h-auto [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: lockupSvg }} />
         {children}
       </div>
       <p className="absolute inset-x-0 bottom-4 text-center text-xs text-muted">

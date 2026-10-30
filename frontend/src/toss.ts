@@ -72,7 +72,7 @@ export async function toss(source: HTMLElement | null, target: string, opts: { a
   const copy = source.cloneNode(true) as HTMLElement;
   copy.removeAttribute("data-tx-row");
   copy.querySelectorAll("button[aria-label^='Assign'], input[type=checkbox]").forEach((n) => n.remove());
-  copy.style.cssText += `;background:var(--color-white,#fff);border:2px solid ${opts.ai ? "#7c4dff" : "#0073b9"};border-radius:12px;box-shadow:0 14px 30px rgba(15,30,40,.28);list-style:none;margin:0`;
+  copy.style.cssText += `;background:var(--color-white,#fff);border:2px solid ${opts.ai ? "#7c4dff" : "var(--color-action)"};border-radius:12px;box-shadow:0 14px 30px rgba(15,30,40,.28);list-style:none;margin:0`;
   fly.appendChild(copy);
   document.body.appendChild(fly);
   collapse(source);

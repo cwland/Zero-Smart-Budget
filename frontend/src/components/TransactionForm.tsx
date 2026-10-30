@@ -6,7 +6,7 @@ import { centsToInput, formatCents, parseMoney } from "../money";
 import { ChevronDown, ChevronUp, CloseIcon, Trash } from "./Icons";
 import { useLockBodyScroll } from "../scrollLock";
 
-// The Add / Edit transaction popup, laid out like EveryDollar's:
+// The Add / Edit transaction popup:
 // Expense|Income switch, amount, date + merchant (with the bank's own wording under it), account,
 // "Budget Items" (pick one, or several to split), More Options (Check #, Note), then
 // Delete · Cancel · Save Changes.
@@ -372,7 +372,7 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
                       </div>
                       {g.items.map((i) => (
                         <label key={g.label + i.value} role="option" aria-selected={isPicked(i.value)} className="flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-pressed">
-                          <input type="checkbox" checked={isPicked(i.value)} onChange={() => togglePick(i.value)} className="size-4 accent-[#0073b9]" />
+                          <input type="checkbox" checked={isPicked(i.value)} onChange={() => togglePick(i.value)} className="size-4 accent-action" />
                           <span className="min-w-0 flex-1 truncate">{i.name}</span>
                         </label>
                       ))}

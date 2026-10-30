@@ -11,7 +11,7 @@ beforeEach(async () => {
   await t.login();
   const fund = (await t.api("POST", "/api/funds", { name: "Car" })).body;
   const m = (await t.api("POST", "/api/months/2026/10", { mode: "template" })).body;
-  const maint = m.groups.flatMap((g: any) => g.items).find((i: any) => i.name === "Maintenance");
+  const maint = m.groups.flatMap((g: any) => g.items).find((i: any) => i.name === "Car Repairs");
   await t.api("PATCH", `/api/items/${maint.id}`, { plannedCents: 10000, sinkingFundId: fund.id });
   await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Jiffy", amountCents: 4000, splits: [{ lineItemId: maint.id, amountCents: 4000 }] });
   await t.api("POST", "/api/keys", { name: "n8n" });
