@@ -24,21 +24,26 @@ interface AiUsage {
 
 // An on/off switch with its label
 // text: what shows beside the switch (default "On"/"Off")
-export function Toggle({ label, checked, disabled, onChange, text }: { label: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void; text?: ReactNode }) {
+// checked null: the setting is still loading. The switch keeps its space but stays hidden, then
+// fades in already set (instead of showing Off and flipping to On).
+export function Toggle({ label, checked, disabled, onChange, text }: { label: string; checked: boolean | null; disabled?: boolean; onChange: (v: boolean) => void; text?: ReactNode }) {
+  const loading = checked === null;
   return (
-    <label className={`flex shrink-0 items-center gap-3 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}>
+    <label className={`flex shrink-0 items-center gap-3 transition-opacity duration-200 ${loading ? "pointer-events-none opacity-0" : "opacity-100"} ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}>
       <button
         type="button"
         role="switch"
         aria-label={label}
-        aria-checked={checked}
-        disabled={disabled}
+        aria-checked={!!checked}
+        aria-busy={loading || undefined}
+        disabled={disabled || loading}
         onClick={() => onChange(!checked)}
         className={`relative h-7 w-12 rounded-full transition disabled:opacity-50 ${checked ? "bg-action" : "bg-strong"}`}
       >
-        <span className={`absolute top-1 size-5 rounded-full bg-white shadow transition-all ${checked ? "left-6" : "left-1"}`} />
+        {/* No knob while loading, so it doesn't slide across when the setting arrives */}
+        {!loading && <span className={`absolute top-1 size-5 rounded-full bg-white shadow transition-all ${checked ? "left-6" : "left-1"}`} />}
       </button>
-      {text ?? <span className="w-7 text-lg">{checked ? "On" : "Off"}</span>}
+      {text ?? <span className="w-7 text-lg">{loading ? "" : checked ? "On" : "Off"}</span>}
     </label>
   );
 }
@@ -141,7 +146,7 @@ export default function BudgetSettings() {
     <SettingCard
       title="Toss animation"
       text={`When you accept a suggestion, the transaction is tossed in an arc into its budget item. Turn it off and accepted transactions move to Assigned without the animation.${manage ? " This is just for you; everyone you share the budget with has their own." : ""}`}
-      toggle={prefs && <Toggle label="Toss animation" checked={prefs.tossAnimation} disabled={busy} onChange={(tossAnimation) => update({ tossAnimation })} />}
+      toggle={<Toggle label="Toss animation" checked={prefs ? prefs.tossAnimation : null} disabled={busy} onChange={(tossAnimation) => update({ tossAnimation })} />}
     />
   );
   if (!manage)
@@ -158,7 +163,7 @@ export default function BudgetSettings() {
       <SettingCard
         title="Quick Assign"
         text="Use the budget items you picked for a merchant before to suggest one for each new transaction."
-        toggle={prefs && <Toggle label="Quick Assign" checked={prefs.quickAssign} disabled={busy} onChange={(quickAssign) => update({ quickAssign })} />}
+        toggle={<Toggle label="Quick Assign" checked={prefs ? prefs.quickAssign : null} disabled={busy} onChange={(quickAssign) => update({ quickAssign })} />}
       />
 
       <SettingCard
@@ -196,7 +201,7 @@ export default function BudgetSettings() {
             </>
           )
         }
-        toggle={ai !== undefined && <Toggle label="AI categorization" checked={aiOn} disabled={busy || !aiReady} onChange={(enabled) => updateAi({ enabled })} />}
+        toggle={<Toggle label="AI categorization" checked={ai === undefined ? null : aiOn} disabled={busy || !aiReady} onChange={(enabled) => updateAi({ enabled })} />}
       >
         {showAiInfo && <AiPrivacyInfo services={ai?.services ?? []} />}
         {aiOn && ai && (
@@ -227,7 +232,7 @@ export default function BudgetSettings() {
       <SettingCard
         title="Month Wrap-Up"
         text="When a month ends, see where you came out ahead or went over, then decide where any extra money goes (or what covers a shortfall). A wrapped-up month's plan is locked until you reopen it."
-        toggle={prefs && <Toggle label="Month Wrap-Up" checked={prefs.monthCloseEnabled} disabled={busy} onChange={(monthCloseEnabled) => update({ monthCloseEnabled })} />}
+        toggle={<Toggle label="Month Wrap-Up" checked={prefs ? prefs.monthCloseEnabled : null} disabled={busy} onChange={(monthCloseEnabled) => update({ monthCloseEnabled })} />}
       >
         {prefs?.monthCloseEnabled ? (
           <div className="flex flex-col gap-5">

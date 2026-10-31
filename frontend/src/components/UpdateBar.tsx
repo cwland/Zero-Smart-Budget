@@ -187,7 +187,7 @@ export function UpdatesSettings() {
     <SettingCard
       title="Updates"
       text={<>Look for a newer release of Zero Smart Budget on GitHub after you sign in and every 3 hours, and show a bar at the top of the app when one is out.</>}
-      toggle={info && <Toggle label="Check for updates" checked={info.enabled} disabled={busy} onChange={(enabled) => run(() => api("PUT", "/api/updates/settings", { enabled }))} />}
+      toggle={<Toggle label="Check for updates" checked={info ? info.enabled : null} disabled={busy} onChange={(enabled) => run(() => api("PUT", "/api/updates/settings", { enabled }))} />}
     >
       {info?.enabled && (
         <div className="flex flex-col gap-3 text-sm">

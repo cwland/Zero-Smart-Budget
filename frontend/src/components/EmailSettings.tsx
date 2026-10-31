@@ -253,7 +253,7 @@ export default function EmailSettings() {
             <p className="font-semibold">Send email from this app</p>
             <p className="text-sm text-subtle">Password reset links and notifications (Wrap-Up reminders, nudges).</p>
           </div>
-          <Toggle label="Send email from this app" checked={form.enabled} disabled={!!busy || !data} onChange={toggleEmail} />
+          <Toggle label="Send email from this app" checked={data ? form.enabled : null} disabled={!!busy} onChange={toggleEmail} />
         </div>
 
         {form.enabled && <form onSubmit={save} aria-label="Email settings" className="mt-5 grid gap-4 border-t border-line pt-5 sm:grid-cols-2">

@@ -42,7 +42,7 @@ export function FeatureSwitch({ feature, title, text, offText, children }: { fea
             <h2 className="text-lg font-semibold">{title}</h2>
             <p className="mt-1 max-w-xl text-subtle">{on === false ? offText : text}</p>
           </div>
-          <Toggle label={title} checked={!!on} disabled={busy || on === null} onChange={toggle} />
+          <Toggle label={title} checked={on} disabled={busy} onChange={toggle} />
         </div>
         {msg && (
           <div className="mt-4">

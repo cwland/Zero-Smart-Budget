@@ -173,7 +173,7 @@ export default function NotificationSettings() {
             `Off: nothing is sent. Turn this on to get the ones switched on below at ${data.to}.`
           )
         }
-        toggle={data && <Toggle label="Email notifications" checked={on} disabled={busy || !ready} onChange={(enabled) => update({ enabled })} />}
+        toggle={<Toggle label="Email notifications" checked={data ? on : null} disabled={busy || !ready} onChange={(enabled) => update({ enabled })} />}
       >
         {msg && (
           <p role={msg.ok ? "status" : "alert"} className={`text-sm ${msg.ok ? "text-success" : "text-error"}`}>
