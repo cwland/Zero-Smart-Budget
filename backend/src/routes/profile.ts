@@ -3,6 +3,7 @@ import { z } from "zod";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
+import { publicUser } from "./auth.js";
 
 function requireLogin(req: FastifyRequest): number {
   if (req.auth?.method !== "token") throw new HttpError(403, "Log in to do this");
@@ -46,6 +47,7 @@ export default async function profileRoutes(app: FastifyInstance) {
       })
       .where(eq(users.id, userId))
       .returning();
-    return { id: user.id, username: user.username, displayName: user.displayName, email: user.email, seenVersion: user.seenVersion, theme: user.theme };
+    // The whole signed-in user (role included), so the app doesn't lose Shared access after a save
+    return publicUser(user);
   });
 }

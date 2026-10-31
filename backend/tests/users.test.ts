@@ -40,6 +40,11 @@ describe("shared access", () => {
     expect((await t.api("GET", "/api/auth/me")).body.user).toMatchObject({ username: "cory", role: "owner", tossAnimation: true });
   });
 
+  it("saving the profile keeps the role (Shared access doesn't disappear after a save)", async () => {
+    expect((await t.api("PATCH", "/api/profile", { displayName: "Cory L" })).body).toMatchObject({ displayName: "Cory L", role: "owner", tossAnimation: true });
+    expect((await t.api("PATCH", "/api/profile", { theme: "midnight-coral" })).body).toMatchObject({ theme: "midnight-coral", role: "owner" });
+  });
+
   it("invite: emailed (branded, with a link), shown in the list, and the link signs them up once", async () => {
     const inv = await t.api("POST", "/api/users/invites", { name: "Jess", email: "jess@example.com", role: "user" });
     expect(inv.body).toMatchObject({ emailed: true, invite: { name: "Jess", email: "jess@example.com", role: "user", expired: false } });
