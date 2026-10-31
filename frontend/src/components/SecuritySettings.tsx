@@ -1,7 +1,6 @@
 import { KeyRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api } from "../api";
-import { Popup } from "./Popup";
 import { useSession } from "../session";
 import { addPasskey, passkeyError, passkeysAvailable } from "../passkeys";
 
@@ -476,17 +475,25 @@ export function Devices() {
   );
 }
 
-// Every sign-in attempt, good or bad
+// Every sign-in attempt, good or bad (last 60 days), in its own scrolling box filtered to all or failed
 export function SignInHistory() {
   const [events, setEvents] = useState<SignIn[] | null>(null);
   const [error, setError] = useState("");
-  const [showAll, setShowAll] = useState(false);
+  const [filter, setFilter] = useState<"all" | "failed">("all");
+  const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     api<SignIn[]>("GET", "/api/auth/logins")
       .then(setEvents)
       .catch((e) => setError((e as Error).message));
   }, []);
-  const failed = (events ?? []).filter((e) => !e.success && Date.now() - new Date(e.at).getTime() < 7 * 24 * 3600 * 1000).length;
+  // A new filter starts back at the newest sign-in
+  useEffect(() => {
+    boxRef.current?.scrollTo({ top: 0 });
+  }, [filter]);
+  const all = events ?? [];
+  const failedAll = all.filter((e) => !e.success);
+  const failed = failedAll.filter((e) => Date.now() - new Date(e.at).getTime() < 7 * 24 * 3600 * 1000).length;
+  const shown = filter === "failed" ? failedAll : all;
   return (
     <Card title="Sign-in history">
       <p className="text-subtle">
@@ -497,63 +504,52 @@ export function SignInHistory() {
       {events && events.length === 0 && <p className="mt-3 text-subtle">Nothing yet.</p>}
       {events && events.length > 0 && (
         <>
-          <div className="mt-3 overflow-x-auto">
-            <SignInTable events={events.slice(0, 10)} />
-          </div>
-          {events.length > 10 && (
-            <div className="mt-3 flex justify-center">
-              <button type="button" onClick={() => setShowAll(true)} className="rounded px-4 py-2 text-sm font-semibold text-link hover:bg-pressed">
-                View all ({events.length})
+          <div role="radiogroup" aria-label="Show" className="mt-4 inline-flex rounded-lg bg-page p-1">
+            {(
+              [
+                ["all", "All", all.length],
+                ["failed", "Failed", failedAll.length],
+              ] as const
+            ).map(([id, label, n]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={filter === id}
+                onClick={() => setFilter(id)}
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold ${filter === id ? "bg-white text-primary shadow-sm" : "text-subtle hover:text-ink"}`}
+              >
+                {label} <span className="font-normal text-muted">{n}</span>
               </button>
+            ))}
+          </div>
+          {shown.length ? (
+            // Scrolls on its own (about a screen's worth); the column titles stay at the top
+            <div
+              ref={boxRef}
+              tabIndex={0}
+              role="region"
+              aria-label="Sign-in history (scrolls)"
+              className="mt-3 max-h-[max(18rem,min(32rem,60dvh))] overflow-auto overscroll-contain rounded-lg border border-line px-3 outline-none focus-visible:ring-2 focus-visible:ring-action/30"
+            >
+              <SignInTable events={shown} />
             </div>
+          ) : (
+            <p className="mt-3 py-6 text-center text-subtle">No failed sign-ins in the last 60 days.</p>
           )}
+          <p className="mt-2 text-xs text-muted">
+            {shown.length} {shown.length === 1 ? "sign-in" : "sign-ins"}
+          </p>
         </>
       )}
-      {showAll && events && <SignInLog events={events} onClose={() => setShowAll(false)} />}
     </Card>
-  );
-}
-
-// The whole log (last 60 days) in a popup, filtered to all or failed attempts
-function SignInLog({ events, onClose }: { events: SignIn[]; onClose: () => void }) {
-  const [filter, setFilter] = useState<"all" | "failed">("all");
-  const failedCount = events.filter((e) => !e.success).length;
-  const shown = filter === "failed" ? events.filter((e) => !e.success) : events;
-  return (
-    <Popup title="Sign-in history" wide tall onClose={onClose}>
-      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-white px-6 py-3">
-        <div role="radiogroup" aria-label="Show" className="inline-flex rounded-lg bg-page p-1">
-          {(
-            [
-              ["all", `All (${events.length})`],
-              ["failed", `Failed (${failedCount})`],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={filter === id}
-              onClick={() => setFilter(id)}
-              className={`rounded-md px-3 py-1.5 text-sm font-semibold ${filter === id ? "bg-white text-primary shadow-sm" : "text-subtle hover:text-ink"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="text-sm text-subtle">Last 60 days</span>
-      </div>
-      <div className="overflow-x-auto px-6 pb-6">
-        {shown.length ? <SignInTable events={shown} /> : <p className="py-6 text-center text-subtle">No failed sign-ins in the last 60 days.</p>}
-      </div>
-    </Popup>
   );
 }
 
 function SignInTable({ events }: { events: SignIn[] }) {
   return (
     <table className="w-full min-w-[36rem] text-left text-sm">
-      <thead className="text-xs uppercase tracking-wide text-subtle">
+      <thead className="sticky top-0 z-10 bg-white text-xs [&_th]:shadow-[inset_0_-1px_0_var(--color-line)] uppercase tracking-wide text-subtle">
         <tr className="border-b border-line">
           <th className="py-2 pr-3 font-semibold">When</th>
           <th className="py-2 pr-3 font-semibold">Result</th>
