@@ -62,8 +62,13 @@ export default function LogsSettings() {
 
   // A new filter or a refresh starts back at the newest entry
   const boxRef = useRef<HTMLDivElement>(null);
+  // ...and the box never gets shorter when you change filters, so the page doesn't jump
+  const [lockedHeight, setLockedHeight] = useState<number>();
   useEffect(() => {
-    boxRef.current?.scrollTo({ top: 0 });
+    const el = boxRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0 });
+    setLockedHeight((h) => Math.max(h ?? 0, el.offsetHeight));
   }, [filter, problemsOnly, rows]);
 
   // The box fills the rest of the window (above the phone's bottom menu), at least 18rem tall
@@ -119,9 +124,9 @@ export default function LogsSettings() {
       </div>
 
       {error && <p className="mt-4 text-error">{error}</p>}
-      {rows && visible.length === 0 && <p className="mt-6 py-6 text-center text-subtle">Nothing logged{filter !== "all" ? " of this type" : ""}{problemsOnly ? " that went wrong" : ""} in the last 30 days.</p>}
+      {rows && all.length === 0 && <p className="mt-6 py-6 text-center text-subtle">Nothing logged in the last 30 days.</p>}
 
-      {visible.length > 0 && (
+      {all.length > 0 && (
         // The entries scroll in their own box (about a screen tall) so the filters stay put.
         // Older entries load as you near the bottom.
         <div
@@ -133,9 +138,10 @@ export default function LogsSettings() {
             const el = e.currentTarget;
             if (shown < visible.length && el.scrollTop + el.clientHeight > el.scrollHeight - 300) setShown((n) => n + PAGE);
           }}
-          style={{ maxHeight: boxHeight ?? 288 }}
+          style={{ maxHeight: boxHeight ?? 288, minHeight: Math.min(lockedHeight ?? 0, boxHeight ?? 288) }}
           className="mt-4 overflow-y-auto overscroll-contain rounded-lg border border-line px-3 outline-none focus-visible:ring-2 focus-visible:ring-action/30"
         >
+          {visible.length === 0 && <p className="py-6 text-center text-subtle">Nothing logged{filter !== "all" ? " of this type" : ""}{problemsOnly ? " that went wrong" : ""} in the last 30 days.</p>}
           <ul aria-label="Log entries" className="divide-y divide-line">
             {visible.slice(0, shown).map((r) => (
               <li key={r.id} className="flex gap-3 py-2.5 text-sm">
@@ -162,7 +168,7 @@ export default function LogsSettings() {
           {visible.length > shown && <p className="py-3 text-center text-xs text-muted">Scroll for older entries…</p>}
         </div>
       )}
-      {visible.length > 0 && <p className="mt-2 text-xs text-muted">{visible.length} {visible.length === 1 ? "entry" : "entries"}</p>}
+      {all.length > 0 && <p className="mt-2 text-xs text-muted">{visible.length} {visible.length === 1 ? "entry" : "entries"}</p>}
     </Card>
   );
 }

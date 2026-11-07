@@ -77,7 +77,7 @@ export default function AppShell() {
           ))}
         </div>
         <div className="mt-auto flex flex-col items-center gap-2">
-          {canManage(user) && <DevResetButton />} {/* TEMPORARY testing tool */}
+          {import.meta.env.DEV && canManage(user) && <DevResetButton />} {/* TEMPORARY testing tool (development only) */}
           <AccountMenu variant="rail" />
           <button type="button" onClick={showWhatsNew} className="rounded px-1 text-[10px] leading-none text-muted hover:text-link hover:underline" title="What's new in this version">
             {versionLabel}

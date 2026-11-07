@@ -11,6 +11,7 @@ import { autoCloseOldMonths } from "./lib/monthClose.js";
 import { runNotifications } from "./lib/notifications.js";
 import { logEvent } from "./lib/appLog.js";
 import { emergencyResetAuth } from "./lib/oauth.js";
+import { serveWebApp } from "./lib/webApp.js";
 
 const { db } = createDb(process.env.DATABASE_URL!);
 await runMigrations(db);
@@ -27,6 +28,7 @@ const app = buildApp({
   backupKeep,
   emailEnv: emailConfigFromEnv(process.env),
 });
+await serveWebApp(app, process.env.WEB_DIR); // the Docker image: pages and API on one port
 
 // Daily automatic backup (set BACKUP_ENABLED=false to turn off)
 if (process.env.BACKUP_ENABLED !== "false") {

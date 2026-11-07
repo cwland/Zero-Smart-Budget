@@ -96,7 +96,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/oauth/finish",
 ]);
 
-export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, oauthFetch, emailEnv = null, mailTransport, plaidFetch, aiFetch, updateFetch, updateRepo = process.env.UPDATE_REPO || "cwland/Corys_Dollar", githubToken = process.env.GITHUB_TOKEN || null, now = () => new Date() }: AppOptions): FastifyInstance {
+export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBackupDir, backupKeep = 30, backupKey = process.env.BACKUP_KEY, oauthFetch, emailEnv = null, mailTransport, plaidFetch, aiFetch, updateFetch, updateRepo = process.env.UPDATE_REPO || "cwland/Zero-Smart-Budget", githubToken = process.env.GITHUB_TOKEN || null, now = () => new Date() }: AppOptions): FastifyInstance {
   if (!jwtSecret || jwtSecret.length < 16) {
     throw new Error("JWT_SECRET must be set to at least 16 characters");
   }
@@ -209,7 +209,8 @@ export function buildApp({ db, jwtSecret, logger = false, backupDir = defaultBac
   app.register(settingsRoutes);
   app.register(plaidRoutes);
   app.register(accountRoutes);
-  app.register(devResetRoutes); // TEMPORARY testing tool
+  // TEMPORARY testing tool: never in the production image (NODE_ENV=production)
+  if (process.env.NODE_ENV !== "production") app.register(devResetRoutes);
 
   return app;
 }

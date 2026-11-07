@@ -144,7 +144,22 @@ With Docker, `./backups` is mounted into the API container so backups survive up
 API: `GET /api/export`, `GET /api/export/transactions.csv?from=&to=`, `GET /api/export/budget.csv?year=&month=`,
 `GET/POST /api/backups`, `GET /api/backups/<name>`, `POST /api/import?confirm=replace`.
 
-## Run with Docker (later)
+## Run on a server (Docker)
+
+Every push to `main` builds the production image on GitHub: `ghcr.io/cwland/zero-smart-budget:latest`
+(see `Dockerfile` and `.github/workflows/docker.yml`). One container serves the pages and the API on
+port 4000; it needs Postgres next to it. Database migrations run when it starts.
+
+The home server install lives in `~/docker/smartzerobudget` on the Docker host and is set up and
+updated by the n8n workflow **Zero Smart Budget - Deploy / Update** (app on port 4006, its own
+Postgres, `.env` with generated secrets, backups in `./backups`). Run the workflow again to update.
+
+Tools inside the container: `docker exec -it smartzerobudget node dist/cli/reset-password.js [username]`
+and `docker exec -it smartzerobudget node dist/cli/auth-reset.js`.
+
+The development reset button and its route are left out of the production image.
+
+For development in Docker (live reload), `docker-compose.yml` still works:
 
 ```
 cp .env.example .env
@@ -158,7 +173,7 @@ When a newer release is published on GitHub, a slim bar shows across the top of 
 Dismiss hides the bar until the next version. The server checks after you sign in (at most every
 10 minutes) and every 3 hours (`UPDATE_CHECK_HOURS`). Turn it off, or Check now, in Settings › Data › Updates.
 
-- Releases come from `UPDATE_REPO` (default `cwland/Corys_Dollar`). Publish a GitHub release with a tag like `v0.3.0` (and bump `version` in package.json to match) to announce a version. The release notes are what See What's New shows.
+- Releases come from `UPDATE_REPO` (default `cwland/Zero-Smart-Budget`). Publish a GitHub release with a tag like `v0.3.0` (and bump `version` in package.json to match) to announce a version. The release notes are what See What's New shows.
 - While the repository is private, set `GITHUB_TOKEN` in `.env`: a fine-grained token for this repository only, with Contents: Read-only.
 - Problems (GitHub unreachable, token refused) show in Settings › Data › Updates and in Settings › Logs.
 

@@ -486,10 +486,14 @@ export function SignInHistory() {
       .then(setEvents)
       .catch((e) => setError((e as Error).message));
   }, []);
-  // A new filter starts back at the newest sign-in
+  // A new filter starts back at the newest sign-in, and the box never gets shorter
+  const [lockedHeight, setLockedHeight] = useState<number>();
   useEffect(() => {
-    boxRef.current?.scrollTo({ top: 0 });
-  }, [filter]);
+    const el = boxRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0 });
+    setLockedHeight((h) => Math.max(h ?? 0, el.offsetHeight));
+  }, [filter, events]);
   const all = events ?? [];
   const failedAll = all.filter((e) => !e.success);
   const failed = failedAll.filter((e) => Date.now() - new Date(e.at).getTime() < 7 * 24 * 3600 * 1000).length;
@@ -523,20 +527,18 @@ export function SignInHistory() {
               </button>
             ))}
           </div>
-          {shown.length ? (
-            // Scrolls on its own (about a screen's worth); the column titles stay at the top
-            <div
-              ref={boxRef}
-              tabIndex={0}
-              role="region"
-              aria-label="Sign-in history (scrolls)"
-              className="mt-3 max-h-[max(18rem,min(32rem,60dvh))] overflow-auto overscroll-contain rounded-lg border border-line px-3 outline-none focus-visible:ring-2 focus-visible:ring-action/30"
-            >
-              <SignInTable events={shown} />
-            </div>
-          ) : (
-            <p className="mt-3 py-6 text-center text-subtle">No failed sign-ins in the last 60 days.</p>
-          )}
+          {/* Scrolls on its own (about a screen's worth); the column titles stay at the top. It keeps
+              its tallest height when you switch filters, so the page doesn't jump. */}
+          <div
+            ref={boxRef}
+            tabIndex={0}
+            role="region"
+            aria-label="Sign-in history (scrolls)"
+            style={{ minHeight: lockedHeight }}
+            className="mt-3 max-h-[max(18rem,min(32rem,60dvh))] overflow-auto overscroll-contain rounded-lg border border-line px-3 outline-none focus-visible:ring-2 focus-visible:ring-action/30"
+          >
+            {shown.length ? <SignInTable events={shown} /> : <p className="py-6 text-center text-subtle">No failed sign-ins in the last 60 days.</p>}
+          </div>
           <p className="mt-2 text-xs text-muted">
             {shown.length} {shown.length === 1 ? "sign-in" : "sign-ins"}
           </p>

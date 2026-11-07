@@ -1,0 +1,37 @@
+# Builds the production image for every push to main and publishes it as
+# ghcr.io/cwland/zero-smart-budget (tags: latest, the app version, and the commit).
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: App version
+        id: v
+        run: echo "version=$(node -p "require('./backend/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/cwland/zero-smart-budget:latest
+            ghcr.io/cwland/zero-smart-budget:${{ steps.v.outputs.version }}
+            ghcr.io/cwland/zero-smart-budget:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
