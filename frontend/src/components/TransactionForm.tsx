@@ -94,6 +94,8 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
   );
   const [merchantOptions, setMerchantOptions] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [itemQuery, setItemQuery] = useState(""); // typing in the item list narrows it
+  const listRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -180,6 +182,21 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
     return type === "income" ? [{ label: "Income", items: budget.income.map((i) => ({ value: `i:${i.id}`, name: i.name })) }, ...list] : list;
   }, [budget, type]);
   const nameOf = (t: Target) => groups.flatMap((g) => g.items).find((i) => i.value === t)?.name ?? "";
+  // Every word typed has to match the item or its group ("gro" finds Groceries; "housing" lists that group)
+  const shownGroups = useMemo(() => {
+    const words = itemQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return groups;
+    return groups
+      .map((g) => ({ ...g, items: g.items.filter((i) => words.every((w) => `${i.name} ${g.label}`.toLowerCase().includes(w))) }))
+      .filter((g) => g.items.length);
+  }, [groups, itemQuery]);
+  const topMatch = itemQuery.trim() ? shownGroups[0]?.items[0]?.value : undefined;
+  useEffect(() => {
+    if (!pickerOpen) return setItemQuery("");
+    // The list opens below the button: scroll the form so all of it shows, not just the search box
+    const frame = requestAnimationFrame(() => listRef.current?.parentElement?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    return () => cancelAnimationFrame(frame);
+  }, [pickerOpen]);
   const isPicked = (t: Target) => picks.some((p) => p.target === t);
 
   function togglePick(t: Target) {
@@ -363,23 +380,67 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
                 {pickerOpen ? <ChevronUp className="size-5 shrink-0 text-subtle" /> : <ChevronDown className="size-5 shrink-0 text-subtle" />}
               </button>
               {pickerOpen && (
-                <div role="listbox" aria-label="Budget items" aria-multiselectable="true" className="absolute inset-x-0 z-10 mt-1 max-h-72 overflow-y-auto overscroll-contain rounded-lg border border-line bg-white py-1 shadow-[0_8px_24px_rgba(31,36,38,0.18)]">
-                  {groups.map((g) => (
-                    <div key={g.label}>
-                      <div className="sticky top-0 bg-page px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">
-                        {g.label}
-                        {type === "income" && g.label !== "Income" && <span className="font-normal normal-case"> · money back</span>}
+                <div className="mt-1 flex flex-col overflow-hidden rounded-lg border border-line bg-white shadow-[0_8px_24px_rgba(31,36,38,0.18)]">
+                  <div className="border-b border-line p-2">
+                    <input
+                      type="search"
+                      autoFocus
+                      aria-label="Search budget items"
+                      placeholder="Type to search…"
+                      value={itemQuery}
+                      onChange={(e) => setItemQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape" && itemQuery) {
+                          // Esc clears the search first; a second Esc closes the list
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setItemQuery("");
+                        } else if (e.key === "Enter") {
+                          // Enter picks the top match. With one item (or none) picked it replaces it and the list
+                          // closes; while splitting it adds the match to the split.
+                          e.preventDefault();
+                          if (!topMatch) return;
+                          if (picks.length <= 1) {
+                            setTouched(true);
+                            setAutoNote(null);
+                            setPicks([{ key: nextKey++, target: topMatch, amount: "" }]);
+                            setPickerOpen(false);
+                          } else {
+                            if (!isPicked(topMatch)) togglePick(topMatch);
+                            setItemQuery("");
+                          }
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          listRef.current?.querySelector<HTMLInputElement>("input[type=checkbox]")?.focus();
+                        }
+                      }}
+                      className="w-full rounded-md border border-muted/50 bg-white px-3 py-2 text-base outline-none focus:border-action focus:ring-2 focus:ring-action/15"
+                    />
+                  </div>
+                  <div ref={listRef} role="listbox" aria-label="Budget items" aria-multiselectable="true" className="max-h-72 overflow-y-auto overscroll-contain py-1">
+                    {shownGroups.map((g) => (
+                      <div key={g.label}>
+                        <div className="sticky top-0 bg-page px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">
+                          {g.label}
+                          {type === "income" && g.label !== "Income" && <span className="font-normal normal-case"> · money back</span>}
+                        </div>
+                        {g.items.map((i) => (
+                          <label
+                            key={g.label + i.value}
+                            role="option"
+                            aria-selected={isPicked(i.value)}
+                            className={`flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-pressed ${topMatch === i.value && g === shownGroups[0] ? "bg-pressed" : ""}`}
+                          >
+                            <input type="checkbox" checked={isPicked(i.value)} onChange={() => togglePick(i.value)} className="size-4 accent-action" />
+                            <span className="min-w-0 flex-1 truncate">{i.name}</span>
+                          </label>
+                        ))}
+                        {g.items.length === 0 && <p className="px-4 py-2 text-sm italic text-subtle">No items</p>}
                       </div>
-                      {g.items.map((i) => (
-                        <label key={g.label + i.value} role="option" aria-selected={isPicked(i.value)} className="flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-pressed">
-                          <input type="checkbox" checked={isPicked(i.value)} onChange={() => togglePick(i.value)} className="size-4 accent-action" />
-                          <span className="min-w-0 flex-1 truncate">{i.name}</span>
-                        </label>
-                      ))}
-                      {g.items.length === 0 && <p className="px-4 py-2 text-sm italic text-subtle">No items</p>}
-                    </div>
-                  ))}
-                  <div className="sticky bottom-0 flex justify-end border-t border-line bg-white px-3 py-2">
+                    ))}
+                    {shownGroups.length === 0 && <p className="px-4 py-4 text-center text-sm text-subtle">No budget items match “{itemQuery.trim()}”</p>}
+                  </div>
+                  <div className="flex justify-end border-t border-line bg-white px-3 py-2">
                     <button type="button" onClick={() => setPickerOpen(false)} className="rounded px-3 py-1 text-sm font-semibold text-action hover:bg-pressed">
                       Done
                     </button>
