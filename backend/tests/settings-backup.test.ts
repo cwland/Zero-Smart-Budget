@@ -18,7 +18,7 @@ beforeEach(async () => {
   await t.login();
 });
 
-const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "cory@gmail.com", password: "app-password-123", fromName: "Zero Smart Budget", fromAddress: "cory@gmail.com", appUrl: "https://budget.example.com" };
+const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "sam@example.com", password: "app-password-123", fromName: "Zero Smart Budget", fromAddress: "sam@example.com", appUrl: "https://budget.example.com" };
 const ai = { maxPerRun: 50, services: [{ name: "Cloud", provider: "openai", model: "gpt-4o-mini", apiKey: "sk-secret-123" }, { name: "Home AI", provider: "local", model: "qwen", baseUrl: "http://10.0.0.5:11434/v1", apiKey: "" }] };
 const setUp = async () => {
   await t.api("PUT", "/api/settings/email", gmail);
@@ -101,7 +101,7 @@ describe("settings in backups", () => {
     const file = (await other.api("GET", "/api/export")).body;
     await other.close();
     // (both servers share the test database: sign in again here)
-    t.setToken((await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" })).body.token);
+    t.setToken((await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" })).body.token);
 
     const restore = (key?: string) => t.app.inject({ method: "POST", url: "/api/import?confirm=replace", payload: file, headers: { authorization: `Bearer ${t.getToken()}`, ...(key ? { "x-backup-key": key } : {}) } }).then((r) => ({ status: r.statusCode, body: r.json() }));
     // Wrong key: refused before anything changes

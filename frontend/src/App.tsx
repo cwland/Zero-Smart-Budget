@@ -77,10 +77,10 @@ export default function App() {
       setResetToken(resetTokenFromHash());
       setInviteToken(inviteTokenFromHash());
     };
-    window.addEventListener("corysdollar:logout", onLogout);
+    window.addEventListener("zerosmartbudget:logout", onLogout);
     window.addEventListener("hashchange", onHash);
     return () => {
-      window.removeEventListener("corysdollar:logout", onLogout);
+      window.removeEventListener("zerosmartbudget:logout", onLogout);
       window.removeEventListener("hashchange", onHash);
     };
   }, [check]);

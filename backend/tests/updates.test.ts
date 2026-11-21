@@ -11,7 +11,7 @@ beforeEach(async () => {
 
 const release = (tag: string, body = "- New thing\n- Fixed thing") => () => ({
   status: 200,
-  json: { tag_name: tag, name: `Version ${tag.replace("v", "")}`, body, html_url: `https://github.com/cwland/Corys_Dollar/releases/tag/${tag}`, published_at: "2026-11-01T12:00:00Z" },
+  json: { tag_name: tag, name: `Version ${tag.replace("v", "")}`, body, html_url: `https://github.com/cwland/Zero-Smart-Budget/releases/tag/${tag}`, published_at: "2026-11-01T12:00:00Z" },
 });
 const get = async (q = "?check=1") => (await t.api("GET", `/api/updates${q}`)).body;
 
@@ -19,8 +19,8 @@ describe("release watcher", () => {
   it("finds the latest release on GitHub", async () => {
     t.github.respond = release("v0.3.0");
     const r = await get();
-    expect(r).toMatchObject({ enabled: true, error: null, dismissed: null, repo: "cwland/Corys_Dollar", latest: { version: "0.3.0", name: "Version 0.3.0", notes: "- New thing\n- Fixed thing" } });
-    expect(t.github.calls[0].url).toBe("https://api.github.com/repos/cwland/Corys_Dollar/releases/latest");
+    expect(r).toMatchObject({ enabled: true, error: null, dismissed: null, repo: "cwland/Zero-Smart-Budget", latest: { version: "0.3.0", name: "Version 0.3.0", notes: "- New thing\n- Fixed thing" } });
+    expect(t.github.calls[0].url).toBe("https://api.github.com/repos/cwland/Zero-Smart-Budget/releases/latest");
     expect(t.github.calls[0].headers.authorization).toBeUndefined();
     const logs = (await t.api("GET", "/api/logs?category=schedule")).body;
     expect(logs.map((l: any) => l.event)).toEqual(["Latest release: version 0.3.0"]);

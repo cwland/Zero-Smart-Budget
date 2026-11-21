@@ -42,6 +42,7 @@ describe("Plaid settings", () => {
     const res = await t.api("POST", "/api/settings/plaid/test");
     expect(res.body).toEqual({ ok: true, message: "Plaid accepted your Sandbox keys." });
     expect(t.plaid.calls[0].url).toBe("https://sandbox.plaid.com/link/token/create");
+    expect(t.plaid.calls[0].body.user).toEqual({ client_user_id: "key-check" });
     expect(t.plaid.calls[0].body).toMatchObject({ client_id: "client-123", secret: "sand-secret-abc", products: ["transactions"], country_codes: ["US"] });
 
     await t.api("PUT", "/api/settings/plaid", { clientId: "client-123", env: "production" });

@@ -37,11 +37,11 @@ async function as<T>(token: string, fn: () => Promise<T>) {
 
 describe("shared access", () => {
   it("the account that set up the server is the owner", async () => {
-    expect((await t.api("GET", "/api/auth/me")).body.user).toMatchObject({ username: "cory", role: "owner", tossAnimation: true });
+    expect((await t.api("GET", "/api/auth/me")).body.user).toMatchObject({ username: "sam", role: "owner", tossAnimation: true });
   });
 
   it("saving the profile keeps the role (Shared access doesn't disappear after a save)", async () => {
-    expect((await t.api("PATCH", "/api/profile", { displayName: "Cory L" })).body).toMatchObject({ displayName: "Cory L", role: "owner", tossAnimation: true });
+    expect((await t.api("PATCH", "/api/profile", { displayName: "Sam R" })).body).toMatchObject({ displayName: "Sam R", role: "owner", tossAnimation: true });
     expect((await t.api("PATCH", "/api/profile", { theme: "midnight-coral" })).body).toMatchObject({ theme: "midnight-coral", role: "owner" });
   });
 
@@ -51,18 +51,18 @@ describe("shared access", () => {
     expect(inv.body.link).toMatch(/^http:\/\/budget\.test\/#\/invite\?token=/);
     const mail = t.sent.at(-1)!;
     expect(mail.to).toBe("jess@example.com");
-    expect(mail.subject).toBe("cory shared their budget with you");
+    expect(mail.subject).toBe("sam shared their budget with you");
     expect(mail.html).toContain("Set up my sign-in");
     expect(mail.html).toContain(inv.body.link);
 
     const list = (await t.api("GET", "/api/users")).body;
-    expect(list.people.map((p: any) => [p.username, p.role])).toEqual([["cory", "owner"]]);
+    expect(list.people.map((p: any) => [p.username, p.role])).toEqual([["sam", "owner"]]);
     expect(list.invites).toHaveLength(1);
 
     t.setToken("");
     const token = tokenFrom(inv.body.link);
-    expect((await t.api("GET", `/api/auth/invite?token=${token}`)).body).toEqual({ name: "Jess", email: "jess@example.com", role: "user", from: "cory" });
-    expect((await t.api("POST", "/api/auth/invite/accept", { token, username: "Cory", password: "password456" })).status).toBe(409); // username taken
+    expect((await t.api("GET", `/api/auth/invite?token=${token}`)).body).toEqual({ name: "Jess", email: "jess@example.com", role: "user", from: "sam" });
+    expect((await t.api("POST", "/api/auth/invite/accept", { token, username: "Sam", password: "password456" })).status).toBe(409); // username taken
     const joined = await t.api("POST", "/api/auth/invite/accept", { token, username: "jess", password: "password456" });
     expect(joined.body.user).toMatchObject({ username: "jess", displayName: "Jess", email: "jess@example.com", role: "user" });
     expect((await t.api("POST", "/api/auth/invite/accept", { token, username: "jess2", password: "password456" })).status).toBe(400); // used
@@ -72,7 +72,7 @@ describe("shared access", () => {
   });
 
   it("invites: one per address, not for someone who has access, renew makes a new link, cancel, and they expire", async () => {
-    expect((await t.api("POST", "/api/users/invites", { email: "cory@example.com", role: "user" })).status).toBe(409);
+    expect((await t.api("POST", "/api/users/invites", { email: "sam@example.com", role: "user" })).status).toBe(409);
     expect((await t.api("POST", "/api/users/invites", { email: "nope", role: "user" })).status).toBe(400);
     expect((await t.api("POST", "/api/users/invites", { email: "a@example.com", role: "owner" })).status).toBe(400);
     const first = (await t.api("POST", "/api/users/invites", { email: "a@example.com", role: "user" })).body;
@@ -182,7 +182,7 @@ describe("shared access", () => {
     await t.api("POST", "/api/months/2026/10", { mode: "blank" });
     const nov28 = new Date(2026, 9, 29, 9); // Oct 29, 3 days before November
 
-    expect((await runNotifications(t.db, t.app.mail, nov28, t.app.ai)).sent.map((s) => s.to)).toEqual(["cory@example.com"]);
+    expect((await runNotifications(t.db, t.app.mail, nov28, t.app.ai)).sent.map((s) => s.to)).toEqual(["sam@example.com"]);
     await as(user, () => t.api("PUT", "/api/settings/notifications", { enabled: true, nudge: false, monthlySummary: false, monthlyInsights: false, bankAttention: false, overBudget: false, weekly: false, goalMilestones: false, largePurchase: false, newSignIn: false, monthCloseReminder: false, nextMonth: true }));
     // Jess gets her own copy; the owner's isn't sent again
     const r = await runNotifications(t.db, t.app.mail, nov28, t.app.ai);
@@ -191,7 +191,7 @@ describe("shared access", () => {
     // Each send is its own line in Logs
     const lines: string[] = (await t.api("GET", "/api/logs?category=email")).body.map((l: any) => l.event);
     expect(lines.filter((e) => e.includes("to jess@example.com") && !e.includes("shared their budget"))).toHaveLength(1);
-    expect(lines.filter((e) => e.includes("to cory@example.com"))).toHaveLength(1);
+    expect(lines.filter((e) => e.includes("to sam@example.com"))).toHaveLength(1);
   });
 
   it("a sample goes to the person who asked for it", async () => {
@@ -210,9 +210,9 @@ describe("shared access", () => {
     await t.api("POST", "/api/auth/login", { username: "jess", password: "password456" }, { "x-device-id": "jess-phone-1234567890" });
     await signInAlertSettled();
     expect(t.sent).toEqual([]); // Jess's notifications are off
-    await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" }, { "x-device-id": "cory-laptop-1234567890" });
+    await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" }, { "x-device-id": "sam-laptop-1234567890" });
     await signInAlertSettled();
-    expect(t.sent.map((m) => m.to)).toEqual(["cory@example.com"]);
+    expect(t.sent.map((m) => m.to)).toEqual(["sam@example.com"]);
   });
 
   it("the owner changes a role or removes someone; the owner can't be changed or removed", async () => {

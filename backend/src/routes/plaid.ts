@@ -94,7 +94,9 @@ export default async function plaidRoutes(app: FastifyInstance) {
   app.post("/api/plaid/link-token", async (req) => {
     requireLogin(req);
     const { itemId } = z.object({ itemId: z.number().int().positive().optional() }).parse(req.body ?? {});
-    const base = { client_name: "Zero Smart Budget", user: { client_user_id: "cory" }, country_codes: ["US"], language: "en" };
+    const userId = req.auth?.method === "token" ? req.auth.userId : 0;
+    // Plaid wants a stable id for the person, never their name or email
+    const base = { client_name: "Zero Smart Budget", user: { client_user_id: `user-${userId}` }, country_codes: ["US"], language: "en" };
     try {
       if (itemId) {
         const item = await loadItem(itemId);

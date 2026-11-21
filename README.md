@@ -12,8 +12,8 @@ One-time setup:
 ```
 brew install postgresql@16
 brew services start postgresql@16
-createdb corysdollar
-createdb corysdollar_test     # used by npm test
+createdb zerosmartbudget
+createdb zerosmartbudget_test     # used by npm test
 cp backend/.env.example backend/.env    # then put your Mac username in DATABASE_URL
 npm run setup
 ```
@@ -150,12 +150,13 @@ Every push to `main` builds the production image on GitHub: `ghcr.io/cwland/zero
 (see `Dockerfile` and `.github/workflows/docker.yml`). One container serves the pages and the API on
 port 4000; it needs Postgres next to it. Database migrations run when it starts.
 
-The home server install lives in `~/docker/smartzerobudget` on the Docker host and is set up and
-updated by the n8n workflow **Zero Smart Budget - Deploy / Update** (app on port 4006, its own
-Postgres, `.env` with generated secrets, backups in `./backups`). Run the workflow again to update.
+A typical install: a folder on the Docker host with the app container, its own Postgres, a `.env`
+with generated secrets (start from `.env.example`) and a `./backups` folder. To update, pull the
+new image and recreate the container.
 
-Tools inside the container: `docker exec -it smartzerobudget node dist/cli/reset-password.js [username]`
-and `docker exec -it smartzerobudget node dist/cli/auth-reset.js`.
+Tools inside the container (replace `<container>` with your app container's name):
+`docker exec -it <container> node dist/cli/reset-password.js [username]`
+and `docker exec -it <container> node dist/cli/auth-reset.js`.
 
 The development reset button and its route are left out of the production image.
 

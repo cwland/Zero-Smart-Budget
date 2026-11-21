@@ -14,7 +14,7 @@ describe("login", () => {
 
   it("first run requires setup, then setup is locked", async () => {
     expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ setupRequired: true });
-    const setup = await t.api("POST", "/api/auth/setup", { username: "cory", password: "password123", email: "cory@example.com" });
+    const setup = await t.api("POST", "/api/auth/setup", { username: "sam", password: "password123", email: "sam@example.com" });
     expect(setup.status).toBe(200);
     expect(setup.body.token).toBeTruthy();
     expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ setupRequired: false });
@@ -23,27 +23,27 @@ describe("login", () => {
   });
 
   it("rejects short passwords", async () => {
-    const res = await t.api("POST", "/api/auth/setup", { username: "cory", password: "short", email: "cory@example.com" });
+    const res = await t.api("POST", "/api/auth/setup", { username: "sam", password: "short", email: "sam@example.com" });
     expect(res.status).toBe(400);
   });
 
   it("logs in with the right password only", async () => {
     await t.login();
     t.setToken("");
-    expect((await t.api("POST", "/api/auth/login", { username: "cory", password: "wrong-pass" })).status).toBe(401);
-    const ok = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123", email: "cory@example.com" });
+    expect((await t.api("POST", "/api/auth/login", { username: "sam", password: "wrong-pass" })).status).toBe(401);
+    const ok = await t.api("POST", "/api/auth/login", { username: "sam", password: "password123", email: "sam@example.com" });
     expect(ok.status).toBe(200);
     t.setToken(ok.body.token);
-    expect((await t.api("GET", "/api/auth/me")).body.user.username).toBe("cory");
+    expect((await t.api("GET", "/api/auth/me")).body.user.username).toBe("sam");
   });
 
   it("ignores capitalization in the username (but not the password)", async () => {
     await t.login();
     t.setToken("");
-    for (const username of ["Cory", "CORY", "  cOrY "]) {
+    for (const username of ["Sam", "SAM", "  sAm "]) {
       expect((await t.api("POST", "/api/auth/login", { username, password: "password123" })).status).toBe(200);
     }
-    expect((await t.api("POST", "/api/auth/login", { username: "Cory", password: "PASSWORD123" })).status).toBe(401);
+    expect((await t.api("POST", "/api/auth/login", { username: "Sam", password: "PASSWORD123" })).status).toBe(401);
   });
 
   it("rejects a bad token", async () => {
@@ -56,9 +56,9 @@ describe("login", () => {
     await t.login();
     t.setToken("");
     for (let i = 0; i < 5; i++) {
-      await t.api("POST", "/api/auth/login", { username: "cory", password: "wrong-pass" });
+      await t.api("POST", "/api/auth/login", { username: "sam", password: "wrong-pass" });
     }
-    const res = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123", email: "cory@example.com" });
+    const res = await t.api("POST", "/api/auth/login", { username: "sam", password: "password123", email: "sam@example.com" });
     expect(res.status).toBe(429);
   });
 
@@ -67,16 +67,16 @@ describe("login", () => {
     const res = await t.api("POST", "/api/auth/password", { currentPassword: "password123", newPassword: "newpassword456" });
     expect(res.status).toBe(200);
     t.setToken("");
-    expect((await t.api("POST", "/api/auth/login", { username: "cory", password: "newpassword456" })).status).toBe(200);
+    expect((await t.api("POST", "/api/auth/login", { username: "sam", password: "newpassword456" })).status).toBe(200);
   });
 });
 
 describe("first-time setup", () => {
   it("needs an email address", async () => {
-    expect((await t.api("POST", "/api/auth/setup", { username: "cory", password: "password123" })).body.details[0].message).toBe("Enter your email address");
-    expect((await t.api("POST", "/api/auth/setup", { username: "cory", password: "password123", email: "nope" })).body.details[0].message).toMatch(/doesn't look like an email/);
-    const ok = await t.api("POST", "/api/auth/setup", { username: "cory", password: "password123", email: "cory@example.com" });
-    expect(ok.body.user).toMatchObject({ username: "cory", email: "cory@example.com" });
+    expect((await t.api("POST", "/api/auth/setup", { username: "sam", password: "password123" })).body.details[0].message).toBe("Enter your email address");
+    expect((await t.api("POST", "/api/auth/setup", { username: "sam", password: "password123", email: "nope" })).body.details[0].message).toMatch(/doesn't look like an email/);
+    const ok = await t.api("POST", "/api/auth/setup", { username: "sam", password: "password123", email: "sam@example.com" });
+    expect(ok.body.user).toMatchObject({ username: "sam", email: "sam@example.com" });
   });
 });
 
@@ -99,7 +99,7 @@ describe("API keys", () => {
     expect((await t.api("POST", "/api/keys", { name: "x" }, { "x-api-key": key })).status).toBe(403);
 
     await t.login().catch(() => {});
-    const login = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123", email: "cory@example.com" });
+    const login = await t.api("POST", "/api/auth/login", { username: "sam", password: "password123", email: "sam@example.com" });
     t.setToken(login.body.token);
     expect((await t.api("DELETE", `/api/keys/${created.body.id}`)).status).toBe(204);
     t.setToken("");

@@ -167,7 +167,7 @@ export class PlaidService {
       "/link/token/create",
       {
         client_name: "Zero Smart Budget",
-        user: { client_user_id: "cory" },
+        user: { client_user_id: "key-check" }, // only checks the keys; no real person behind it
         products: ["transactions"],
         country_codes: ["US"],
         language: "en",

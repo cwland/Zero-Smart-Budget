@@ -13,7 +13,7 @@ afterAll(async () => t.close());
 beforeEach(async () => {
   await t.reset();
   await t.login();
-  await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+  await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
 });
 
 const logs = async (q = "") => (await t.api("GET", `/api/logs${q}`)).body as any[];
@@ -27,9 +27,9 @@ describe("logs", () => {
     t.failNext.value = "535 Authentication failed";
     await t.api("POST", "/api/settings/notifications/test");
     expect((await logs("?category=email")).map((r) => [r.level, r.source, r.event])).toEqual([
-      ["error", "Notification test", `Couldn't send "[Test] Time to wrap up ${thisMonth}" to cory@example.com`],
-      ["info", "Wrap-Up reminder", 'Sent "Time to wrap up September 2026" to cory@example.com'],
-      ["info", "Notification test", `Sent "[Test] Time to wrap up ${thisMonth}" to cory@example.com`],
+      ["error", "Notification test", `Couldn't send "[Test] Time to wrap up ${thisMonth}" to sam@example.com`],
+      ["info", "Wrap-Up reminder", 'Sent "Time to wrap up September 2026" to sam@example.com'],
+      ["info", "Notification test", `Sent "[Test] Time to wrap up ${thisMonth}" to sam@example.com`],
     ]);
     expect((await logs("?category=email"))[0].detail).toMatch(/535 Authentication failed/);
     expect(JSON.stringify(await logs())).not.toMatch(/almost over|This is a test/);

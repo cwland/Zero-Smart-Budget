@@ -7,7 +7,7 @@ beforeAll(async () => (t = await setupTestApp()));
 beforeEach(async () => {
   await t.reset();
   await t.login();
-  await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+  await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
 });
 afterAll(async () => t.close());
 
@@ -16,10 +16,10 @@ const gmail = {
   host: "smtp.gmail.com",
   port: 587,
   security: "starttls",
-  username: "cory@gmail.com",
+  username: "sam@example.com",
   password: "app-password-123",
   fromName: "Zero Smart Budget",
-  fromAddress: "cory@gmail.com",
+  fromAddress: "sam@example.com",
   appUrl: "https://budget.example.com/",
 };
 
@@ -33,7 +33,7 @@ describe("email settings saved in the app", () => {
     expect((await t.api("PUT", "/api/settings/email", gmail)).status).toBe(200);
     const res = (await t.api("GET", "/api/settings/email")).body;
     expect(res.source).toBe("app");
-    expect(res.settings).toMatchObject({ host: "smtp.gmail.com", security: "starttls", username: "cory@gmail.com", passwordSet: true, appUrl: "https://budget.example.com" });
+    expect(res.settings).toMatchObject({ host: "smtp.gmail.com", security: "starttls", username: "sam@example.com", passwordSet: true, appUrl: "https://budget.example.com" });
     expect(JSON.stringify(res)).not.toContain("app-password-123");
 
     const row = await t.db.execute(sql`select value::text as v from app_settings where key = 'email'`);
@@ -46,8 +46,8 @@ describe("email settings saved in the app", () => {
     await t.api("PUT", "/api/settings/email", gmail);
     t.setToken("");
     await t.api("POST", "/api/auth/forgot", {});
-    expect(t.sent[0].config).toMatchObject({ host: "smtp.gmail.com", username: "cory@gmail.com", password: "app-password-123" });
-    expect(t.sent[0].from).toBe('"Zero Smart Budget" <cory@gmail.com>');
+    expect(t.sent[0].config).toMatchObject({ host: "smtp.gmail.com", username: "sam@example.com", password: "app-password-123" });
+    expect(t.sent[0].from).toBe('"Zero Smart Budget" <sam@example.com>');
     expect(t.sent[0].text).toContain("https://budget.example.com/#/reset?token=");
   });
 

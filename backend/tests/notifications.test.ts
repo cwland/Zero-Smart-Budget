@@ -10,7 +10,7 @@ afterAll(async () => t.close());
 beforeEach(async () => {
   await t.reset();
   await t.login();
-  await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+  await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
 });
 
 const run = (d: Date) => runNotifications(t.db, t.app.mail, d);
@@ -21,12 +21,12 @@ describe("notifications", () => {
     expect((await t.api("GET", "/api/settings/notifications")).body).toMatchObject({
       settings: { enabled: false, monthCloseReminder: true, nudge: true, nudgeDays: 7, monthlySummary: true, weekly: true, weeklyDay: 0, largePurchaseCents: 50000, nextMonthDays: 3 },
       emailReady: true,
-      to: "cory@example.com",
+      to: "sam@example.com",
     });
     expect((await run(new Date(2026, 9, 28))).skipped).toBe("notifications are off");
     await t.db.execute(sql`update users set email = null`);
     expect((await t.api("PUT", "/api/settings/notifications", { enabled: true })).body.error).toMatch(/Add your email address/);
-    await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+    await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
     expect((await t.api("PUT", "/api/settings/notifications", { enabled: true, nudgeDays: 5 })).body.settings).toMatchObject({ enabled: true, nudgeDays: 5 });
     expect((await t.api("PUT", "/api/settings/notifications", { nudgeDays: 0 })).status).toBe(400);
   });
@@ -34,7 +34,7 @@ describe("notifications", () => {
   it("sends a branded sample of each notification, marked [Test]", async () => {
     await t.api("PATCH", "/api/profile", { theme: "slate-rose" });
     const r = (await t.api("POST", "/api/settings/notifications/test", { kind: "month-close" })).body;
-    expect(r).toMatchObject({ ok: true, to: "cory@example.com" });
+    expect(r).toMatchObject({ ok: true, to: "sam@example.com" });
     const sent = t.sent.at(-1)!;
     expect(sent.subject).toMatch(/^\[Test\] Time to wrap up /);
     expect(sent.html).toContain("Test email.</strong> This is a sample of the Wrap-Up reminder");
@@ -66,7 +66,7 @@ describe("notifications", () => {
     await lastActive(new Date(2026, 8, 25));
     expect((await run(new Date(2026, 8, 20, 9))).sent).toEqual([]); // too early
     const r = await run(new Date(2026, 8, 26, 9)); // 4 days before the 30th
-    expect(r.sent).toEqual([{ key: "month-close:2026-09", kind: "month-close", to: "cory@example.com", subject: "Time to wrap up September 2026" }]);
+    expect(r.sent).toEqual([{ key: "month-close:2026-09", kind: "month-close", to: "sam@example.com", subject: "Time to wrap up September 2026" }]);
     expect(t.sent.at(-1)!.text).toMatch(/^Time to wrap up September 2026\n\nSeptember 2026 is almost over\. Wrap it up/);
     expect(t.sent.at(-1)!.html).toContain("Wrap up September 2026");
     expect((await run(new Date(2026, 8, 27, 9))).sent).toEqual([]); // only once

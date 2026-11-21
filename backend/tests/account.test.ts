@@ -14,11 +14,11 @@ const linkToken = (text: string) => /#\/reset\?token=([A-Za-z0-9_-]+)/.exec(text
 
 describe("profile", () => {
   it("updates username, display name and email", async () => {
-    const res = await t.api("PATCH", "/api/profile", { username: "cory2", displayName: "Cory L", email: "cory@example.com" });
-    expect(res.body).toMatchObject({ username: "cory2", displayName: "Cory L", email: "cory@example.com" });
-    expect((await t.api("GET", "/api/auth/me")).body.user).toMatchObject({ username: "cory2", email: "cory@example.com" });
+    const res = await t.api("PATCH", "/api/profile", { username: "sam2", displayName: "Sam R", email: "sam@example.com" });
+    expect(res.body).toMatchObject({ username: "sam2", displayName: "Sam R", email: "sam@example.com" });
+    expect((await t.api("GET", "/api/auth/me")).body.user).toMatchObject({ username: "sam2", email: "sam@example.com" });
     // empty clears the display name; the email can't be removed
-    expect((await t.api("PATCH", "/api/profile", { displayName: "" })).body).toMatchObject({ email: "cory@example.com", displayName: null });
+    expect((await t.api("PATCH", "/api/profile", { displayName: "" })).body).toMatchObject({ email: "sam@example.com", displayName: null });
     for (const email of ["", null, "  "]) expect((await t.api("PATCH", "/api/profile", { email })).body.details[0].message).toMatch(/email address is required/);
   });
 
@@ -40,7 +40,7 @@ describe("profile", () => {
 describe("sessions", () => {
   it("sign out everywhere invalidates all tokens; keepThisDevice returns a fresh one", async () => {
     const first = t.getToken();
-    const second = (await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" })).body.token;
+    const second = (await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" })).body.token;
 
     const res = await t.api("POST", "/api/auth/logout-all", { keepThisDevice: true });
     expect(res.body.token).toBeTruthy();
@@ -57,7 +57,7 @@ describe("sessions", () => {
   });
 
   it("changing the password signs out other devices but keeps this one", async () => {
-    const other = (await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" })).body.token;
+    const other = (await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" })).body.token;
     const res = await t.api("POST", "/api/auth/password", { currentPassword: "password123", newPassword: "newpassword456" });
     expect(res.body.token).toBeTruthy();
     t.setToken(other);
@@ -78,17 +78,17 @@ describe("password reset by email", () => {
   it("status says reset is available only once there's an email on the account", async () => {
     await t.db.execute(sql`update users set email = null`); // (accounts made before email was required)
     expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ emailEnabled: true, resetAvailable: false });
-    await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+    await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
     expect((await t.api("GET", "/api/auth/status")).body.resetAvailable).toBe(true);
   });
 
   it("full flow: request, email arrives, link resets password and signs out everywhere", async () => {
-    await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+    await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
     const oldToken = t.getToken();
     t.setToken("");
     expect((await t.api("POST", "/api/auth/forgot", {})).status).toBe(200);
     expect(t.sent).toHaveLength(1);
-    expect(t.sent[0].to).toBe("cory@example.com");
+    expect(t.sent[0].to).toBe("sam@example.com");
     expect(t.sent[0].text).toContain("http://budget.test/#/reset?token=");
     const token = linkToken(t.sent[0].text)!;
 
@@ -102,11 +102,11 @@ describe("password reset by email", () => {
     // Old sessions are out, new password works
     t.setToken(oldToken);
     expect((await t.api("GET", "/api/months")).status).toBe(401);
-    expect((await t.api("POST", "/api/auth/login", { username: "cory", password: "brandnew789" })).status).toBe(200);
+    expect((await t.api("POST", "/api/auth/login", { username: "sam", password: "brandnew789" })).status).toBe(200);
   });
 
   it("only the newest link works, and expired links fail", async () => {
-    await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+    await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
     t.setToken("");
     await t.api("POST", "/api/auth/forgot", {});
     const firstToken = linkToken(t.sent[0].text)!;
@@ -137,9 +137,9 @@ describe("password reset by email", () => {
   it("test email goes to the account address", async () => {
     await t.db.execute(sql`update users set email = null`);
     expect((await t.api("POST", "/api/settings/email/test", {})).status).toBe(400); // no address yet
-    await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+    await t.api("PATCH", "/api/profile", { email: "sam@example.com" });
     const res = await t.api("POST", "/api/settings/email/test", {});
-    expect(res.body).toMatchObject({ ok: true, to: "cory@example.com" });
+    expect(res.body).toMatchObject({ ok: true, to: "sam@example.com" });
     expect(t.sent[0].subject).toBe("[Test] Zero Smart Budget email is working");
     expect(t.sent[0].html).toContain("Test email.");
     expect(t.sent[0].attachments?.[0]).toMatchObject({ cid: "zsb-logo", contentType: "image/png" });
@@ -152,7 +152,7 @@ describe("without email", () => {
     try {
       await noMail.reset();
       await noMail.login();
-      await noMail.api("PATCH", "/api/profile", { email: "cory@example.com" });
+      await noMail.api("PATCH", "/api/profile", { email: "sam@example.com" });
       expect((await noMail.api("GET", "/api/auth/status")).body).toMatchObject({ emailEnabled: false, resetAvailable: false });
       noMail.setToken("");
       const res = await noMail.api("POST", "/api/auth/forgot", {});

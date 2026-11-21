@@ -41,9 +41,15 @@ beforeEach(async () => {
 });
 
 describe("connecting banks", () => {
+  it("identifies the signed-in user to Plaid by their app id, not their name", async () => {
+    const me = (await t.api("GET", "/api/auth/me")).body.user;
+    await t.api("POST", "/api/plaid/link-token", {});
+    expect(t.plaid.calls[0].body.user).toEqual({ client_user_id: `user-${me.id}` });
+  });
+
   it("creates link tokens: new connection asks for transactions, update mode passes the access token", async () => {
     expect((await t.api("POST", "/api/plaid/link-token", {})).body).toEqual({ linkToken: "link-new" });
-    expect(t.plaid.calls[0].body).toMatchObject({ products: ["transactions"], user: { client_user_id: "cory" } });
+    expect(t.plaid.calls[0].body).toMatchObject({ products: ["transactions"] });
     const items = (await t.api("POST", "/api/plaid/exchange", { publicToken: "pub-1" })).body;
     expect((await t.api("POST", "/api/plaid/link-token", { itemId: items[0].id })).body).toEqual({ linkToken: "link-update" });
     const last = t.plaid.calls.at(-1)!.body;

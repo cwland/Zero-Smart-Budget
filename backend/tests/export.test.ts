@@ -25,7 +25,7 @@ async function sampleData() {
 }
 
 const raw = async (url: string) => {
-  const login = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" });
+  const login = await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" });
   return t.app.inject({ method: "GET", url, headers: { authorization: `Bearer ${login.body.token}` } });
 };
 
@@ -131,7 +131,7 @@ describe("restore", () => {
     expect(g.id).toBeGreaterThan(Math.max(...before.groups.map((x: { id: number }) => x.id)));
 
     // Login still works (users aren't touched)
-    expect((await t.api("GET", "/api/auth/me")).body.user.username).toBe("cory");
+    expect((await t.api("GET", "/api/auth/me")).body.user.username).toBe("sam");
   });
 
   it("requires confirm=replace and a valid file, and leaves data alone otherwise", async () => {

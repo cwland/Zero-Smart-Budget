@@ -12,7 +12,7 @@ beforeAll(async () => {
 afterAll(async () => t.close());
 beforeEach(async () => {
   await t.reset();
-  await t.login(); // cory, cory@example.com
+  await t.login(); // sam, sam@example.com
   idp.state.down = false;
 });
 
@@ -43,14 +43,14 @@ describe("OAuth sign-in", () => {
 
   it("signs in with the same verified email (and links it); the page swaps a one-time ticket for the session", async () => {
     await t.api("PUT", "/api/settings/oauth", settings());
-    const { to, params } = await oauth({ sub: "ak-123", email: "Cory@Example.com", verified: true });
+    const { to, params } = await oauth({ sub: "ak-123", email: "Sam@Example.com", verified: true });
     expect(to.origin + to.hash.split("?")[0]).toBe(`${ORIGIN}#/oauth`);
     expect(to.href).not.toContain("eyJ"); // no token in the address bar
     const fin = (await req("POST", "/api/auth/oauth/finish", { ticket: params.get("ticket") }, null)).json();
-    expect(fin.user.username).toBe("cory");
+    expect(fin.user.username).toBe("sam");
     expect((await req("GET", "/api/months", undefined, fin.token)).statusCode).toBe(200);
     expect((await req("POST", "/api/auth/oauth/finish", { ticket: params.get("ticket") }, null)).statusCode).toBe(400); // used up
-    expect((await t.api("GET", "/api/settings/oauth")).body.linked).toMatchObject({ issuer: idp.issuer, email: "Cory@Example.com" });
+    expect((await t.api("GET", "/api/settings/oauth")).body.linked).toMatchObject({ issuer: idp.issuer, email: "Sam@Example.com" });
     expect((await t.api("GET", "/api/auth/logins")).body[0]).toMatchObject({ success: true, reason: "Signed in with Authentik" });
     // next time it's found by its ID, whatever the email says
     expect((await oauth({ sub: "ak-123", email: "changed@else.com", verified: true })).params.get("ticket")).toBeTruthy();
@@ -60,7 +60,7 @@ describe("OAuth sign-in", () => {
     await t.api("PUT", "/api/settings/oauth", settings());
     let r = await oauth({ sub: "stranger", email: "someone@else.com", verified: true });
     expect(r.params.get("oauth_error")).toMatch(/isn't linked/);
-    r = await oauth({ sub: "sneaky", email: "cory@example.com", verified: false });
+    r = await oauth({ sub: "sneaky", email: "sam@example.com", verified: false });
     expect(r.params.get("oauth_error")).toMatch(/isn't linked/);
     const reasons = (await t.api("GET", "/api/auth/logins")).body.map((e: any) => e.reason);
     expect(reasons.filter((x: string) => x.startsWith("OAuth: no matching account"))).toHaveLength(2);
@@ -80,7 +80,7 @@ describe("OAuth sign-in", () => {
     await oauth({ sub: "ak-1" }, "/api/auth/oauth/link/start", t.getToken());
     expect((await t.api("PUT", "/api/settings/oauth", settings({ authMode: "OAUTH_ONLY" }))).status).toBe(200);
     expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ passwords: false, resetAvailable: false, oauth: { label: "Authentik" } });
-    const pw = await req("POST", "/api/auth/login", { username: "cory", password: "password123" }, null);
+    const pw = await req("POST", "/api/auth/login", { username: "sam", password: "password123" }, null);
     expect(pw.statusCode).toBe(403);
     expect(pw.json().error).toMatch(/Password sign-in is turned off/);
     expect((await req("POST", "/api/auth/forgot", {}, null)).statusCode).toBe(403);
@@ -93,10 +93,10 @@ describe("OAuth sign-in", () => {
     await t.api("PUT", "/api/settings/oauth", settings());
     await oauth({ sub: "ak-1" }, "/api/auth/oauth/link/start", t.getToken());
     await t.api("PUT", "/api/settings/oauth", settings({ authMode: "OAUTH_ONLY" }));
-    expect((await req("POST", "/api/auth/login", { username: "cory", password: "password123" }, null)).statusCode).toBe(403);
+    expect((await req("POST", "/api/auth/login", { username: "sam", password: "password123" }, null)).statusCode).toBe(403);
     const r = await emergencyResetAuth(t.db);
     expect(r).toEqual({ was: { authMode: "OAUTH_ONLY", enabled: true }, now: { authMode: "PASSWORDS_AND_OAUTH", enabled: false } });
-    expect((await req("POST", "/api/auth/login", { username: "cory", password: "password123" }, null)).statusCode).toBe(200);
+    expect((await req("POST", "/api/auth/login", { username: "sam", password: "password123" }, null)).statusCode).toBe(200);
     expect((await t.api("GET", "/api/auth/status")).body).toMatchObject({ passwords: true, oauth: null });
   });
 
@@ -113,7 +113,7 @@ describe("OAuth sign-in", () => {
     expect(err(no.headers.location)).toBe("access_denied");
     // wrong secret: the provider turns the code down
     await t.api("PUT", "/api/settings/oauth", settings({ clientSecret: "wrong" }));
-    const bad = await oauth({ sub: "ak-1", email: "cory@example.com", verified: true });
+    const bad = await oauth({ sub: "ak-1", email: "sam@example.com", verified: true });
     expect(bad.params.get("oauth_error")).toMatch(/didn't work/);
     // down
     await t.api("PUT", "/api/settings/oauth", settings());

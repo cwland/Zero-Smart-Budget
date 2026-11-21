@@ -52,7 +52,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
     setToken(null);
-    window.dispatchEvent(new Event("corysdollar:logout"));
+    window.dispatchEvent(new Event("zerosmartbudget:logout"));
   }
   if (res.status === 204) return undefined as T;
 

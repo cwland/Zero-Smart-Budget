@@ -31,7 +31,7 @@ export function useSession() {
   return s;
 }
 
-// "Cory Landers" -> "CL"; a single word like "cory" -> "CO"
+// "Alex Rivera" -> "AR"; a single word like "alex" -> "AL"
 export const initialsOf = (u: User) => {
   const words = (u.displayName?.trim() || u.username).split(/\s+/).filter(Boolean);
   const text = words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2);

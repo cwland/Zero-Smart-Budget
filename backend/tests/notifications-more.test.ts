@@ -202,7 +202,7 @@ describe("more notifications", () => {
 
   it("new sign-in: the first time a browser signs in, right away", async () => {
     await only({ newSignIn: true });
-    const login = (device: string) => t.api("POST", "/api/auth/login", { username: "cory", password: "password123" }, { "x-device-id": device, "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" });
+    const login = (device: string) => t.api("POST", "/api/auth/login", { username: "sam", password: "password123" }, { "x-device-id": device, "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" });
     const before = t.sent.length;
     expect((await login("phone-device-0001")).status).toBe(200);
     await signInAlertSettled();

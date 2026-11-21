@@ -144,7 +144,7 @@ describe("export / restore with history", () => {
     const { fund, item } = await setup();
     await t.api("PATCH", `/api/items/${item.id}`, { sinkingFundId: null });
     await t.api("POST", `/api/funds/${fund.id}/entries`, { date: "2026-10-15", amountCents: 1234 });
-    const login = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" });
+    const login = await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" });
     const exported = (await t.app.inject({ method: "GET", url: "/api/export", headers: { authorization: `Bearer ${login.body.token}` } })).json();
     expect(exported.exportVersion).toBe(4);
     expect(exported.fundEntries).toHaveLength(3);
@@ -156,7 +156,7 @@ describe("export / restore with history", () => {
 
   it("version 1 files rebuild history from links", async () => {
     const { fund } = await setup();
-    const login = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" });
+    const login = await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" });
     const exported = (await t.app.inject({ method: "GET", url: "/api/export", headers: { authorization: `Bearer ${login.body.token}` } })).json();
     const v1 = { ...exported, exportVersion: 1 };
     delete v1.fundEntries;

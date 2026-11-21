@@ -15,7 +15,7 @@ const MAC_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 
 const login = async (userAgent: string, ip: string, password = "password123", deviceId?: string) => {
-  const res = await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Cory", password }, headers: { "user-agent": userAgent, "x-forwarded-for": ip, ...(deviceId ? { "x-device-id": deviceId } : {}) } });
+  const res = await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Sam", password }, headers: { "user-agent": userAgent, "x-forwarded-for": ip, ...(deviceId ? { "x-device-id": deviceId } : {}) } });
   return { status: res.statusCode, token: res.json().token as string };
 };
 const as = (token: string) => (method: string, url: string, payload?: object) =>
@@ -114,9 +114,9 @@ describe("sign-in history", () => {
     const ok = await login(IPHONE, "10.0.0.7");
     const events = (await as(ok.token)("GET", "/api/auth/logins")).body;
     expect(events.slice(0, 3).map((e: any) => [e.success, e.reason, e.ip, e.device.label, e.username])).toEqual([
-      [true, "Signed in with password", "10.0.0.7", "Safari on iPhone", "Cory"],
+      [true, "Signed in with password", "10.0.0.7", "Safari on iPhone", "Sam"],
       [false, "Unknown username", "203.0.113.9", "Unknown browser", "mallory"],
-      [false, "Wrong password", "192.168.1.20", "Chrome on Mac", "Cory"],
+      [false, "Wrong password", "192.168.1.20", "Chrome on Mac", "Sam"],
     ]);
     expect(events.at(-1)).toMatchObject({ success: true, reason: "Account set up" });
   });
@@ -125,7 +125,7 @@ describe("sign-in history", () => {
     const ok = await login(IPHONE, "10.0.0.7");
     const day = 24 * 3600 * 1000;
     await t.db.execute(sql`insert into login_events (username, success, reason, ip, at) values
-      ('Cory', true, 'old', '1.1.1.1', ${new Date(Date.now() - 61 * day)}), ('Cory', true, 'recent', '1.1.1.2', ${new Date(Date.now() - 59 * day)})`);
+      ('Sam', true, 'old', '1.1.1.1', ${new Date(Date.now() - 61 * day)}), ('Sam', true, 'recent', '1.1.1.2', ${new Date(Date.now() - 59 * day)})`);
     const reasons = (await as(ok.token)("GET", "/api/auth/logins")).body.map((e: any) => e.reason);
     expect(reasons).toContain("recent");
     expect(reasons).not.toContain("old");

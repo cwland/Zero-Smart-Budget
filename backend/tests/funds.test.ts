@@ -76,6 +76,6 @@ describe("export", () => {
 });
 
 async function login() {
-  const res = await t.api("POST", "/api/auth/login", { username: "cory", password: "password123" });
+  const res = await t.api("POST", "/api/auth/login", { username: "sam", password: "password123" });
   return `Bearer ${res.body.token}`;
 }

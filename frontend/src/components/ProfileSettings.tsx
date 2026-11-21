@@ -37,7 +37,7 @@ export default function ProfileSettings() {
         </label>
         <label className="text-sm font-medium text-subtle">
           Display name <span className="font-normal text-muted">(optional)</span>
-          <input aria-label="Display name" autoComplete="name" placeholder="e.g. Cory" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={field} />
+          <input aria-label="Display name" autoComplete="name" placeholder="e.g. Alex" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={field} />
         </label>
         <label className="text-sm font-medium text-subtle sm:col-span-2">
           Email <span className="font-normal text-muted">(required, for password resets and notifications)</span>

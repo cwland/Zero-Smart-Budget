@@ -18,8 +18,8 @@ import type { UpdateFetch } from "../src/lib/updates.js";
 import type { AiFetch } from "../src/lib/ai.js";
 
 // Tests use their own database so they never touch your real budget.
-// Create it once with: createdb corysdollar_test
-const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/corysdollar_test";
+// Create it once with: createdb zerosmartbudget_test
+const url = process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/zerosmartbudget_test";
 if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a test database");
 
 // Notification settings with only the Wrap-Up reminder and nudge (for tests about those two)
@@ -86,7 +86,7 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
     aiFetch,
     plaidFetch,
     updateFetch,
-    updateRepo: "cwland/Corys_Dollar",
+    updateRepo: "cwland/Zero-Smart-Budget",
     githubToken: opts.githubToken ?? null,
     db,
     jwtSecret: opts.jwtSecret ?? "test-secret-that-is-long-enough",
@@ -161,7 +161,7 @@ export async function setupTestApp(opts: { email?: boolean; backupKey?: string; 
       token = "";
     },
     async login() {
-      const res = await api("POST", "/api/auth/setup", { username: "cory", password: "password123", email: "cory@example.com" });
+      const res = await api("POST", "/api/auth/setup", { username: "sam", password: "password123", email: "sam@example.com" });
       token = res.body.token;
     },
     getToken: () => token,

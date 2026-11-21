@@ -37,7 +37,7 @@ describe("passkeys", () => {
 
     const r = await signIn(key);
     expect(r.status).toBe(200);
-    expect(r.body.user.username).toBe("cory");
+    expect(r.body.user.username).toBe("sam");
     expect((await call("GET", "/api/months", null, undefined, r.body.token)).status).toBe(200);
 
     const list = (await call("GET", "/api/auth/passkeys", LOCAL)).body;
