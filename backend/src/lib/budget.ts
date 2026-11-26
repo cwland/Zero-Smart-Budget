@@ -134,6 +134,7 @@ export async function loadBudget(db: Db, monthId: number) {
           spentCents,
           remainingCents: remaining({ plannedCents: i.plannedCents, spentCents }),
           favorite: i.favorite,
+          isTransfer: i.isTransfer,
           sinkingFund: fund
             ? { id: fund.id, name: fund.name, kind: fund.kind, targetCents: fund.targetCents, balanceCents: fund.balanceCents, goalReached: fund.goalReached }
             : null,

@@ -134,6 +134,24 @@ describe("restore", () => {
     expect((await t.api("GET", "/api/auth/me")).body.user.username).toBe("cory");
   });
 
+  it("keeps transfer items, and older backups without the switch restore as not transfers", async () => {
+    await sampleData();
+    const b = (await t.api("GET", "/api/months/2026/10")).body;
+    const [first, second] = b.groups.flatMap((g: any) => g.items);
+    await t.api("PATCH", `/api/items/${first.id}`, { isTransfer: true });
+    const exported = JSON.parse((await raw("/api/export")).body);
+    expect((await t.api("POST", "/api/import?confirm=replace", exported)).status).toBe(200);
+    let items = (await t.api("GET", "/api/months/2026/10")).body.groups.flatMap((g: any) => g.items);
+    expect(items.find((i: any) => i.name === first.name).isTransfer).toBe(true);
+
+    // A backup made before transfer items existed
+    for (const row of exported.lineItems) delete row.isTransfer;
+    expect((await t.api("POST", "/api/import?confirm=replace", exported)).status).toBe(200);
+    items = (await t.api("GET", "/api/months/2026/10")).body.groups.flatMap((g: any) => g.items);
+    expect(items.every((i: any) => i.isTransfer === false)).toBe(true);
+    expect(items.find((i: any) => i.name === second.name)).toBeTruthy();
+  });
+
   it("requires confirm=replace and a valid file, and leaves data alone otherwise", async () => {
     await sampleData();
     const exported = JSON.parse((await raw("/api/export")).body);

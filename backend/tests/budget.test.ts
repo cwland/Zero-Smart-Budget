@@ -147,3 +147,42 @@ describe("favorites", () => {
     expect(b.groups.flatMap((g: any) => g.items).filter((i: any) => i.favorite).map((i: any) => i.name)).toEqual(["Rent"]);
   });
 });
+
+describe("transfer items", () => {
+  it("an item can be marked as a transfer item", async () => {
+    const { groceries, rent } = await makeOctober();
+    const res = await t.api("PATCH", `/api/items/${rent.id}`, { isTransfer: true });
+    expect(res.status).toBe(200);
+    expect(res.body.isTransfer).toBe(true);
+    const items = (await t.api("GET", "/api/months/2026/10")).body.groups.flatMap((g: any) => g.items);
+    expect(items.find((i: any) => i.id === rent.id).isTransfer).toBe(true);
+    expect(items.find((i: any) => i.id === groceries.id).isTransfer).toBe(false);
+    await t.api("PATCH", `/api/items/${rent.id}`, { isTransfer: false });
+    expect((await t.api("GET", "/api/months/2026/10")).body.groups.flatMap((g: any) => g.items).find((i: any) => i.id === rent.id).isTransfer).toBe(false);
+  });
+
+  it("a fund item can't be a transfer item, and a transfer item can't get a fund", async () => {
+    const { housing, rent } = await makeOctober();
+    const fund = (await t.api("POST", "/api/funds", { name: "Car repairs", targetCents: 100000 })).body;
+    const car = (await t.api("POST", `/api/groups/${housing.id}/items`, { name: "Car fund", plannedCents: 10000, sinkingFundId: fund.id })).body;
+    const a = await t.api("PATCH", `/api/items/${car.id}`, { isTransfer: true });
+    expect(a.status).toBe(400);
+    expect(a.body.error).toMatch(/fund/i);
+    await t.api("PATCH", `/api/items/${rent.id}`, { isTransfer: true });
+    const b = await t.api("PATCH", `/api/items/${rent.id}`, { sinkingFundId: fund.id });
+    expect(b.status).toBe(400);
+    const c = await t.api("PATCH", `/api/items/${rent.id}`, { isTransfer: true, sinkingFundId: fund.id });
+    expect(c.status).toBe(400);
+    // Turning it off and linking the fund in one go is fine
+    expect((await t.api("PATCH", `/api/items/${rent.id}`, { isTransfer: false, sinkingFundId: fund.id })).status).toBe(200);
+  });
+
+  it("copying a month keeps transfer items", async () => {
+    const { rent } = await makeOctober();
+    await t.api("PATCH", `/api/items/${rent.id}`, { isTransfer: true });
+    const nov = (await t.api("POST", "/api/months/2026/11", { mode: "copy" })).body;
+    const items = nov.groups.flatMap((g: any) => g.items);
+    expect(items.find((i: any) => i.name === "Rent").isTransfer).toBe(true);
+    expect(items.find((i: any) => i.name === "Groceries").isTransfer).toBe(false);
+  });
+});

@@ -177,6 +177,8 @@ export const lineItems = pgTable(
       onDelete: "set null",
     }),
     favorite: boolean("favorite").notNull().default(false), // shown in the Favorites card too
+    // Money moved between your own accounts: left out of reports, alerts and Month Wrap-Up
+    isTransfer: boolean("is_transfer").notNull().default(false),
   },
   (t) => [
     index("line_items_group_idx").on(t.groupId),

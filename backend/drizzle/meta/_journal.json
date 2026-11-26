@@ -176,6 +176,13 @@
       "when": 1793371997272,
       "tag": "0024_shared_access",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795712056454,
+      "tag": "0025_transfer_items",
+      "breakpoints": true
     }
   ]
 }

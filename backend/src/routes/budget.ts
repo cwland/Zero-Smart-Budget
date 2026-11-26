@@ -190,6 +190,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
               sortOrder: i.sortOrder,
               sinkingFundId: i.sinkingFundId,
               favorite: i.favorite,
+              isTransfer: i.isTransfer,
             }))
           );
         }
@@ -357,6 +358,7 @@ export default async function budgetRoutes(app: FastifyInstance) {
         sinkingFundId: z.number().int().positive().nullable().optional(),
         groupId: z.number().int().positive().optional(),
         favorite: z.boolean().optional(),
+        isTransfer: z.boolean().optional(),
       })
       .parse(req.body);
 
@@ -364,12 +366,17 @@ export default async function budgetRoutes(app: FastifyInstance) {
     if (!item) throw notFound("Line item");
     await openCheck(db, await monthOfGroup(db, item.groupId));
     await requireFund(db, body.sinkingFundId);
+    // Transfers aren't spending, but fund and goal items must keep counting toward their balance
+    const willBeTransfer = body.isTransfer ?? item.isTransfer;
+    const willHaveFund = body.sinkingFundId !== undefined ? body.sinkingFundId : item.sinkingFundId;
+    if (willBeTransfer && willHaveFund) throw badRequest("Fund and goal items can't be transfer items");
 
     const changes: Partial<typeof lineItems.$inferInsert> = {
       name: body.name,
       plannedCents: body.plannedCents,
       sinkingFundId: body.sinkingFundId,
       favorite: body.favorite,
+      isTransfer: body.isTransfer,
     };
     if (body.groupId !== undefined && body.groupId !== item.groupId) {
       const [from, to] = [await requireGroup(db, item.groupId), await requireGroup(db, body.groupId)];

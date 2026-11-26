@@ -1,0 +1,1 @@
+ALTER TABLE "line_items" ADD COLUMN "is_transfer" boolean DEFAULT false NOT NULL;
