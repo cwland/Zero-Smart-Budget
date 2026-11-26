@@ -9,6 +9,9 @@ export function itemNames(budget: Budget) {
   return { lines, income };
 }
 
+// Came from the bank (Plaid): its account can't be changed
+export const isBankImported = (t: Transaction | undefined) => !!t?.plaidTransactionId;
+
 export const isUnassigned = (t: Transaction) => t.splits.every((s) => !s.lineItemId && !s.incomeItemId);
 
 export function assignmentLabel(t: Transaction, names: ReturnType<typeof itemNames>) {

@@ -197,6 +197,7 @@ export interface Transaction {
   checkNumber?: string | null;
   originalDescription?: string | null; // the bank's own wording, shown under the merchant
   plaidAccountId?: string | null;
+  plaidTransactionId?: string | null; // set when it was imported from a bank
   // In the Deleted tab (can be restored)
   deletedAt?: string | null;
   // Imported from a bank through Plaid

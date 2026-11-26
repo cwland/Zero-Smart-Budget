@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { api, type Budget, type Suggestion, type Transaction, type TransactionInput } from "../api";
-import { defaultDateFor, monthBounds } from "../dates";
+import { api, type Budget, type MonthResponse, type Suggestion, type Transaction, type TransactionInput } from "../api";
+import { MONTH_NAMES, defaultDateFor } from "../dates";
 import { centsToInput, formatCents, parseMoney } from "../money";
 import { ChevronDown, ChevronUp, CloseIcon, Trash } from "./Icons";
 import { useLockBodyScroll } from "../scrollLock";
+import { moveTarget } from "./monthSwitch";
+import { isBankImported } from "./budgetLookup";
 
 // The Add / Edit transaction popup:
 // Expense|Income switch, amount, date + merchant (with the bank's own wording under it), account,
@@ -59,7 +61,6 @@ let nextKey = 1;
 
 export default function TransactionForm({ budget, existing, preset, onSaved, onCancel }: Props) {
   const ym = { year: budget.year, month: budget.month };
-  const bounds = monthBounds(ym);
   const existingTargets = existing?.splits.map(targetOf).filter(Boolean) ?? [];
 
   const [type, setType] = useState<"expense" | "income">(existing?.type ?? preset?.type ?? "expense");
@@ -69,6 +70,7 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
   const [note, setNote] = useState(existing?.note ?? "");
   const [checkNumber, setCheckNumber] = useState(existing?.checkNumber ?? "");
   const [accountId, setAccountId] = useState(existing?.plaidAccountId ?? "");
+  const bankImported = isBankImported(existing);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [moreOpen, setMoreOpen] = useState(!!(existing?.note || existing?.checkNumber));
 
@@ -102,6 +104,37 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
   const dialogRef = useRef<HTMLDivElement>(null);
   useLockBodyScroll(); // the page behind stays put while this is open
   const pickerRef = useRef<HTMLDivElement>(null);
+
+  // The month the item choices come from: the transaction date's month, which can be another month
+  // than the one open (e.g. end-of-month income meant for next month's budget). Moving the date to
+  // another month moves the picks to that month's items with the same names.
+  const [itemBudget, setItemBudget] = useState<Budget>(budget);
+  const [missingMonth, setMissingMonth] = useState(""); // "December 2026" when that month isn't set up
+  useEffect(() => {
+    const [y, m] = date.split("-").map(Number);
+    if (!y || !m) return;
+    const from = itemBudget;
+    if (y === from.year && m === from.month && !missingMonth) return;
+    const moveTo = (to: Budget) => {
+      setMissingMonth("");
+      setItemBudget(to);
+      setPicks((cur) => cur.map((p) => ({ ...p, target: moveTarget(p.target, from, to) })).filter((p) => p.target));
+    };
+    if (y === budget.year && m === budget.month) return moveTo(budget);
+    let stale = false;
+    api<MonthResponse>("GET", `/api/months/${y}/${m}`)
+      .then((res) => {
+        if (stale) return;
+        if (res.exists) return moveTo(res);
+        setMissingMonth(`${MONTH_NAMES[m - 1]} ${y}`);
+        setPicks([]);
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
 
   // Connected bank accounts for the account box
   useEffect(() => {
@@ -174,13 +207,13 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
   // Item choices, grouped like the budget. Expenses go to budget items. Income goes to income items,
   // or to a budget item as money back (a refund, or the incoming side of a transfer into a fund).
   const groups = useMemo(() => {
-    const favs = budget.groups.flatMap((g) => g.items.filter((i) => i.favorite)).map((i) => ({ value: `l:${i.id}`, name: i.name }));
+    const favs = itemBudget.groups.flatMap((g) => g.items.filter((i) => i.favorite)).map((i) => ({ value: `l:${i.id}`, name: i.name }));
     const list = [
       ...(favs.length ? [{ label: "★ Favorites", items: favs }] : []),
-      ...budget.groups.map((g) => ({ label: g.name, items: g.items.map((i) => ({ value: `l:${i.id}`, name: i.name })) })),
+      ...itemBudget.groups.map((g) => ({ label: g.name, items: g.items.map((i) => ({ value: `l:${i.id}`, name: i.name })) })),
     ];
-    return type === "income" ? [{ label: "Income", items: budget.income.map((i) => ({ value: `i:${i.id}`, name: i.name })) }, ...list] : list;
-  }, [budget, type]);
+    return type === "income" ? [{ label: "Income", items: itemBudget.income.map((i) => ({ value: `i:${i.id}`, name: i.name })) }, ...list] : list;
+  }, [itemBudget, type]);
   const nameOf = (t: Target) => groups.flatMap((g) => g.items).find((i) => i.value === t)?.name ?? "";
   // Every word typed has to match the item or its group ("gro" finds Groceries; "housing" lists that group)
   const shownGroups = useMemo(() => {
@@ -328,7 +361,7 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
             />
 
             <div className="grid grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] gap-3">
-              <input type="date" aria-label="Date" min={bounds.min} max={bounds.max} value={date} onChange={(e) => setDate(e.target.value)} className={box} required />
+              <input type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} className={box} required />
               <div className="min-w-0">
                 <input
                   aria-label="Merchant"
@@ -349,7 +382,15 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
             </div>
 
             <div className="relative">
-              <select aria-label="Account" value={accountId} onChange={(e) => setAccountId(e.target.value)} className={`${box} appearance-none pr-10 ${accountId ? "" : "text-subtle"}`}>
+              {/* A bank-imported transaction stays on the account it came from */}
+              <select
+                aria-label="Account"
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                disabled={bankImported}
+                title={bankImported ? "From your bank, so the account can't be changed" : undefined}
+                className={`${box} appearance-none pr-10 ${accountId ? "" : "text-subtle"} disabled:cursor-not-allowed disabled:bg-[#f4f6f6] disabled:text-ink`}
+              >
                 <option value="">{accounts.length ? "No account" : "No bank accounts connected"}</option>
                 {!accountKnown && <option value={accountId}>{existing?.account ? `${existing.account.name}${existing.account.mask ? ` *${existing.account.mask}` : ""}` : "Disconnected account"}</option>}
                 {accounts.map((a) => (
@@ -358,7 +399,8 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-subtle" />
+              {!bankImported && <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-subtle" />}
+              {bankImported && <p className="mt-1 px-1 text-xs text-subtle">From your bank, so the account can't be changed.</p>}
             </div>
 
             {/* Budget Items: pick one, or several to split */}
@@ -448,6 +490,11 @@ export default function TransactionForm({ budget, existing, preset, onSaved, onC
                 </div>
               )}
 
+              {missingMonth && (
+                <p role="status" className="mt-1.5 text-sm text-subtle">
+                  {missingMonth} isn't set up yet, so this will be saved unassigned. Set up that month to pick its items.
+                </p>
+              )}
               {autoNote && picks.length === 1 && (
                 <p role="status" className={`mt-1.5 text-sm ${autoNote.source === "ai" ? "text-[#6a3de8]" : "text-success"}`}>
                   {autoNote.source === "ai" ? (

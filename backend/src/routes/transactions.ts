@@ -351,6 +351,10 @@ export default async function transactionRoutes(app: FastifyInstance) {
     const existing = await loadTransaction(db, id);
     if (!existing) throw notFound("Transaction");
     if (existing.deletedAt) throw badRequest("This transaction is deleted. Restore it first.");
+    // A bank-imported transaction stays on the account it came from (everything else can be edited)
+    if (existing.plaidTransactionId && input.plaidAccountId !== undefined && input.plaidAccountId !== existing.plaidAccountId) {
+      throw badRequest("This transaction came from your bank, so its account can't be changed");
+    }
     if (existing.aiSuggestion && (existing.merchant !== input.merchant || existing.type !== input.type || existing.date.slice(0, 7) !== input.date.slice(0, 7))) {
       await clearAiSuggestion(db, id); // its guess was about the old details
     }

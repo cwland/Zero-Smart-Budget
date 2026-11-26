@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 
 let t: TestApp;
@@ -245,5 +246,26 @@ describe("check number, account and bank wording", () => {
     expect(b).toMatchObject({ checkNumber: "1042", plaidAccountId: "acc-1" });
     const c = (await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-05", merchant: "Landlord", amountCents: 1000, checkNumber: "", plaidAccountId: null })).body;
     expect(c).toMatchObject({ checkNumber: null, plaidAccountId: null });
+  });
+  it("a bank-imported transaction keeps its account; everything else can still be edited", async () => {
+    const a = (await t.api("POST", "/api/transactions", { date: "2026-10-25", merchant: "ACH Credit", amountCents: 250000, type: "income", plaidAccountId: "acc-1" })).body;
+    await t.db.execute(sql`update transactions set plaid_transaction_id = 'bank-1' where id = ${a.id}`); // as if imported
+    const moved = await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-25", merchant: "ACH Credit", amountCents: 250000, type: "income", plaidAccountId: "acc-2" });
+    expect(moved.status).toBe(400);
+    expect(moved.body.error).toMatch(/account/i);
+    const cleared = await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-25", merchant: "ACH Credit", amountCents: 250000, type: "income", plaidAccountId: null });
+    expect(cleared.status).toBe(400);
+    // Same account (or none sent): the rest saves
+    const edited = await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-31", merchant: "Paycheck", amountCents: 249000, type: "income", plaidAccountId: "acc-1" });
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({ date: "2026-10-31", merchant: "Paycheck", amountCents: 249000, plaidAccountId: "acc-1" });
+    expect((await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-31", merchant: "Paycheck", amountCents: 249000, type: "income" })).status).toBe(200);
+  });
+
+  it("a manually added transaction can change its account", async () => {
+    const a = (await t.api("POST", "/api/transactions", { date: "2026-10-05", merchant: "Cash", amountCents: 500, plaidAccountId: "acc-1" })).body;
+    const b = await t.api("PUT", `/api/transactions/${a.id}`, { date: "2026-10-05", merchant: "Cash", amountCents: 500, plaidAccountId: "acc-2" });
+    expect(b.status).toBe(200);
+    expect(b.body.plaidAccountId).toBe("acc-2");
   });
 });
