@@ -135,3 +135,48 @@ describe("reports", () => {
     expect((await t.api("POST", "/api/reports/summary", { from: "2026-10", to: "2026-10" })).status).toBe(502);
   });
 });
+
+describe("transfer items in reports", () => {
+  async function withTransfer() {
+    const oct = await month(2026, 10);
+    const g = (await t.api("GET", "/api/months/2026/10")).body.groups[0];
+    const transfer = (await t.api("POST", `/api/groups/${g.id}/items`, { name: "Transfer", plannedCents: 0 })).body;
+    await t.api("PATCH", `/api/items/${transfer.id}`, { isTransfer: true });
+    return { ...oct, transfer };
+  }
+  const move = (date: string, merchant: string, cents: number, splits: object[], type = "expense") =>
+    t.api("POST", "/api/transactions", { date, merchant, amountCents: cents, type, splits });
+
+  it("are left out of spending, planned, merchants and cash flow", async () => {
+    const oct = await withTransfer();
+    await move("2026-10-03", "To savings", 50000, [{ lineItemId: oct.transfer.id, amountCents: 50000 }]);
+    await move("2026-10-03", "From checking", 50000, [{ lineItemId: oct.transfer.id, amountCents: 50000 }], "income");
+    await move("2026-10-04", "Grocer", 12000, [{ lineItemId: oct.groceries.id, amountCents: 12000 }]);
+
+    const r = (await t.api("GET", "/api/reports?from=2026-10&to=2026-10")).body;
+    expect(r.spending).toEqual([{ year: 2026, month: 10, group: "Food", item: "Groceries", cents: 12000 }]);
+    expect(r.planned.map((p: { item: string }) => p.item)).not.toContain("Transfer");
+    expect(r.merchants.map((m: { name: string }) => m.name)).toEqual(["Grocer"]);
+
+    const cf = (await t.api("GET", "/api/reports/cashflow?month=2026-10")).body;
+    expect(cf.days).toEqual([{ date: "2026-10-04", inCents: 0, outCents: 12000, items: [{ merchant: "Grocer", cents: 12000, type: "expense" }] }]);
+  });
+
+  it("a split transaction counts only its non-transfer part", async () => {
+    const oct = await withTransfer();
+    await move("2026-10-05", "Bank", 10000, [{ lineItemId: oct.transfer.id, amountCents: 6000 }, { lineItemId: oct.groceries.id, amountCents: 4000 }]);
+    const r = (await t.api("GET", "/api/reports?from=2026-10&to=2026-10")).body;
+    expect(r.spending).toEqual([{ year: 2026, month: 10, group: "Food", item: "Groceries", cents: 4000 }]);
+    expect(r.merchants).toEqual([{ name: "Bank", visits: 1, cents: 4000, lastDate: "2026-10-05" }]);
+    // It's still partly real spending, so it stays in the cash flow
+    const cf = (await t.api("GET", "/api/reports/cashflow?month=2026-10")).body;
+    expect(cf.days).toHaveLength(1);
+  });
+
+  it("unassigned transactions still count in cash flow", async () => {
+    await withTransfer();
+    await move("2026-10-07", "Unknown", 7000, []);
+    const cf = (await t.api("GET", "/api/reports/cashflow?month=2026-10")).body;
+    expect(cf.days).toEqual([{ date: "2026-10-07", inCents: 0, outCents: 7000, items: [{ merchant: "Unknown", cents: 7000, type: "expense" }] }]);
+  });
+});

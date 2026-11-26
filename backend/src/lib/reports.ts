@@ -4,6 +4,7 @@ import { budgetMonths, categoryGroups, fundEntries, incomeItems, lineItems, sink
 import { monthDateRange } from "./calc.js";
 import type { ActiveService, AiService } from "./ai.js";
 import { monthName as label } from "./monthClose.js";
+import { notTransferSplit, notTransferTransaction } from "./transfers.js";
 
 // Report data for a range of budget months (Reports page, CSV export and the AI summary).
 // Money counts in the budget month of the item it's assigned to (like the budget page does),
@@ -38,7 +39,7 @@ export async function reportData(db: Db, from: YM, to: YM) {
     .innerJoin(lineItems, eq(transactionSplits.lineItemId, lineItems.id))
     .innerJoin(categoryGroups, eq(lineItems.groupId, categoryGroups.id))
     .innerJoin(budgetMonths, eq(categoryGroups.monthId, budgetMonths.id))
-    .where(and(inRange, isNull(transactions.deletedAt)))
+    .where(and(inRange, isNull(transactions.deletedAt), eq(lineItems.isTransfer, false)))
     .groupBy(budgetMonths.year, budgetMonths.month, categoryGroups.name, lineItems.name)
     .orderBy(asc(budgetMonths.year), asc(budgetMonths.month));
 
@@ -54,7 +55,7 @@ export async function reportData(db: Db, from: YM, to: YM) {
     .from(lineItems)
     .innerJoin(categoryGroups, eq(lineItems.groupId, categoryGroups.id))
     .innerJoin(budgetMonths, eq(categoryGroups.monthId, budgetMonths.id))
-    .where(inRange)
+    .where(and(inRange, eq(lineItems.isTransfer, false)))
     .groupBy(budgetMonths.year, budgetMonths.month, categoryGroups.name, lineItems.name)
     .orderBy(asc(budgetMonths.year), asc(budgetMonths.month));
 
@@ -88,7 +89,7 @@ export async function reportData(db: Db, from: YM, to: YM) {
     })
     .from(transactionSplits)
     .innerJoin(transactions, eq(transactionSplits.transactionId, transactions.id))
-    .where(and(sql`${transactionSplits.lineItemId} is not null`, isNull(transactions.deletedAt), sql`${transactions.date} between ${first} and ${last}`))
+    .where(and(sql`${transactionSplits.lineItemId} is not null`, notTransferSplit, isNull(transactions.deletedAt), sql`${transactions.date} between ${first} and ${last}`))
     .groupBy(merchantKey)
     .having(sql`sum(case when ${transactions.type} = 'income' then -${transactionSplits.amountCents} else ${transactionSplits.amountCents} end) > 0`)
     .orderBy(sql`sum(case when ${transactions.type} = 'income' then -${transactionSplits.amountCents} else ${transactionSplits.amountCents} end) desc`)
@@ -165,7 +166,7 @@ export async function cashFlow(db: Db, ym: YM) {
   const rows = await db
     .select({ date: transactions.date, merchant: transactions.merchant, type: transactions.type, cents: transactions.amountCents, pending: transactions.pending })
     .from(transactions)
-    .where(and(isNull(transactions.deletedAt), sql`${transactions.date} between ${from} and ${to}`))
+    .where(and(isNull(transactions.deletedAt), notTransferTransaction, sql`${transactions.date} between ${from} and ${to}`))
     .orderBy(asc(transactions.date), asc(transactions.id));
   const days = new Map<string, { date: string; inCents: number; outCents: number; items: { merchant: string; cents: number; type: "income" | "expense" }[] }>();
   for (const r of rows) {
