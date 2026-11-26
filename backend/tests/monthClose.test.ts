@@ -219,3 +219,24 @@ describe("Month Close", () => {
     expect(await fund(goal.id)).toMatchObject({ kind: "goal", balanceCents: 53000 });
   });
 });
+
+describe("Month Wrap-Up and transfer items", () => {
+  it("ignores transfer items in the lists and the month total", async () => {
+    const { sep, g, spend } = await september();
+    const transfer = (await t.api("POST", `/api/groups/${g.id}/items`, { name: "Transfer", plannedCents: 0 })).body;
+    await t.api("PATCH", `/api/items/${transfer.id}`, { isTransfer: true });
+    await spend("2026-09-15", "To savings", 30000, transfer.id);
+    await t.api("POST", "/api/transactions", { date: "2026-09-16", merchant: "From checking", amountCents: 25000, type: "income", splits: [{ lineItemId: transfer.id, amountCents: 25000 }] });
+
+    const p = (await t.api("GET", `/api/months/${sep.id}/close`)).body;
+    const listed = [...p.moneyLeft, ...p.overspent].map((i: any) => i.name);
+    expect(listed).not.toContain("Transfer");
+    // $3,000 income - $2,170 regular spending - $300 set aside for the car (the transfer's $50 doesn't count)
+    expect(p.totalCents).toBe(53000);
+
+    const res = await t.api("POST", `/api/months/${sep.id}/close`, { leftover: { to: "keep" } });
+    expect(res.status).toBe(200);
+    expect((await month(2026, 9)).close.result.totalCents).toBe(53000);
+    expect((await month(2026, 9)).close.changedSinceClose).toBe(false);
+  });
+});

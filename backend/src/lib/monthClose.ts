@@ -12,7 +12,7 @@ import { getBudgetPrefs } from "./prefs.js";
 // 1st of the second month after (September closes November 1), keeping any leftover in the month.
 //
 // Items linked to a sinking fund aren't part of it: their leftover (or overspend) already stays
-// in the fund. So the month's result is:
+// in the fund. Transfer items (money moved between your own accounts) aren't part of it either. So the month's result is:
 //   income received - spending on regular items - money set aside on fund items
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -23,7 +23,7 @@ type Budget = NonNullable<Awaited<ReturnType<typeof loadBudget>>>;
 // The month's result from a loaded budget (see above)
 export function closeTotal(b: Budget) {
   const items = b.groups.flatMap((g) => g.items);
-  const regularSpent = items.filter((i) => !i.sinkingFund).reduce((n, i) => n + i.spentCents, 0);
+  const regularSpent = items.filter((i) => !i.sinkingFund && !i.isTransfer).reduce((n, i) => n + i.spentCents, 0);
   const setAside = items.filter((i) => i.sinkingFund).reduce((n, i) => n + i.plannedCents, 0);
   return b.totals.incomeReceivedCents - regularSpent - setAside;
 }
@@ -59,7 +59,7 @@ export async function closePreview(db: Db, monthId: number) {
   if (!row) throw notFound("Month");
   const b = (await loadBudget(db, monthId))!;
   const items = b.groups.flatMap((g) => g.items.map((i) => ({ ...i, group: g.name })));
-  const regular = items.filter((i) => !i.sinkingFund);
+  const regular = items.filter((i) => !i.sinkingFund && !i.isTransfer);
   const { from, to } = monthDateRange(row.year, row.month);
 
   // Uncategorized transactions in this month (track everything before closing)
