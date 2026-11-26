@@ -5,6 +5,7 @@ import type { EmailKind, MailService } from "./mail.js";
 import { renderEmail, type EmailContent } from "./emailLayout.js";
 import { computeInsights, hasInsights, insightsWords, plainFocus } from "./insights.js";
 import { bankAttention, monthlyInsights, goalBehind, goalMilestone, largePurchase, monthCloseReminder, monthlySummary, newSignIn, nextMonthSetup, nudge, overBudget, weeklyCheckIn } from "./emails.js";
+import { notTransferSplit, notTransferTransaction } from "./transfers.js";
 import { loadBudget, loadFunds } from "./budget.js";
 import { goalPlan } from "./goals.js";
 import { isOn } from "./features.js";
@@ -206,7 +207,7 @@ async function findMonth(db: Db, ym: { year: number; month: number }) {
 async function overItems(db: Db, monthId: number) {
   const b = await loadBudget(db, monthId);
   if (!b) return [];
-  return b.groups.flatMap((g) => g.items.filter((i) => !i.sinkingFund && i.spentCents > i.plannedCents && i.spentCents > 0).map((i) => ({ id: i.id, item: i.name, group: g.name, spentCents: i.spentCents, plannedCents: i.plannedCents })));
+  return b.groups.flatMap((g) => g.items.filter((i) => !i.sinkingFund && !i.isTransfer && i.spentCents > i.plannedCents && i.spentCents > 0).map((i) => ({ id: i.id, item: i.name, group: g.name, spentCents: i.spentCents, plannedCents: i.plannedCents })));
 }
 
 async function summaryContent(db: Db, ym: { year: number; month: number }, ai: AiService | undefined, withAi: boolean): Promise<EmailContent | null> {
@@ -270,19 +271,21 @@ async function weeklyContent(db: Db, now: Date): Promise<EmailContent> {
     })
     .from(transactionSplits)
     .innerJoin(transactions, eq(transactionSplits.transactionId, transactions.id))
-    .where(and(isNull(transactions.deletedAt), sql`${transactionSplits.lineItemId} is not null`, sql`${transactions.date} between ${isoDay(weekAgo)} and ${isoDay(now)}`))
+    .where(and(isNull(transactions.deletedAt), sql`${transactionSplits.lineItemId} is not null`, notTransferSplit, sql`${transactions.date} between ${isoDay(weekAgo)} and ${isoDay(now)}`))
     .groupBy(transactions.merchant);
   const merchants = rows.map((r) => ({ name: r.merchant, cents: Number(r.cents) })).filter((r) => r.cents > 0).sort((a, b) => b.cents - a.cents);
   const cur = ymOf(now);
   const m = await findMonth(db, cur);
   const b = m ? await loadBudget(db, m.id) : null;
-  const items = b ? b.groups.flatMap((g) => g.items.filter((i) => !i.sinkingFund)) : [];
+  const items = b ? b.groups.flatMap((g) => g.items.filter((i) => !i.sinkingFund && !i.isTransfer)) : [];
+  // Money moved between your own accounts isn't spending
+  const transferSpent = b ? b.groups.flatMap((g) => g.items.filter((i) => i.isTransfer)).reduce((t, i) => t + i.spentCents, 0) : 0;
   const daysIn = new Date(cur.year, cur.month, 0).getDate();
   return weeklyCheckIn({
     weekSpentCents: merchants.reduce((t, r) => t + r.cents, 0),
     topMerchants: merchants.slice(0, 3),
     plannedCents: b?.totals.plannedCents ?? 0,
-    leftCents: b ? b.totals.plannedCents - b.totals.spentCents : 0,
+    leftCents: b ? b.totals.plannedCents - (b.totals.spentCents - transferSpent) : 0,
     daysLeft: daysIn - now.getDate() + 1,
     monthName: monthName(cur),
     over: items.filter((i) => i.spentCents > i.plannedCents && i.spentCents > 0).sort((a, z) => z.spentCents - z.plannedCents - (a.spentCents - a.plannedCents)).slice(0, 5).map((i) => ({ item: i.name, overCents: i.spentCents - i.plannedCents })),
@@ -319,6 +322,7 @@ async function largeRecent(db: Db, now: Date, threshold: number) {
       and(
         isNull(transactions.deletedAt),
         eq(transactions.type, "expense"),
+        notTransferTransaction,
         sql`${transactions.amountCents} >= ${threshold}`,
         sql`${transactions.createdAt} >= ${new Date(now.getTime() - 2 * DAY)}`, // just came in
         sql`${transactions.date} >= ${isoDay(new Date(now.getTime() - 7 * DAY))}` // and recent (not old history)

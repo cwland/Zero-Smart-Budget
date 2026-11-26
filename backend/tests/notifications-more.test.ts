@@ -227,3 +227,49 @@ describe("more notifications", () => {
     }
   });
 });
+
+describe("transfer items in emails", () => {
+  async function withTransfer(year = 2026, m = 10) {
+    const oct = await month(year, m);
+    const g = (await t.api("GET", `/api/months/${year}/${m}`)).body.groups[0];
+    const transfer = (await t.api("POST", `/api/groups/${g.id}/items`, { name: "Transfer", plannedCents: 0 })).body;
+    await t.api("PATCH", `/api/items/${transfer.id}`, { isTransfer: true });
+    return { ...oct, transfer };
+  }
+
+  it("no over-budget email for a transfer item", async () => {
+    const oct = await withTransfer();
+    await only({ overBudget: true });
+    await spend("2026-10-03", 30000, oct.transfer.id, "To savings");
+    await spend("2026-10-04", 15000, oct.dining.id);
+    const r = await run(new Date(2026, 9, 5, 10));
+    expect(r.sent.map((x) => x.subject)).toEqual(["Dining Out is over budget"]);
+    expect(t.sent.at(-1)!.text).not.toContain("Transfer");
+  });
+
+  it("no large-purchase email for a transfer; a split with a normal item still alerts", async () => {
+    const today = new Date();
+    const oct = await withTransfer(today.getFullYear(), today.getMonth() + 1); // this month: transactions are dated today
+    await only({ largePurchase: true, largePurchaseCents: 50000 });
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    await spend(iso, 90000, oct.transfer.id, "To savings");
+    expect((await run(today)).sent).toEqual([]);
+    await t.api("POST", "/api/transactions", {
+      date: iso, merchant: "Furniture Mart", amountCents: 90000,
+      splits: [{ lineItemId: oct.transfer.id, amountCents: 30000 }, { lineItemId: oct.groceries.id, amountCents: 60000 }],
+    });
+    expect((await run(today)).sent.map((x) => x.subject)).toEqual(["Large purchase: $900.00 at Furniture Mart"]);
+  });
+
+  it("weekly check-in leaves out transfers", async () => {
+    const oct = await withTransfer();
+    await spend("2026-10-20", 4500, oct.groceries.id, "Costco");
+    await spend("2026-10-21", 80000, oct.transfer.id, "To savings");
+    await only({ weekly: true, weeklyDay: 0 });
+    const r = await run(new Date(2026, 9, 25, 9)); // Sunday
+    expect(r.sent.map((x) => x.subject)).toEqual(["Your week: $45 spent, $555 left"]);
+    const text = t.sent.at(-1)!.text;
+    expect(text).not.toContain("To savings");
+    expect(text).not.toContain("Transfer");
+  });
+});
