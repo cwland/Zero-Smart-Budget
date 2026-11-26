@@ -10,6 +10,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.3.0",
+    date: "2026-11-26",
+    changes: [
+      "Transfer items: turn on Transfer item in a budget item's details for money you move between your own accounts. It stays in your budget but is left out of reports, alert emails and Month Wrap-Up, so a transfer planned at $0 no longer sends an over-budget email.",
+      "A transaction's date can now be in another month, like a paycheck at the end of the month that belongs to next month's budget. Its budget item moves to the same-named item in that month.",
+      "Transactions imported from your bank keep the account they came from; everything else about them can still be edited.",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-10-29",
     title: "Zero Smart Budget",
