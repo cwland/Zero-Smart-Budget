@@ -22,3 +22,7 @@ export const notTransferTransaction = sql`not (
     where s.transaction_id = ${transactions.id} and not coalesce(li.is_transfer, false)
   )
 )`;
+
+// What a loaded budget spent on transfer items (to take out of its "spent" totals)
+export const transferSpentOf = (b: { groups: { items: { isTransfer: boolean; spentCents: number }[] }[] } | null) =>
+  b ? b.groups.flatMap((g) => g.items).filter((i) => i.isTransfer).reduce((t, i) => t + i.spentCents, 0) : 0;

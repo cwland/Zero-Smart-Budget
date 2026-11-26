@@ -5,7 +5,7 @@ import type { EmailKind, MailService } from "./mail.js";
 import { renderEmail, type EmailContent } from "./emailLayout.js";
 import { computeInsights, hasInsights, insightsWords, plainFocus } from "./insights.js";
 import { bankAttention, monthlyInsights, goalBehind, goalMilestone, largePurchase, monthCloseReminder, monthlySummary, newSignIn, nextMonthSetup, nudge, overBudget, weeklyCheckIn } from "./emails.js";
-import { notTransferSplit, notTransferTransaction } from "./transfers.js";
+import { notTransferSplit, notTransferTransaction, transferSpentOf } from "./transfers.js";
 import { loadBudget, loadFunds } from "./budget.js";
 import { goalPlan } from "./goals.js";
 import { isOn } from "./features.js";
@@ -142,7 +142,8 @@ async function waitingExamples(db: Db) {
 
 async function monthCloseContent(db: Db, m: typeof budgetMonths.$inferSelect, over: boolean): Promise<EmailContent> {
   const b = await loadBudget(db, m.id);
-  return monthCloseReminder({ monthName: monthName(m), over, plannedCents: b?.totals.plannedCents ?? null, spentCents: b?.totals.spentCents ?? null });
+  const transferSpent = transferSpentOf(b); // money moved between your own accounts isn't spending
+  return monthCloseReminder({ monthName: monthName(m), over, plannedCents: b?.totals.plannedCents ?? null, spentCents: b ? b.totals.spentCents - transferSpent : null });
 }
 
 async function nudgeContent(db: Db, waiting: number, days: number): Promise<EmailContent> {
@@ -278,8 +279,7 @@ async function weeklyContent(db: Db, now: Date): Promise<EmailContent> {
   const m = await findMonth(db, cur);
   const b = m ? await loadBudget(db, m.id) : null;
   const items = b ? b.groups.flatMap((g) => g.items.filter((i) => !i.sinkingFund && !i.isTransfer)) : [];
-  // Money moved between your own accounts isn't spending
-  const transferSpent = b ? b.groups.flatMap((g) => g.items.filter((i) => i.isTransfer)).reduce((t, i) => t + i.spentCents, 0) : 0;
+  const transferSpent = transferSpentOf(b); // money moved between your own accounts isn't spending
   const daysIn = new Date(cur.year, cur.month, 0).getDate();
   return weeklyCheckIn({
     weekSpentCents: merchants.reduce((t, r) => t + r.cents, 0),

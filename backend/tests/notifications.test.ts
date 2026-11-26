@@ -125,3 +125,21 @@ describe("notifications", () => {
     expect((await run(new Date(2026, 9, 20))).sent).toHaveLength(1);
   });
 });
+
+describe("Wrap-Up reminder and transfer items", () => {
+  it("leaves transfer spending out of the reminder's Spent and Left", async () => {
+    const sep = (await t.api("POST", "/api/months/2026/9", { mode: "blank" })).body;
+    const g = (await t.api("POST", `/api/months/${sep.id}/groups`, { name: "Spending" })).body;
+    const food = (await t.api("POST", `/api/groups/${g.id}/items`, { name: "Groceries", plannedCents: 60000 })).body;
+    const transfer = (await t.api("POST", `/api/groups/${g.id}/items`, { name: "Transfer", plannedCents: 0 })).body;
+    await t.api("PATCH", `/api/items/${transfer.id}`, { isTransfer: true });
+    await t.api("POST", "/api/transactions", { date: "2026-09-05", merchant: "Grocer", amountCents: 20000, splits: [{ lineItemId: food.id, amountCents: 20000 }] });
+    await t.api("POST", "/api/transactions", { date: "2026-09-06", merchant: "To savings", amountCents: 90000, splits: [{ lineItemId: transfer.id, amountCents: 90000 }] });
+    await t.api("PUT", "/api/settings/notifications", { enabled: true, nudge: false, ...ONLY_FIRST_TWO });
+    await lastActive(new Date(2026, 8, 25));
+    await run(new Date(2026, 8, 26, 9));
+    const text = t.sent.at(-1)!.text;
+    expect(text).toContain("Spent: $200.00");
+    expect(text).toContain("Left: $400.00");
+  });
+});
