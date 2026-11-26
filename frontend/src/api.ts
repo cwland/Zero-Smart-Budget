@@ -81,6 +81,7 @@ export interface BudgetLine {
   remainingCents: number;
   sinkingFund: { id: number; name: string; kind: "sinking" | "goal"; targetCents: number | null; balanceCents: number; goalReached: boolean } | null;
   favorite: boolean;
+  isTransfer: boolean; // money moved between your own accounts: left out of reports, alerts and Wrap-Up
 }
 
 export interface BudgetGroup {

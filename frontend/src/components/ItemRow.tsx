@@ -12,6 +12,7 @@ export interface RowData {
   actualCents: number; // spent (expenses) or received (income)
   fund?: { name: string; kind?: "sinking" | "goal"; balanceCents: number; targetCents: number | null; goalReached?: boolean } | null;
   lockedNote?: string; // planned amount can't be changed here (e.g. a rollover); why
+  transfer?: boolean; // a transfer item: tagged so it's clear it's left out of reports and alerts
 }
 
 export type SecondColumn = "actual" | "remaining";
@@ -115,6 +116,11 @@ export default function ItemRow({ row, column, onSave, onDelete, onAmountEnter, 
               </button>
             )}
           </span>
+          {row.transfer && (
+            <span title="Transfer item: left out of reports, alerts and Month Wrap-Up" className="px-1 text-sm text-subtle">
+              Transfer
+            </span>
+          )}
           {row.fund && (
             <span title={`${row.fund.kind === "goal" ? "Goal" : "Sinking fund"}: ${row.fund.name}`} className="tabular flex items-center gap-1 px-1 text-sm text-success">
               {row.fund.kind === "goal" ? <GoalIcon className="size-4 shrink-0" /> : <PiggyIcon className="size-4 shrink-0" />}

@@ -5,6 +5,7 @@ import { api } from "../api";
 import FundLink from "./FundLink";
 import { ProgressBar } from "./ItemRow";
 import { TransactionRow } from "./TransactionList";
+import { canBeTransfer } from "./transferItem";
 
 export type ItemRef = { type: "line" | "income"; id: number };
 
@@ -25,6 +26,7 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
   let actual = 0;
   let fund: Budget["groups"][number]["items"][number]["sinkingFund"] = null;
   let favorite = false;
+  let isTransfer = false;
 
   if (item.type === "income") {
     const i = budget.income.find((x) => x.id === item.id);
@@ -35,7 +37,7 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
     for (const g of budget.groups) {
       const i = g.items.find((x) => x.id === item.id);
       if (i) {
-        ({ name, plannedCents: planned, spentCents: actual, sinkingFund: fund, favorite } = i);
+        ({ name, plannedCents: planned, spentCents: actual, sinkingFund: fund, favorite, isTransfer } = i);
         groupName = g.name;
       }
     }
@@ -94,7 +96,27 @@ export default function ItemDetail({ budget, item, transactions, onAdd, onOpen, 
         <ProgressBar actual={actual} planned={planned} />
       </div>
 
-      {item.type === "line" && <FundLink lineItemId={item.id} fund={fund} onChanged={onChanged} />}
+      {item.type === "line" && !isTransfer && <FundLink lineItemId={item.id} fund={fund} onChanged={onChanged} />}
+
+      {item.type === "line" && canBeTransfer({ sinkingFund: fund }) && (
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg bg-page px-3 py-2.5">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-checked={isTransfer}
+            checked={isTransfer}
+            onChange={async () => {
+              await api("PATCH", `/api/items/${item.id}`, { isTransfer: !isTransfer });
+              await onChanged();
+            }}
+            className="mt-1 size-4 shrink-0 accent-primary"
+          />
+          <span>
+            <span className="block font-semibold">Transfer item</span>
+            <span className="block text-sm text-subtle">For money moved between your own accounts. Left out of reports, alerts and Month Wrap-Up.</span>
+          </span>
+        </label>
+      )}
 
       <button onClick={onAdd} className="mt-5 w-full rounded border border-primary py-2.5 font-semibold text-primary hover:bg-pressed">
         Add Transaction

@@ -279,7 +279,7 @@ export default function BudgetPage() {
                 favorites
                 title="Favorites"
                 rowPrefix="fav"
-                rows={favoriteItems.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund }))}
+                rows={favoriteItems.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund, transfer: i.isTransfer }))}
                 readOnly={closed}
                 column={column}
                 onColumnChange={setColumn}
@@ -304,7 +304,7 @@ export default function BudgetPage() {
                 rowPrefix="item"
                 title={g.name}
                 startWithDraft={g.id === newGroupId}
-                rows={g.items.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund }))}
+                rows={g.items.map((i) => ({ id: i.id, name: i.name, plannedCents: i.plannedCents, actualCents: i.spentCents, fund: i.sinkingFund, transfer: i.isTransfer }))}
                 readOnly={closed}
                 column={column}
                 onColumnChange={setColumn}
