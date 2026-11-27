@@ -4,6 +4,7 @@ import { api, waitingNote, type Budget, type Transaction } from "../api";
 import { MONTH_NAMES, addMonths, monthBounds, shortDate, type YearMonth } from "../dates";
 import { formatCents } from "../money";
 import { isUnassigned } from "./budgetLookup";
+import { TAB_NAMES, tabLabel, type Tab } from "./tabLabel";
 import { setDraggedTransaction } from "../txDrag";
 import { flash, setTossEnabled, targetOf as tossTarget, toss, tossOn } from "../toss";
 
@@ -214,11 +215,8 @@ function DeletedRow({ t, busy, onRestore, onErase }: { t: Transaction; busy: boo
 }
 
 
-type Tab = "new" | "tracked" | "pending" | "deleted";
-
 // New: waiting to be assigned. Assigned ("tracked"): has a budget item. Pending: not posted at the bank yet (an assigned
-// pending charge stays in Tracked, tagged Pending).
-const TAB_NAMES: Record<Tab, string> = { new: "New", tracked: "Assigned", deleted: "Deleted", pending: "Pending" };
+// pending charge stays in Tracked, tagged Pending). Tab names and labels live in ./tabLabel.
 
 const tabOf = (t: Transaction): Tab => (t.deletedAt ? "deleted" : !isUnassigned(t) ? "tracked" : t.pending ? "pending" : "new");
 
@@ -486,7 +484,7 @@ export default function TransactionList({ budget, transactions, onAdd, onOpen, o
             onClick={() => setTab(id)}
             className={`-mb-px flex-1 whitespace-nowrap border-b-[3px] px-0.5 pb-2 pt-1 font-semibold ${tab === id ? "border-action text-action" : "border-transparent text-subtle hover:text-ink"}`}
           >
-            {TAB_NAMES[id]} ({byTab[id].length})
+            {tabLabel(id, byTab[id].length)}
           </button>
         ))}
       </div>
